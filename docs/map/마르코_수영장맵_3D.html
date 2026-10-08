@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>마르코! 심야 실내수영장 맵 3D (v1.1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e7eff1; --panel:rgba(250,252,252,.9); --panel-solid:#fafcfc; --ink:#13222b; --muted:#56666e;
+  --line:rgba(19,34,43,.14); --accent:#d8392f; --aqua:#167fa3; --chip:#eef3f4; --chip-on:#13222b; --chip-on-ink:#f4f8f9;
+  --shadow:0 10px 30px rgba(10,30,40,.16);
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1114; --panel:rgba(14,19,22,.9); --panel-solid:#0e1316; --ink:#e4eef1; --muted:#93a5ac;
+    --line:rgba(228,238,241,.14); --accent:#ff6a5c; --aqua:#35f0d0; --chip:#1a2328; --chip-on:#e4eef1; --chip-on-ink:#0e1316;
+    --shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1114; --panel:rgba(14,19,22,.9); --panel-solid:#0e1316; --ink:#e4eef1; --muted:#93a5ac;
+  --line:rgba(228,238,241,.14); --accent:#ff6a5c; --aqua:#35f0d0; --chip:#1a2328; --chip-on:#e4eef1; --chip-on-ink:#0e1316;
+  --shadow:0 10px 30px rgba(0,0,0,.5);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0}
+#stage canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.zl{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font-weight:600;font-size:13px;
+  padding:3px 9px;border-radius:999px;background:var(--panel-solid);color:var(--ink);border:1px solid var(--line);
+  box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.zl.f2{border-color:#8a74d6}
+.ml{position:absolute;transform:translate(-50%,-130%);white-space:nowrap;font-size:11.5px;font-weight:600;
+  padding:1px 7px;border-radius:6px;color:#fff}
+.panel{position:fixed;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+#ctrl{left:calc(14px + env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));width:300px;
+  max-height:calc(100% - 28px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow:auto;padding:16px 16px 14px}
+#ctrl h1{font-size:19px;line-height:1.25;margin:0 0 2px;font-weight:700;letter-spacing:-.01em}
+#ctrl .sub{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+.grp{margin:12px 0 0}
+.grp>.t{font-size:12.5px;color:var(--muted);margin:0 0 6px;font-weight:500}
+.seg{display:flex;gap:4px;background:var(--chip);border-radius:10px;padding:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:500;
+  padding:7px 4px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--chip-on);color:var(--chip-on-ink)}
+button:focus-visible,select:focus-visible,input:focus-visible,.zrow:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0}
+.row label{font-size:13.5px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.sw{appearance:none;-webkit-appearance:none;width:38px;height:22px;border-radius:999px;background:var(--chip);
+  border:1px solid var(--line);position:relative;cursor:pointer;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--muted)}
+.sw:checked{background:var(--accent);border-color:var(--accent)}
+.sw:checked::after{transform:translateX(16px);background:#fff}
+select{width:100%;font:inherit;font-size:13.5px;padding:7px 8px;border-radius:9px;border:1px solid var(--line);background:var(--panel-solid);color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--panel-solid);color:var(--ink);font:inherit;font-size:13px;font-weight:500;
+  padding:7px 10px;border-radius:9px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.hintbox{margin-top:12px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.hintbox b{color:var(--ink);font-weight:600}
+#info{right:calc(14px + env(safe-area-inset-right,0px));top:calc(14px + env(safe-area-inset-top,0px));width:310px;padding:16px;display:none;
+  max-height:calc(100% - 28px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow:auto}
+#info.on{display:block}
+#info h2{margin:0;font-size:20px;line-height:1.3}
+#info .meta{color:var(--muted);font-size:12.5px;margin:2px 0 10px}
+#info p{margin:0 0 12px;font-size:13.5px}
+#info h3{font-size:12.5px;color:var(--muted);font-weight:500;margin:12px 0 6px}
+#info ul{list-style:none;margin:0;padding:0}
+#info li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+#info li:last-child{border-bottom:0}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.tag{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+#info .close{position:absolute;top:10px;right:10px;border:0;background:transparent;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px}
+#legend{left:calc(14px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:10px 12px;width:300px}
+#legend summary{cursor:pointer;font-weight:600;font-size:13px;list-style:none}
+#legend summary::-webkit-details-marker{display:none}
+#legend .lg{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:8px;font-size:12.5px}
+#legend .lg span{display:flex;align-items:center;gap:6px}
+#legend .sq{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);flex:none}
+#zonebar{position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translateX(-50%);padding:8px 16px;
+  font-weight:600;font-size:15px;display:none;text-align:center;pointer-events:none}
+#zonebar small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+#prompt{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:9px 16px;font-weight:600;display:none}
+#tip{position:fixed;pointer-events:none;padding:5px 10px;font-size:12.5px;font-weight:600;display:none;border-radius:8px}
+#mini{right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:8px;display:none}
+#mini canvas{display:block;border-radius:8px;cursor:crosshair}
+#mini .cap{font-size:12px;color:var(--muted);margin:0 2px 6px;display:flex;justify-content:space-between}
+#walkhelp{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:8px 14px;font-size:12.5px;color:var(--muted);display:none;text-align:center}
+#walkhelp b{color:var(--ink)}
+#pad{position:fixed;left:calc(18px + env(safe-area-inset-left,0px));bottom:calc(70px + env(safe-area-inset-bottom,0px));display:none;
+  grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:6px}
+#pad button{border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:20px;touch-action:none}
+#pad .up{grid-column:2;grid-row:1}#pad .lt{grid-column:1;grid-row:2}#pad .rt{grid-column:3;grid-row:2}#pad .dn{grid-column:2;grid-row:3}
+#pad .st{grid-column:2;grid-row:2;font-size:13px;font-weight:600}
+#menuBtn{display:none;position:fixed;left:calc(14px + env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));
+  padding:9px 14px;font-weight:600;z-index:3}
+#loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--muted)}
+@media (max-width:700px){
+  #ctrl{width:calc(100% - 28px);display:none;z-index:4}
+  #ctrl.open{display:block}
+  #menuBtn{display:block}
+  #legend{display:none}
+  #info{width:calc(100% - 28px);top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));max-height:50%}
+  .zl{font-size:12px}
+}
+</style>
+</head>
+<body>
+<div id="loading">3D 맵을 불러오는 중입니다</div>
+<div id="stage"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<button id="menuBtn" class="panel btn" aria-expanded="false" aria-controls="ctrl">설정 열기</button>
+<section id="ctrl" class="panel" aria-label="보기 설정">
+  <h1>심야 실내수영장</h1>
+  <p class="sub">마르코! 맵설계 v1.1 · 1칸 = 1m</p>
+
+  <div class="grp"><p class="t">보는 방식</p>
+    <div class="seg" role="group" aria-label="보는 방식">
+      <button id="mOrbit" aria-pressed="true">위에서 둘러보기</button>
+      <button id="mWalk" aria-pressed="false">걸어서 보기</button>
+    </div></div>
+
+  <div class="grp orbit-only"><p class="t">층</p>
+    <div class="seg" role="group" aria-label="층 선택">
+      <button data-fl="1" aria-pressed="false">1층</button>
+      <button data-fl="2" aria-pressed="false">2층</button>
+      <button data-fl="all" aria-pressed="true">전체</button>
+      <button data-fl="ex" aria-pressed="false">분해</button>
+    </div></div>
+
+  <div class="grp orbit-only"><p class="t">벽 높이 (낮추면 방 안이 보입니다)</p>
+    <input id="cut" type="range" min="0" max="100" value="22" aria-label="벽 높이"></div>
+
+  <div class="grp">
+    <div class="row"><label for="tZone">방 이름</label><input id="tZone" class="sw" type="checkbox" checked></div>
+    <div class="row"><label for="tObj">밸브 · 출구 · 아이템</label><input id="tObj" class="sw" type="checkbox" checked></div>
+    <div class="row"><label for="tNight">게임 화면처럼 보기 (어둠 + 발광선)</label><input id="tNight" class="sw" type="checkbox"></div>
+  </div>
+
+  <div class="grp"><p class="t">구역으로 이동</p>
+    <select id="zsel" aria-label="구역으로 이동"></select></div>
+
+  <div class="grp" style="display:flex;gap:6px"><button class="btn" id="reset">처음 시점으로</button></div>
+
+  <div class="hintbox" id="orbitHint"><b>둘러보기</b> 드래그로 회전, 휠로 확대, 오른쪽 드래그로 이동합니다. 바닥을 누르면 그 방의 정보와 연결된 문이 나옵니다.</div>
+</section>
+
+<aside id="info" class="panel" aria-live="polite">
+  <button class="close" id="infoClose" aria-label="정보 닫기">×</button>
+  <div id="infoBody"></div>
+</aside>
+
+<details id="legend" class="panel">
+  <summary>범례</summary>
+  <div class="lg" id="lg"></div>
+</details>
+
+<div id="zonebar" class="panel"></div>
+<div id="prompt" class="panel"></div>
+<div id="tip" class="panel"></div>
+<div id="mini" class="panel"><div class="cap"><span id="miniCap">1층 지도</span><span>누르면 이동</span></div><canvas id="miniC" width="198" height="192"></canvas></div>
+<div id="walkhelp" class="panel"><b>WASD</b> 이동 · <b>Shift</b> 달리기 · <b>드래그</b> 둘러보기 · 계단 앞에서 <b>E</b> 층 이동 · <b>Esc</b> 둘러보기로</div>
+<div id="pad"><button class="up" data-k="f" aria-label="앞으로">▲</button><button class="lt" data-k="l" aria-label="왼쪽으로">◀</button>
+<button class="st" data-k="e" aria-label="계단 이용">E</button><button class="rt" data-k="r" aria-label="오른쪽으로">▶</button><button class="dn" data-k="b" aria-label="뒤로">▼</button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+"use strict";
+const RAW1 = `     ######################################################++++########
+ 61  #..oooooo.........oooooo...................ooo.#........X........#
+ 60  #.............................b................#...c.............#
+ 59  #...........................o........o.........+.................#
+ 58  #.c..................................o.........+...............oo#
+ 57  #...............~~~~~~~~~~~~~~~~~~~~~~~~~......+...............oo#
+ 56  #...............~~~~~~~~~~~~~~~~~~~~~~~~~o.....+...............oo#
+ 55  #..............o~~~~~~~~~~~~~~~~~~~~~~~~~......#...............oo#
+ 54  #......o........~~~~~~~~~~~~~~~~~~~~~~~~~......##++###############
+ 53  #...............~~~~~~~~~~~~~~~~~~~~~~~~~o.......#.#ooo..oooooooo#
+ 52  #.b.~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~B~........#.#ooo..oooooooo#
+ 51  #...~E~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~o.......#.#ooo..oooooooo#
+ 50  #...~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~........#.#ooo..oooooooo#
+ 49  #...~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~........#.#ooo..oooooooo#
+ 48  #o..~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~o.....oo#.#ooo..oooooooo#
+ 47  #o..~~~~@~~~.o..~~~~~~~~~~~~~~~~~~~~~@~~~......oo#.#.....oooooooo#
+ 46  #o..~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~o.......#.#.....oooooooo#
+ 45  #o..~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~........#.#.............#
+ 44  #o..~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~........#b#.............#
+ 43  #o..~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~o.......#.#.............#
+ 42  #...~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~........#.#.............#
+ 41  #...~~~~~~~~....~~~~~~~~~~~~~~~~~~~~~~~~~o.....oo#.#........ooooo#
+ 40  #......oo.......~~~~~~~~~~~~~~~~~~~~~~~~~......oo#.+........ooooo#
+ 39  #..............o~~~~~~~~~~~~~~~~~~~~~~~~~........#.+........ooooo#
+ 38  #...............~~~~~~~~~~~~~~~~~~~~~~~~~o.......#.#........ooooo#
+ 37  #o..............~~~~~~~~~~~~~~~~~~~~~~~~~........#.#........ooooo#
+ 36  #o...............................................+.#.......Aooooo#
+ 35  #o...............................................+.#........ooooo#
+ 34  #................................................#.#........ooooo#
+ 33  #...............o.......o.......o.......o......###.#........ooooo#
+ 32  #.........//////...............................#...#........ooooo#
+ 31  ####+++#########+++++#............#++++#########...#........ooooo#
+ 30  #.........#...........############.............#.##.........ooooo#
+ 29  #..b......#o........oo#%%%%%%%%%%#oo.........oo#.##.........ooooo#
+ 28  #.........#o........oo#%%%%%%%%%%#oo.........oo#.##..............#
+ 27  #.........#o........oo#%%%%%%%%%%#oo.........oo#.#################
+ 26  #.........#o........oo#%%%%%%%%%%#oo.........oo#.#ooo....#.ooooo.#
+ 25  #.........#o........oo#%%%%%%%%%%#oo.........oo#.#ooo....#......&#
+ 24  ####+++#####++++##########%%%%##########+++#####.#.......#......&#
+ 23  #.........#...............#%%#.................#.+.......+......&#
+ 22  #.........#..........&&&&&#%%#.............&&&&#.+.......+......&#
+ 21  #..b......#...............#%%#.................#.#.......#......&#
+ 20  #.........#&&&&...........#%%#&&&&&&...........#.#.D.oooo#......&#
+ 19  #.........#..........&&&&&#%%#.............&&&&#.#########......&#
+ 18  #.........#...............#%%#.................#.#.......#++######
+ 17  #.........#&&&&...........#%%#&&&&&&...........#.#.......#....ooo#
+ 16  #.........#......b...&&&&&####.........b...&&&&#.#....///#.......#
+ 15  #.........#...............#///#................#.#....///#.......#
+ 14  #.........#&&&&...........#///#&&&&&...........#.+....///#.......#
+ 13  #.........#..........&&&&&#///#............&&&&#.+....///#......o#
+ 12  #.........#...............#///#................#.#....///#......o#
+ 11  #.........#&&&&...........#///#&&&&&...........#.#....///#......o#
+ 10  #.........#...............#///#................#.#....///#......o#
+  9  ####+++#########++++#######...#######+++#######++###########++####
+  8  #..........oooooo..oooooo......oooooo...oooooo.#..oooooo.#.......#
+  7  #..............................................#.........#.......#
+  6  #ooo............................R.....b........#.........#......o#
+  5  #ooo...................................oooooooo#.........#......o#
+  4  #......................................oooooooo#.........+......o#
+  3  #..............................................#.........#......o#
+  2  #............................................c.+.........#......o#
+  1  #.......................X......................+.........#.......#
+  0  #.oooo.........................................#.ooooooo.#oo.....#
+     #######################++#########################################`;
+const RAW2 = `     ################################################                  
+ 61  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 60  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 59  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 58  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 57  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 56  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 55  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 54  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 53  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 52  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 51  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 50  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 49  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 48  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 47  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 46  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 45  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 44  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 43  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 42  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 41  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 40  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 39  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 38  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 37  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 36  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 35  #,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,#                  
+ 34  #,,,,,,,,,,,,,,,:::::::::::::::::::::::::,,,,,,#                  
+ 33  #,,,,,,,,,,,,,,,:........................:,,,,,#                  
+ 32  #,,,,,,,,,//////..ooooooooooooooooooooo..:,,,,,#                  
+ 31  #,,,,,,,,,//////..ooooooooooooooooooooo..:,,,,,#                  
+ 30  ################..ooooooooooooooooooooo..#######                  
+ 29                 #..ooooooooooooooooooooo..#                        
+ 28                 #..ooooooooooooooooooooo..#                        
+ 27                 #..ooooooooooooooooooooo..#                        
+ 26           #######++#####################++#######                  
+ 25           #o..........oooo......................#                  
+ 24  ##########...................................b.#                  
+ 23  #.........#...................................o#                  
+ 22  #ooooo....#...............o...................o#                  
+ 21  #ooooo....#...................................o#                  
+ 20  #ooooo....+..ooo....ooo...........ooo....ooo...#                  
+ 19  #ooooo....+....................................###########        
+ 18  #ooooo....#.......................c............#........S#        
+ 17  #ooooo....#....................................+.........#        
+ 16  #......C..#....................oooooo..........#......///#        
+ 15  #ooooo....################////########################///#        
+ 14  #ooooo....#               ////                        ///         
+ 13  #ooooo....#               ////                        ///         
+ 12  #ooooo....#               ////                        ///         
+ 11  #ooooo....#               ////                        ///         
+ 10  #ooooo....#               ////                        ///         
+  9  #.........#                                                       
+  8  ###########                                                       `;
+/*__DATA_START__*/
+const W = 66, H = 64, F2 = 4.5, EXPLODE = 14;
+function idx(x, y) { return (y + 1) * W + (x + 1); }
+function parseGrid(raw) {
+  const g = new Array(W * H).fill('');
+  const lines = raw.split('\n').filter(l => l.trim().length > 0);
+  lines.forEach((line, i) => {
+    const m = line.match(/^\s*(\d+)\s\s/);
+    const y = m ? parseInt(m[1], 10) : (i === 0 ? 62 : -1);
+    const c = line.slice(5);
+    for (let k = 0; k < c.length; k++) {
+      const ch = c[k], x = k - 1;
+      if (ch !== ' ' && x >= -1 && x <= 64 && y >= -1 && y <= 62) g[idx(x, y)] = ch;
+    }
+  });
+  return g;
+}
+const G = [parseGrid(RAW1), parseGrid(RAW2)];
+function at(f, x, y) { if (x < -1 || x > 64 || y < -1 || y > 62) return ''; return G[f][idx(x, y)]; }
+const N4 = [[1,0],[-1,0],[0,1],[0,-1]];
+const BAR = new Set(['#', '+', ':', ',', '%', '']);
+
+const SEEDS = [
+  {"메인 풀 홀":[20,45],"로비":[20,4],"탈의실 L(남)":[18,15],"탈의실 R(여)":[38,15],"샤워실 L(남)":[14,27],"샤워실 R(여)":[40,27],
+   "응급처치실":[4,16],"구조원실":[4,27],"직원 통로":[47,20],"기계실":[57,40],"약품 저장실":[52,22],"직원 계단실":[52,13],
+   "하역장":[56,58],"관리 사무실":[52,4],"방재실 · 당직실":[61,4],"직원 휴게실":[61,14],"시설 관리실":[61,22]},
+  {"2층 로비":[28,20],"관람석":[28,30],"물탱크실":[5,15],"관리 복도":[52,17]}
+];
+const ZMETA = {
+  "메인 풀 홀":{cat:"hall",tex:"tile",d:"25m 경영풀(8레인)과 교습풀이 있는 맵의 중심. 막는 벽이 없어 이 안의 소리는 모두 위치까지 보이는, 가장 노출된 곳입니다. 수중 밸브 B · E와 배수구 2곳(최후 생존자 페이즈에 1곳만 활성)이 있습니다. 수심은 경영풀 1.8m(동쪽 끝 6m 구간은 깊은 쪽 3.5m, 밸브 B가 여기 있음), 교습풀 1.2m(배수구 둘레 반지름 1.2m 침강부는 3.5m)입니다. 깊은 쪽 경계는 3D에서 단차로 단순화했습니다."},
+  "로비":{cat:"guest",tex:"carpet",d:"정문과 안내데스크가 있는 입구. 도망자 출발 지점입니다. 카펫이라 발소리가 작습니다. 계단 S1로 2층 로비에 올라갑니다."},
+  "탈의실 L(남)":{cat:"locker",tex:"mat",d:"로비(신발 벗는 쪽)와 샤워실(물 쪽) 사이. 락커 열이 소리와 태그를 막아 숨기 좋습니다. 문이 양쪽에 있어 막다른 길이 아닙니다."},
+  "탈의실 R(여)":{cat:"locker",tex:"mat",d:"남자 탈의실과 대칭. 로비 → 탈의실 → 샤워 → 홀로 이어지는 이용객 루프의 한쪽입니다."},
+  "샤워실 L(남)":{cat:"shower",tex:"tile",d:"탈의실과 풀 데크 사이의 습식 구역. 타일이라 발소리가 큽니다. 홀로 나가는 4.0m 넓은 문(개방 등급)."},
+  "샤워실 R(여)":{cat:"shower",tex:"tile",d:"홀로 나가는 4.0m 넓은 문(개방 등급). 탈의실 쪽 문과 홀 쪽 문이 엇갈려 있어 소리와 시선이 일직선으로 통하지 않습니다."},
+  "응급처치실":{cat:"aid",tex:"tile",d:"로비와 구조원실을 잇는 들것 동선. 붕대가 있을 법한 곳입니다."},
+  "구조원실":{cat:"aid",tex:"tile",d:"데크를 감시하는 방. 홀로 바로 나가는 2.0m 문이 있습니다."},
+  "직원 통로":{cat:"staff",tex:"grate",d:"직원 구역을 잇는 2m 서비스 통로. 그레이팅 바닥이라 시끄럽지만 홀 · 하역장 · 기계실 · 약품실로 가는 지름길입니다. 중간에서 꺾여 직선이 25m를 넘지 않습니다."},
+  "기계실":{cat:"plant",tex:"grate",d:"여과기와 펌프 설비. 문이 하나뿐인 막다른 방이라 들어가면 퇴로가 없습니다. 밸브 A."},
+  "약품 저장실":{cat:"plant",tex:"grate",d:"수처리 약품 보관실. 문 2개로 직원 통로와 시설 관리실을 잇습니다. 밸브 D."},
+  "직원 계단실":{cat:"staff",tex:"grate",d:"2층 관리 복도로 올라가는 계단 S2. 술래가 1층 직원 구역으로 내려오는 길입니다."},
+  "하역장":{cat:"staff",tex:"grate",d:"장비 반입구이자 두 번째 출구. 홀과 4.0m 양개문으로 이어집니다."},
+  "관리 사무실":{cat:"staff",tex:"carpet",d:"로비와 직원 구역 사이의 관문. 문 3개(로비 · 직원 통로 · 방재실)."},
+  "방재실 · 당직실":{cat:"staff",tex:"carpet",d:"직원 구역 루프의 일부. 관리 사무실과 직원 휴게실을 잇습니다."},
+  "직원 휴게실":{cat:"staff",tex:"carpet",d:"직원 구역 루프의 일부. 방재실과 시설 관리실을 잇습니다."},
+  "시설 관리실":{cat:"plant",tex:"grate",d:"직원 구역 루프의 일부. 약품 저장실과 바로 이어집니다."},
+  "2층 로비":{cat:"spect",tex:"carpet",d:"관람객 · 학부모 대기 공간. 매점, 자판기, 벤치가 있습니다. 관람석 · 물탱크실 · 관리 복도와 계단 S1이 모두 이곳에 붙어 있습니다."},
+  "관람석":{cat:"spect",tex:"carpet",d:"홀 남쪽 긴 변의 계단식 좌석. 풀 전체가 내려다보이는 감시 지점이지만, 데크로 내려가는 길은 서쪽 계단 S3 하나라 사건 현장까지 늦게 도착합니다. 좌석 사이로는 걸을 수 없고 통로로만 다닙니다."},
+  "물탱크실":{cat:"plant",tex:"grate",d:"2층 서쪽의 막다른 방. 대형 물탱크 2기. 밸브 C."},
+  "관리 복도":{cat:"staff",tex:"carpet",d:"술래 출발 지점. 계단 S2로 1층 직원 계단실과 이어집니다."}
+};
+const CATS = {
+  hall:{label:"홀",day:"#a8d6e2"}, guest:{label:"로비",day:"#cfe2bd"}, locker:{label:"탈의실",day:"#b9d9a8"},
+  shower:{label:"샤워실",day:"#9fd09a"}, aid:{label:"응급 · 구조",day:"#e9b7c6"}, staff:{label:"직원 구역",day:"#e5c99a"},
+  plant:{label:"설비실",day:"#d2b07c"}, spect:{label:"관람객 구역(2층)",day:"#c6b9ee"}
+};
+const EXACT = [[["메인 풀 홀","구조원실"],2.0],[["메인 풀 홀","샤워실 L(남)"],4.0],[["메인 풀 홀","샤워실 R(여)"],4.0],
+               [["메인 풀 홀","직원 통로"],2.0],[["메인 풀 홀","하역장"],4.0]];
+function grade(w) { return w < 2.4 ? ["병목","#d62728"] : (w < 3.1 ? ["경계","#f08c00"] : ["개방","#2f9e44"]); }
+
+function buildZones(f) {
+  const zid = new Int16Array(W * H).fill(-1), regs = [];
+  for (let y = -1; y <= 62; y++) for (let x = -1; x <= 64; x++) {
+    if (BAR.has(at(f, x, y)) || zid[idx(x, y)] >= 0) continue;
+    const id = regs.length, cells = [], st = [[x, y]]; zid[idx(x, y)] = id;
+    while (st.length) {
+      const [cx, cy] = st.pop(); cells.push([cx, cy]);
+      for (const [dx, dy] of N4) {
+        const nx = cx + dx, ny = cy + dy;
+        if (BAR.has(at(f, nx, ny))) continue;
+        const k = idx(nx, ny); if (zid[k] >= 0) continue;
+        zid[k] = id; st.push([nx, ny]);
+      }
+    }
+    regs.push(cells);
+  }
+  const names = regs.map(() => null);
+  for (const [nm, [sx, sy]] of Object.entries(SEEDS[f])) { const z = zid[idx(sx, sy)]; if (z >= 0) names[z] = nm; }
+  const zones = regs.map((cells, i) => {
+    const nm = names[i] || ("구역 " + i);
+    const meta = ZMETA[nm] || {cat:"staff",tex:"carpet",d:""};
+    let sx = 0, sy = 0; const objs = {};
+    let waterCells = 0;
+    for (const [x, y] of cells) {
+      sx += x; sy += y; const ch = at(f, x, y);
+      if ("ABCDEXRSbc@".includes(ch)) objs[ch] = (objs[ch] || 0) + 1;
+      if (ch === '~') waterCells++;
+    }
+    return {id:i, floor:f, name:nm, cells, area:cells.length, cx:sx / cells.length + 0.5, cy:sy / cells.length + 0.5,
+            cat:meta.cat, tex:meta.tex, desc:meta.d, objs, doors:[], waterCells};
+  });
+  return {zid, zones};
+}
+function buildDoors(f, Z) {
+  const seen = new Set(), res = [];
+  for (let y = -1; y <= 62; y++) for (let x = -1; x <= 64; x++) {
+    if (at(f, x, y) !== '+' || seen.has(idx(x, y))) continue;
+    const run = [], st = [[x, y]]; seen.add(idx(x, y));
+    while (st.length) { const [cx, cy] = st.pop(); run.push([cx, cy]);
+      for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy; if (at(f, nx, ny) === '+' && !seen.has(idx(nx, ny))) { seen.add(idx(nx, ny)); st.push([nx, ny]); } } }
+    const adj = new Set(); let outside = false;
+    for (const [cx, cy] of run) for (const [dx, dy] of N4) {
+      const nx = cx + dx, ny = cy + dy, c = at(f, nx, ny);
+      if (c === '') outside = true; else { const z = Z.zid[idx(nx, ny)]; if (z >= 0) adj.add(z); }
+    }
+    const zs = [...adj]; let w = run.length, exact = false;
+    if (zs.length === 2) {
+      const a = Z.zones[zs[0]].name, b = Z.zones[zs[1]].name;
+      for (const [[p, q], v] of EXACT) if ((p === a && q === b) || (p === b && q === a)) { w = v; exact = true; }
+    }
+    const d = {cells:run, zones:zs, outside, width:w, exact, floor:f};
+    res.push(d); zs.forEach(z => Z.zones[z].doors.push(d));
+  }
+  return res;
+}
+const Z = [buildZones(0), buildZones(1)];
+const DOORS = [buildDoors(0, Z[0]), buildDoors(1, Z[1])];
+const STAIRS = [
+  {id:"S1", label:"계단 S1", from:{f:0, x:[25.5,29.2], y:[9.4,16]}, to:{f:1, x:27.5, y:17.4, yaw:0}, back:{f:1, x:[24.8,29.4], y:[15.9,17.6]}, backTo:{f:0, x:27.5, y:7.0, yaw:Math.PI},
+   steps:{x0:26, x1:29, y0:10, y1:16, dir:"y"}, lab:[27.5, 13], text1:"2층 로비로 올라가기", text2:"1층 로비로 내려가기", d1:"2층 로비", d2:"1층 로비"},
+  {id:"S2", label:"계단 S2", from:{f:0, x:[52.4,56.2], y:[9.4,17.6]}, to:{f:1, x:51.5, y:17.5, yaw:-Math.PI/2}, back:{f:1, x:[52.6,57.2], y:[15.9,18.8]}, backTo:{f:0, x:51.0, y:13.5, yaw:-Math.PI/2},
+   steps:{x0:53, x1:56, y0:10, y1:17, dir:"y"}, lab:[54.5, 13], text1:"2층 관리 복도로 올라가기", text2:"1층 직원 계단실로 내려가기", d1:"2층 관리 복도", d2:"1층 직원 계단실"},
+  {id:"S3", label:"계단 S3", from:{f:0, x:[8.4,15.2], y:[31.6,33.6]}, to:{f:1, x:16.0, y:32.4, yaw:Math.PI/2}, back:{f:1, x:[14.9,16.9], y:[30.8,33.2]}, backTo:{f:0, x:7.0, y:34.0, yaw:0},
+   steps:{x0:9, x1:15, y0:32, y1:33, dir:"x"}, lab:[12, 32.5], text1:"2층 관람석으로 올라가기", text2:"1층 홀 데크로 내려가기", d1:"2층 관람석", d2:"1층 홀 데크"}
+];
+/*__DATA_END__*/
+
+// ---------- 3D ----------
+const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.localClippingEnabled = true;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+renderer.domElement.tabIndex = 0;
+renderer.domElement.setAttribute('aria-label', '3D 맵 화면');
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 600);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = !prefersReduced; controls.dampingFactor = 0.09;
+controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 6; controls.maxDistance = 190;
+const HOME = {pos:new THREE.Vector3(30, 56, 34), tgt:new THREE.Vector3(28, 0, -31)};
+function homeView() {
+  const narrow = window.innerWidth <= 700;
+  const tgt = narrow ? new THREE.Vector3(32, 0, -31) : HOME.tgt.clone();
+  const k = Math.min(2.3, Math.max(1, 1.3 / camera.aspect));
+  camera.position.copy(tgt.clone().add(HOME.pos.clone().sub(HOME.tgt).multiplyScalar(k))); controls.target.copy(tgt); controls.update();
+}
+homeView();
+
+const hemi = new THREE.HemisphereLight(0xf2fbff, 0xb5ad9e, 0.95); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+sun.position.set(80, 90, 25); sun.target.position.set(32, 0, -31); scene.add(sun); scene.add(sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-55, right:55, top:55, bottom:-55, near:10, far:260}); sun.shadow.bias = -0.0008;
+
+function gw(x) { return x; }               // grid x -> world x
+function gz(y) { return -y; }              // grid y -> world z
+const g1 = new THREE.Group(), g2 = new THREE.Group(); scene.add(g1, g2);
+const GROUPS = [g1, g2];
+
+// ---------- textures ----------
+function canvasTex(draw, size = 128, rep = 1) {
+  const c = document.createElement('canvas'); c.width = c.height = size; const x = c.getContext('2d'); draw(x, size);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); t.anisotropy = 4; return t;
+}
+const TEX = {
+  tile: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(70,95,105,.38)'; c.lineWidth = 3;
+    for (let i = 0; i <= 4; i++) { const p = i * s / 4; c.beginPath(); c.moveTo(p, 0); c.lineTo(p, s); c.stroke(); c.beginPath(); c.moveTo(0, p); c.lineTo(s, p); c.stroke(); } }),
+  carpet: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(80,80,90,${Math.random() * 0.09})`; c.fillRect(Math.random() * s, Math.random() * s, 2, 2); } }),
+  mat: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.fillStyle = 'rgba(60,80,70,.16)'; for (let i = 0; i < s; i += 8) c.fillRect(i, 0, 3, s); }),
+  grate: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(80,70,55,.30)'; c.lineWidth = 2;
+    for (let i = -s; i < s * 2; i += 10) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + s, s); c.stroke(); c.beginPath(); c.moveTo(i, s); c.lineTo(i + s, 0); c.stroke(); } }),
+  locker: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(20,35,45,.55)'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(s / 2, 0); c.lineTo(s / 2, s); c.stroke(); c.beginPath(); c.moveTo(0, s * .5); c.lineTo(s, s * .5); c.stroke();
+    c.fillStyle = 'rgba(20,35,45,.45)'; for (const ox of [s * .12, s * .62]) for (const oy of [s * .12, s * .62]) for (let k = 0; k < 4; k++) c.fillRect(ox, oy + k * 6, s * .22, 2); }),
+  duct: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(60,60,60,.35)'; c.lineWidth = 4; for (let i = -s; i < s * 2; i += 18) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + s, s); c.stroke(); } }),
+  water: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(255,255,255,.0)';
+    c.strokeStyle = 'rgba(30,90,120,.22)'; c.lineWidth = 2; for (let k = 0; k < 7; k++) { c.beginPath(); for (let x = 0; x <= s; x += 4) { const y = (k + .5) * s / 7 + Math.sin(x / s * Math.PI * 4 + k) * 4; x ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); } }, 128, 1),
+  rope: canvasTex((c, s) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#ffffff' : '#d8392f'; c.fillRect(0, i * s / 8, s, s / 8); } }, 64, 1),
+  cross: canvasTex((c, s) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, s, s); c.fillStyle = '#d8392f'; c.fillRect(s * .4, s * .18, s * .2, s * .64); c.fillRect(s * .18, s * .4, s * .64, s * .2); }, 64, 1),
+  grill: canvasTex((c, s) => { c.fillStyle = '#16324a'; c.fillRect(0, 0, s, s); c.strokeStyle = 'rgba(160,200,230,.6)'; c.lineWidth = 3; for (let i = 6; i < s; i += 10) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, s); c.stroke(); } }, 64, 1)
+};
+TEX.rope.repeat.set(1, 12);
+
+// ---------- materials (day / night pairs) ----------
+const clip1 = new THREE.Plane(new THREE.Vector3(0, -1, 0), 4.2);
+const clip2 = new THREE.Plane(new THREE.Vector3(0, -1, 0), 8.0);
+const THEMED = [];   // {mesh, day, night}
+function themed(mesh, day, night) { mesh.material = day; THEMED.push({mesh, day, night}); return mesh; }
+function std(o) { return new THREE.MeshStandardMaterial(Object.assign({roughness:0.86, metalness:0.0}, o)); }
+const NIGHT_SOLID = std({color:0x050607, roughness:1});
+function mats(floor) {
+  const clip = floor === 0 ? [clip1] : [clip2];
+  return {
+    wallD: std({color:0xf1eee7, clippingPlanes:clip, clipShadows:true}), wallN: std({color:0x040506, roughness:1, clippingPlanes:clip}),
+  };
+}
+const M = [mats(0), mats(1)];
+const floorMatsDay = {}, floorMatsNight = {};
+for (const k of ['tile', 'carpet', 'mat', 'grate']) { floorMatsDay[k] = std({map:TEX[k], color:0xffffff}); floorMatsNight[k] = std({color:0xffffff, roughness:1}); }
+const doorMatDay = std({color:0xffffff}); const doorMatNight = std({color:0xffffff});
+const lockerD = std({map:TEX.locker, color:0x7d93a1, roughness:0.6, metalness:0.15});
+const furnD = std({color:0xcdbb8b, roughness:0.75});
+const machD = std({color:0xa9b4b9, roughness:0.5, metalness:0.35});
+const tankD = std({color:0xcfd8dc, roughness:0.4, metalness:0.4});
+const ductD = std({map:TEX.duct, color:0x9aa1a7});
+const stairD = std({color:0xbcaeea});
+const basinD = std({map:TEX.tile, color:0x7fc6e2});
+const basinN = std({color:0x02161b, roughness:1});
+const laneD = std({color:0x1d4f8f});
+const waterD = new THREE.MeshStandardMaterial({map:TEX.water, color:0x37a9dc, transparent:true, opacity:0.62, roughness:0.15, metalness:0.1, depthWrite:false});
+const waterN = new THREE.MeshBasicMaterial({color:0x031d24, transparent:true, opacity:0.78, depthWrite:false});
+const railD = new THREE.MeshStandardMaterial({color:0xbfe6f2, transparent:true, opacity:0.35, roughness:0.1, clippingPlanes:[clip2]});
+const railN = new THREE.MeshBasicMaterial({color:0x0b2a33, transparent:true, opacity:0.35, clippingPlanes:[clip2]});
+
+// ---------- helpers ----------
+const dummy = new THREE.Object3D();
+function instanced(geo, mat, list, setup, group, opt = {}) {
+  if (!list.length) return null;
+  const m = new THREE.InstancedMesh(geo, mat, list.length);
+  list.forEach((it, i) => { setup(it, dummy); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix); });
+  m.instanceMatrix.needsUpdate = true;
+  m.castShadow = opt.cast !== false; m.receiveShadow = true;
+  group.add(m); return m;
+}
+const BOX = new THREE.BoxGeometry(1, 1, 1);
+const edgeSegs = [[], []];      // per floor arrays of numbers (x,y,z pairs)
+const edgeSegsSoft = [[], []];
+const edgeSegsWater = [[], []];
+function seg(arr, x1, y1, z1, x2, y2, z2) { arr.push(x1, y1, z1, x2, y2, z2); }
+function exposedEdges(arr, f, x, y, yb, yt, isSame) {
+  const sides = [[0, 1, x, y + 1, x + 1, y + 1], [0, -1, x, y, x + 1, y], [1, 0, x + 1, y, x + 1, y + 1], [-1, 0, x, y, x, y + 1]];
+  const exp = [];
+  for (const [dx, dy, ax, ay, bx, by] of sides) {
+    const e = !isSame(x + dx, y + dy); exp.push(e);
+    if (e) { seg(arr, ax, yt, -ay, bx, yt, -by); seg(arr, ax, yb, -ay, bx, yb, -by); }
+  }
+  const corners = [[0, 2, x + 1, y + 1], [0, 3, x, y + 1], [1, 2, x + 1, y], [1, 3, x, y]];
+  for (const [a, b, cx, cy] of corners) if (exp[a] && exp[b]) seg(arr, cx, yb, -cy, cx, yt, -cy);
+}
+
+// ---------- build world ----------
+const hallZone = Z[0].zones.find(z => z.name === "메인 풀 홀");
+function zoneAt(f, x, y) { const z = Z[f].zid[idx(x, y)]; return z >= 0 ? Z[f].zones[z] : null; }
+function isWaterCell(f, x, y) {
+  const ch = at(f, x, y); if (ch === '~') return true;
+  if (f === 0 && "BE@".includes(ch)) { for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (at(f, x + dx, y + dy) === '~') return true; }
+  return false;
+}
+// 맵설계.md 5절 수심 분포: 경영풀 1.8m, 동쪽 끝 6m 구간(x 34~40) 3.5m, 교습풀 1.2m, 교습풀 배수구 침강부(중심 (7.0, 47.0), 반지름 1.2m) 3.5m
+const DEEP_X = 34, PIT = {x:7.0, y:47.0, r:1.2, d:3.5};
+function cellDepth(x, y) { return x < 14 ? 1.2 : (x >= DEEP_X ? 3.5 : 1.8); }
+const DRAIN_POS = {main:{x:36.0, y:47.5}, teach:{x:PIT.x, y:PIT.y}};
+function wallH1(x, y) {
+  let hallAdj = false;
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const z = zoneAt(0, x + dx, y + dy); if (z && z === hallZone) hallAdj = true; }
+  const up = at(1, x, y);
+  if (hallAdj && !".o:/".includes(up === '' ? '#' : up)) return 9.0;
+  return 4.2;
+}
+const floorPick = [];   // instanced floor meshes for picking: {mesh, cells:[[f,x,y]]}
+const FLOORINST = [];   // {mesh, cells, colors}
+function dayColor(z) { return z ? (CATS[z.cat] || CATS.staff).day : '#dddddd'; }
+function nightColor(hex) { const c = new THREE.Color(hex); return c.lerp(new THREE.Color('#070a0c'), 0.86); }
+
+function buildFloor(f) {
+  const g = GROUPS[f], base = f === 0 ? 0 : F2;
+  const floors = {tile:[], carpet:[], mat:[], grate:[]}, doors = [], walls = [], headers = [], lockers = [], furn = [], mach = [], ducts = [], rails = [], tiers = [], water = [], basin = [], basinFloor = [];
+  const tankCells = [];
+  for (let y = -1; y <= 62; y++) for (let x = -1; x <= 64; x++) {
+    const ch = at(f, x, y); if (!ch) continue;
+    if (f === 1 && (ch === ',' || ch === '/')) continue;
+    if (ch === '#') {
+      if (f === 0) walls.push({x, y, h:wallH1(x, y)});
+      else { const below = at(0, x, y); const zb = zoneAt(0, x, y);
+        if (below === '#' && wallH1(x, y) === 9.0) continue; if (zb === hallZone) continue; walls.push({x, y, h:3.3}); }
+      continue;
+    }
+    if (ch === '%') { ducts.push({x, y}); continue; }
+    if (ch === ':') { rails.push({x, y}); continue; }
+    if (ch === '/' ) continue;
+    const z = zoneAt(f, x, y);
+    if (ch === '+') {
+      let out = false; for (const [dx, dy] of N4) if (at(f, x + dx, y + dy) === '') out = true;
+      doors.push({x, y, out});
+      let hh = f === 0 ? 4.2 : 3.3; for (const [dx, dy] of N4) if (at(f, x + dx, y + dy) === '#' && f === 0) hh = Math.max(hh, wallH1(x + dx, y + dy));
+      headers.push({x, y, h:hh}); continue;
+    }
+    if (f === 0 && isWaterCell(0, x, y)) {
+      const d = cellDepth(x, y); water.push({x, y}); if (x >= 14) basinFloor.push({x, y, d});
+      for (const [dx, dy] of N4) {
+        if (!isWaterCell(0, x + dx, y + dy)) basin.push({x, y, dx, dy, d, top:0});
+        else { const dn = cellDepth(x + dx, y + dy); if (dn < d) basin.push({x, y, dx, dy, d, top:dn}); }
+      }
+      continue;
+    }
+    const tex = z ? z.tex : 'carpet';
+    floors[tex].push({x, y, z});
+    if (ch === '&') lockers.push({x, y});
+    if (ch === 'o') {
+      const zn = z ? z.name : '';
+      if (zn === '관람석') { tiers.push({x, y, h:0.45 * (32 - y) + 0.45}); }
+      else if (zn === '물탱크실') { tankCells.push([x, y]); }
+      else if (zn === '기계실' || zn === '약품 저장실' || zn === '시설 관리실') { mach.push({x, y, h:1.9, s:0.94}); }
+      else if (zn === '메인 풀 홀') {
+        let n = 0; for (const [dx, dy] of N4) if (at(f, x + dx, y + dy) === 'o') n++;
+        furn.push(n === 0 ? {x, y, h:1.9, s:0.5} : {x, y, h:0.5, s:0.86});
+      }
+      else if (zn.startsWith('샤워실')) furn.push({x, y, h:2.0, s:0.9});
+      else if (zn === '로비') furn.push({x, y, h:1.1, s:0.92});
+      else if (zn === '하역장') furn.push({x, y, h:1.3, s:0.9});
+      else if (zn === '2층 로비') furn.push({x, y, h:1.0, s:0.9});
+      else furn.push({x, y, h:0.8, s:0.88});
+    }
+  }
+  // floors
+  for (const [k, list] of Object.entries(floors)) {
+    const m = instanced(BOX, floorMatsDay[k], list, (it, d) => { d.position.set(it.x + 0.5, base - (f ? 0.15 : 0.05), -(it.y + 0.5)); d.scale.set(1, f ? 0.3 : 0.1, 1); }, g, {cast:false});
+    if (!m) continue;
+    const cols = list.map(it => dayColor(it.z));
+    const rec = {mesh:m, cells:list.map(it => [f, it.x, it.y]), day:cols, night:cols.map(nightColor), tex:k};
+    m.material = floorMatsDay[k]; THEMED.push({mesh:m, day:floorMatsDay[k], night:floorMatsNight[k]});
+    FLOORINST.push(rec); floorPick.push(rec);
+  }
+  if (doors.length) {
+    const m = instanced(BOX, doorMatDay, doors, (it, d) => { d.position.set(it.x + 0.5, base - (f ? 0.15 : 0.05), -(it.y + 0.5)); d.scale.set(1, f ? 0.3 : 0.1, 1); }, g, {cast:false});
+    const cols = doors.map(it => it.out ? '#40a669' : '#f39a2b');
+    const rec = {mesh:m, cells:doors.map(it => [f, it.x, it.y]), day:cols, night:doors.map(it => it.out ? '#40a669' : '#ffb84d'), door:true};
+    THEMED.push({mesh:m, day:doorMatDay, night:doorMatNight}); FLOORINST.push(rec); floorPick.push(rec);
+  }
+  // walls & headers
+  const wm = M[f];
+  const wallMesh = instanced(BOX, wm.wallD, walls, (it, d) => { d.position.set(it.x + 0.5, base + it.h / 2, -(it.y + 0.5)); d.scale.set(1, it.h, 1); }, g);
+  if (wallMesh) themed(wallMesh, wm.wallD, wm.wallN);
+  const hdr = instanced(BOX, wm.wallD, headers, (it, d) => { const hb = 2.4; d.position.set(it.x + 0.5, base + (hb + it.h) / 2, -(it.y + 0.5)); d.scale.set(1, it.h - hb, 1); }, g);
+  if (hdr) themed(hdr, wm.wallD, wm.wallN);
+  const isWall = (xx, yy) => at(f, xx, yy) === '#';
+  for (const it of walls) exposedEdges(edgeSegs[f], f, it.x, it.y, base, base + it.h, (a, b) => isWall(a, b) && !(f === 1 && zoneAt(0, a, b) === hallZone));
+  for (const it of headers) { seg(edgeSegs[f], it.x, base + 2.4, -it.y, it.x + 1, base + 2.4, -it.y); seg(edgeSegs[f], it.x, base + 2.4, -(it.y + 1), it.x + 1, base + 2.4, -(it.y + 1)); seg(edgeSegs[f], it.x, base + 2.4, -it.y, it.x, base + 2.4, -(it.y + 1)); seg(edgeSegs[f], it.x + 1, base + 2.4, -it.y, it.x + 1, base + 2.4, -(it.y + 1)); }
+  // lockers, furniture, machines, ducts
+  const lk = instanced(BOX, lockerD, lockers, (it, d) => { d.position.set(it.x + 0.5, base + 0.95, -(it.y + 0.5)); d.scale.set(0.94, 1.9, 0.94); }, g);
+  if (lk) themed(lk, lockerD, NIGHT_SOLID);
+  for (const it of lockers) exposedEdges(edgeSegsSoft[f], f, it.x, it.y, base, base + 1.9, (a, b) => at(f, a, b) === '&');
+  const fu = instanced(BOX, furnD, furn, (it, d) => { d.position.set(it.x + 0.5, base + it.h / 2, -(it.y + 0.5)); d.scale.set(it.s, it.h, it.s); }, g);
+  if (fu) themed(fu, furnD, NIGHT_SOLID);
+  for (const it of furn) { const o = (1 - it.s) / 2; const x0 = it.x + o, x1 = it.x + 1 - o, y0 = it.y + o, y1 = it.y + 1 - o, yt = base + it.h;
+    seg(edgeSegsSoft[f], x0, yt, -y0, x1, yt, -y0); seg(edgeSegsSoft[f], x0, yt, -y1, x1, yt, -y1); seg(edgeSegsSoft[f], x0, yt, -y0, x0, yt, -y1); seg(edgeSegsSoft[f], x1, yt, -y0, x1, yt, -y1); }
+  const mc = instanced(BOX, machD, mach, (it, d) => { d.position.set(it.x + 0.5, base + it.h / 2, -(it.y + 0.5)); d.scale.set(it.s, it.h, it.s); }, g);
+  if (mc) themed(mc, machD, NIGHT_SOLID);
+  for (const it of mach) exposedEdges(edgeSegsSoft[f], f, it.x, it.y, base, base + it.h, (a, b) => at(f, a, b) === 'o');
+  const du = instanced(BOX, ductD, ducts, (it, d) => { d.position.set(it.x + 0.5, base + 2.1, -(it.y + 0.5)); d.scale.set(1, 4.2, 1); }, g);
+  if (du) themed(du, ductD, NIGHT_SOLID);
+  for (const it of ducts) exposedEdges(edgeSegsSoft[f], f, it.x, it.y, base, base + 4.2, (a, b) => at(f, a, b) === '%' || at(f, a, b) === '#');
+  // gallery tiers & rails (2F)
+  const tr = instanced(BOX, furnD, tiers, (it, d) => { d.position.set(it.x + 0.5, base + it.h / 2, -(it.y + 0.5)); d.scale.set(1, it.h, 1); }, g);
+  if (tr) themed(tr, std({color:0xc9bfe8}), NIGHT_SOLID);
+  for (const it of tiers) exposedEdges(edgeSegsSoft[f], f, it.x, it.y, base, base + it.h, (a, b) => at(f, a, b) === 'o' && b === it.y);
+  const rl = instanced(BOX, railD, rails, (it, d) => { d.position.set(it.x + 0.5, base + 0.55, -(it.y + 0.5)); d.scale.set(1, 1.1, 1); }, g, {cast:false});
+  if (rl) themed(rl, railD, railN);
+  for (const it of rails) exposedEdges(edgeSegsWater[f], f, it.x, it.y, base + 1.1, base + 1.1, (a, b) => at(f, a, b) === ':');
+  // tanks
+  if (tankCells.length) {
+    const seen = new Set();
+    for (const [sx, sy] of tankCells) { const k0 = sx + ',' + sy; if (seen.has(k0)) continue;
+      const cl = [], st = [[sx, sy]]; seen.add(k0);
+      while (st.length) { const [cx, cy] = st.pop(); cl.push([cx, cy]); for (const [dx, dy] of N4) { const k = (cx + dx) + ',' + (cy + dy); if (!seen.has(k) && tankCells.some(t => t[0] === cx + dx && t[1] === cy + dy)) { seen.add(k); st.push([cx + dx, cy + dy]); } } }
+      const xs = cl.map(c => c[0]), ys = cl.map(c => c[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1, y0 = Math.min(...ys), y1 = Math.max(...ys) + 1;
+      const r = Math.min(x1 - x0, y1 - y0) / 2 * 0.92;
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 3.2, 40), tankD); tank.position.set((x0 + x1) / 2, base + 1.6, -(y0 + y1) / 2);
+      tank.castShadow = tank.receiveShadow = true; g.add(tank); themed(tank, tankD, NIGHT_SOLID);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.001, 0.05, 6, 48), new THREE.MeshBasicMaterial({color:0xdff3ff}));
+      ring.rotation.x = Math.PI / 2; ring.position.copy(tank.position); ring.position.y = base + 3.2; ring.userData.nightOnly = true; g.add(ring);
+      const ring2 = ring.clone(); ring2.position.y = base + 0.02; g.add(ring2);
+      NIGHT_ONLY.push(ring, ring2);
+    }
+  }
+  // pool
+  if (f === 0) {
+    const bf = instanced(BOX, basinD, basinFloor, (it, d) => { d.position.set(it.x + 0.5, -it.d - 0.05, -(it.y + 0.5)); d.scale.set(1, 0.1, 1); }, g, {cast:false});
+    if (bf) themed(bf, basinD, basinN);
+    const bw = instanced(BOX, basinD, basin, (it, d) => {
+      const cx = it.x + 0.5 + it.dx * 0.5, cy = it.y + 0.5 + it.dy * 0.5;
+      d.position.set(cx, -(it.d + it.top) / 2, -cy); d.scale.set(it.dx ? 0.08 : 1, it.d - it.top, it.dy ? 0.08 : 1); }, g, {cast:false});
+    if (bw) themed(bw, basinD, basinN);
+    for (const it of basin) { const cx = it.x + 0.5 + it.dx * 0.5, cy = it.y + 0.5 + it.dy * 0.5;
+      const ax = it.dx ? cx : it.x, bx = it.dx ? cx : it.x + 1, ay = it.dy ? cy : it.y, by = it.dy ? cy : it.y + 1;
+      seg(edgeSegsWater[0], ax, -it.top, -ay, bx, -it.top, -by); seg(edgeSegsWater[0], ax, -it.d, -ay, bx, -it.d, -by); }
+    // 교습풀 바닥(1.2m) — 침강부 자리를 원형으로 뚫은 한 장의 판
+    const tc = water.filter(it => it.x < 14);
+    if (tc.length) {
+      const x0 = Math.min(...tc.map(c => c.x)), x1 = Math.max(...tc.map(c => c.x)) + 1, y0 = Math.min(...tc.map(c => c.y)), y1 = Math.max(...tc.map(c => c.y)) + 1;
+      const sh = new THREE.Shape(); sh.moveTo(x0, y0); sh.lineTo(x1, y0); sh.lineTo(x1, y1); sh.lineTo(x0, y1); sh.lineTo(x0, y0);
+      const hole = new THREE.Path(); hole.absarc(PIT.x, PIT.y, PIT.r, 0, Math.PI * 2, true); sh.holes.push(hole);
+      const tg = new THREE.ShapeGeometry(sh, 48); tg.rotateX(-Math.PI / 2);
+      const tf = new THREE.Mesh(tg, basinD); tf.position.y = -1.2; tf.receiveShadow = true; g.add(tf); themed(tf, basinD, basinN);
+      const pitD = basinD.clone(); pitD.side = THREE.DoubleSide; const pitN = basinN.clone(); pitN.side = THREE.DoubleSide;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(PIT.r, PIT.r, PIT.d - 1.2, 48, 1, true), pitD);
+      tube.position.set(PIT.x, -(PIT.d + 1.2) / 2, -PIT.y); g.add(tube); themed(tube, pitD, pitN);
+      const pf = new THREE.Mesh(new THREE.CircleGeometry(PIT.r, 48), pitD); pf.rotation.x = -Math.PI / 2; pf.position.set(PIT.x, -PIT.d, -PIT.y); g.add(pf); themed(pf, pitD, pitN);
+      for (let i = 0; i < 48; i++) { const a0 = i / 48 * Math.PI * 2, a1 = (i + 1) / 48 * Math.PI * 2;
+        for (const yy of [-1.2, -PIT.d]) seg(edgeSegsWater[0], PIT.x + Math.cos(a0) * PIT.r, yy, -(PIT.y + Math.sin(a0) * PIT.r), PIT.x + Math.cos(a1) * PIT.r, yy, -(PIT.y + Math.sin(a1) * PIT.r)); }
+    }
+    const wgeo = new THREE.PlaneGeometry(1, 1); wgeo.rotateX(-Math.PI / 2);
+    const wm2 = instanced(wgeo, waterD, water, (it, d) => { d.position.set(it.x + 0.5, -0.22, -(it.y + 0.5)); d.scale.set(1, 1, 1); }, g, {cast:false});
+    if (wm2) { themed(wm2, waterD, waterN); wm2.receiveShadow = false; wm2.renderOrder = 2;
+      floorPick.push({mesh:wm2, cells:water.map(it => [0, it.x, it.y])}); }
+    // lane ropes & lane lines (main pool x15..40, y37..58)
+    for (let k = 1; k <= 7; k++) {
+      const yy = 37 + k * 21 / 8;
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 25, 8), std({map:TEX.rope}));
+      rope.rotation.z = Math.PI / 2; rope.position.set(27.5, -0.17, -yy); g.add(rope); themed(rope, rope.material, NIGHT_SOLID);
+      seg(edgeSegsWater[0], 15, -0.16, -yy, 40, -0.16, -yy);
+    }
+    for (let k = 0; k < 8; k++) {
+      const yy = 37 + (k + 0.5) * 21 / 8;
+      const lnA = new THREE.Mesh(new THREE.BoxGeometry(DEEP_X - 16.5, 0.02, 0.25), laneD); lnA.position.set((16.5 + DEEP_X) / 2, -1.8 + 0.012, -yy); g.add(lnA); themed(lnA, laneD, basinN);
+      const lnB = new THREE.Mesh(new THREE.BoxGeometry(38.5 - DEEP_X, 0.02, 0.25), laneD); lnB.position.set((DEEP_X + 38.5) / 2, -3.5 + 0.012, -yy); g.add(lnB); themed(lnB, laneD, basinN);
+    }
+  }
+  // stairs
+  if (f === 0) for (const s of STAIRS) {
+    const st = s.steps; const run = st.dir === 'y' ? (st.y1 - st.y0) : (st.x1 - st.x0); const n = Math.round(run / 0.5); const rise = F2 / n;
+    const geoS = []; for (let i = 0; i < n; i++) geoS.push(i);
+    const sm = instanced(BOX, stairD, geoS, (i, d) => {
+      const h = rise * (i + 1);
+      if (st.dir === 'y') { d.position.set((st.x0 + st.x1) / 2, h / 2, -(st.y0 + (i + 0.5) * 0.5)); d.scale.set(st.x1 - st.x0, h, 0.5); }
+      else { d.position.set(st.x0 + (i + 0.5) * 0.5, h / 2, -(st.y0 + st.y1) / 2); d.scale.set(0.5, h, st.y1 - st.y0); }
+    }, g);
+    if (sm) themed(sm, stairD, NIGHT_SOLID);
+    for (let i = 0; i < n; i++) { const h = rise * (i + 1);
+      if (st.dir === 'y') { const yy = st.y0 + i * 0.5; seg(edgeSegsSoft[0], st.x0, h, -yy, st.x1, h, -yy); }
+      else { const xx = st.x0 + i * 0.5; seg(edgeSegsSoft[0], xx, h, -st.y0, xx, h, -st.y1); } }
+  }
+}
+const NIGHT_ONLY = [];
+buildFloor(0); buildFloor(1);
+const CEILS = [];
+(function buildCeilings() {
+  const ceilD = std({color:0xdfe5e8, side:THREE.DoubleSide}), ceilN = new THREE.MeshBasicMaterial({color:0x000000, side:THREE.DoubleSide});
+  const lo = [], hi = [], up = [];
+  for (let y = -1; y <= 62; y++) for (let x = -1; x <= 64; x++) {
+    const c1 = at(0, x, y);
+    if (c1 && c1 !== '#') {
+      const c2 = at(1, x, y); const z = zoneAt(0, x, y);
+      if (z === hallZone || isWaterCell(0, x, y)) { if (!c2 || c2 === ',' || c2 === '#') hi.push({x, y}); }
+      else if (!c2 || c2 === '#' || c2 === ',') lo.push({x, y});
+    }
+    const c2b = at(1, x, y);
+    if (c2b && !"#,".includes(c2b)) up.push({x, y});
+  }
+  const geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(Math.PI / 2);
+  const mk = (list, h, g) => { const m = instanced(geo, ceilD, list, (it, d) => { d.position.set(it.x + 0.5, h, -(it.y + 0.5)); }, g, {cast:false}); if (m) { themed(m, ceilD, ceilN); m.visible = false; CEILS.push(m); } };
+  mk(lo, 4.2, g1); mk(hi, 9.0, g1); mk(up, F2 + 3.3, g2);
+})();
+
+// edges as line segments
+const EDGE_OBJS = [];
+function lineObj(arr, color, opacity, f, clip) {
+  if (!arr.length) return;
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  const mat = new THREE.LineBasicMaterial({color, transparent:true, opacity, clippingPlanes:clip ? [f === 0 ? clip1 : clip2] : []});
+  const l = new THREE.LineSegments(geo, mat); l.visible = false; GROUPS[f].add(l); EDGE_OBJS.push(l);
+}
+for (const f of [0, 1]) { lineObj(edgeSegs[f], 0xe9f7ff, 0.95, f, true); lineObj(edgeSegsSoft[f], 0x8fa3ab, 0.75, f, true); lineObj(edgeSegsWater[f], 0x35f0d0, 0.9, f, false); }
+
+// ---------- markers ----------
+const MK = {A:{c:'#d62728', n:'밸브 A'}, B:{c:'#d62728', n:'밸브 B (수중)'}, C:{c:'#d62728', n:'밸브 C'}, D:{c:'#d62728', n:'밸브 D'}, E:{c:'#d62728', n:'밸브 E (수중)'},
+  X:{c:'#2f9e44', n:'출구'}, R:{c:'#139fb6', n:'도망자 출발'}, S:{c:'#e8590c', n:'술래 출발'}, b:{c:'#e64980', n:'붕대'}, c:{c:'#c98f00', n:'찰칵이'}, '@':{c:'#0b3d91', n:'배수구'}};
+const MARKERS = []; const ANIM = []; const MARKER_OBJS = [];
+for (const f of [0, 1]) for (let y = -1; y <= 62; y++) for (let x = -1; x <= 64; x++) {
+  const ch = at(f, x, y); if (!MK[ch]) continue;
+  const base = f ? F2 : 0, g = GROUPS[f], cx = x + 0.5, cz = -(y + 0.5);
+  const wet = f === 0 && isWaterCell(0, x, y); let floorY = wet ? -cellDepth(x, y) : base;
+  let px = cx, pz = cz;
+  if (ch === '@') { const dp = x < 14 ? DRAIN_POS.teach : DRAIN_POS.main; px = dp.x; pz = -dp.y; floorY = -3.5; }
+  const obj = new THREE.Group(); obj.position.set(px, floorY, pz); g.add(obj); MARKER_OBJS.push(obj);
+  const col = new THREE.Color(MK[ch].c);
+  let labelY = 2.4;
+  if ("ABCDE".includes(ch)) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.0, 10), std({color:0x6b7378, metalness:0.5, roughness:0.4})); post.position.y = 0.5; obj.add(post);
+    const wD = std({color:col, roughness:0.4, metalness:0.2}), wN = new THREE.MeshBasicMaterial({color:0xffb84d});
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.07, 10, 28), wD); wheel.rotation.x = Math.PI / 2; wheel.position.y = 1.02; obj.add(wheel); themed(wheel, wD, wN);
+    for (let i = 0; i < 3; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.04, 0.05), wD); sp.position.y = 1.02; sp.rotation.y = i * Math.PI / 3; obj.add(sp); themed(sp, wD, wN); }
+    labelY = 1.8;
+  } else if (ch === 'X') {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40), new THREE.MeshBasicMaterial({color:col, side:THREE.DoubleSide})); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; obj.add(ring);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 3.2, 32, 1, true), new THREE.MeshBasicMaterial({color:0x40a669, transparent:true, opacity:0.16, side:THREE.DoubleSide, depthWrite:false}));
+    beam.position.y = 1.6; obj.add(beam); labelY = 3.6;
+  } else if (ch === 'R' || ch === 'S') {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.85, 36), new THREE.MeshBasicMaterial({color:col, side:THREE.DoubleSide})); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; obj.add(ring);
+    const fig = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.6, 16), std({color:0xf7f7f7, roughness:0.9}));
+    fig.position.y = 0.8; obj.add(fig); themed(fig, fig.material, new THREE.MeshBasicMaterial({color:ch === 'R' ? 0x7fe7e0 : 0xef6a4c}));
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 12), fig.material); head.position.y = 1.85; obj.add(head); themed(head, fig.material, new THREE.MeshBasicMaterial({color:ch === 'R' ? 0x7fe7e0 : 0xef6a4c}));
+    labelY = 2.6;
+  } else if (ch === 'b') {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.36), std({map:TEX.cross})); box.position.y = 0.9; obj.add(box); ANIM.push({o:box, b:0.9});
+    themed(box, box.material, new THREE.MeshBasicMaterial({color:0xffb84d})); labelY = 1.7;
+  } else if (ch === 'c') {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.2), std({color:0x2c2f33})); body.position.y = 0.9; obj.add(body); ANIM.push({o:body, b:0.9});
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.1, 16), std({color:0xf5c518})); lens.rotation.x = Math.PI / 2; lens.position.set(0, 0, 0.12); body.add(lens);
+    themed(body, body.material, new THREE.MeshBasicMaterial({color:0xffb84d})); labelY = 1.7;
+  } else if (ch === '@') {
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.75, 32), new THREE.MeshBasicMaterial({map:TEX.grill})); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; obj.add(disc);
+    labelY = 3.5 + 0.9;
+  }
+  MARKERS.push({ch, f, x:px, y:floorY + labelY, z:pz, name:MK[ch].n, color:MK[ch].c});
+}
+
+// ---------- labels ----------
+const labelsEl = document.getElementById('labels');
+const LABELS = [];
+function addLabel(text, f, x, yW, z, cls, color) {
+  const el = document.createElement('div'); el.className = cls; el.textContent = text; if (color) el.style.background = color;
+  labelsEl.appendChild(el); const L = {el, f, p:new THREE.Vector3(x, yW, z), cls}; LABELS.push(L); return L;
+}
+const ZLAB = {"메인 풀 홀":[24, 59.5], "기계실":[57.5, 44], "직원 통로":[47.5, 30], "하역장":[56, 59], "로비":[16, 5],
+  "관람석":[28, 29.5], "2층 로비":[24, 21.5], "물탱크실":[7.5, 20], "관리 복도":[51, 17.5], "약품 저장실":[52.5, 25], "직원 계단실":[50.8, 12.5]};
+for (const f of [0, 1]) for (const z of Z[f].zones) {
+  if (z.name.startsWith('구역 ')) continue;
+  const [lx, ly] = ZLAB[z.name] || [z.cx, z.cy];
+  const L = addLabel(z.name, f, lx, (f ? F2 : 0) + 2.3, -ly, 'zl' + (f ? ' f2' : ''));
+  L.zone = z;
+}
+addLabel('경영풀 25m · 8레인', 0, 27.5, 0.6, -47, 'zl');
+addLabel('교습풀', 0, 8, 0.6, -46.5, 'zl');
+for (const s of STAIRS) { const L = addLabel(s.label, 0, s.lab[0], 2.6, -s.lab[1], 'ml', '#6a4fd0'); L.stair = true; }
+for (const m of MARKERS) { const L = addLabel(m.name, m.f, m.x, m.y, m.z, 'ml', m.color); L.marker = true; }
+
+// ---------- state ----------
+const ui = {mode:'orbit', floors:'all', cut:0.22, zone:true, obj:true, night:false};
+let walk = {f:0, x:32.5, y:6.5, yaw:0, pitch:-0.05, keys:{}, eye:1.6};
+let selected = null;
+
+function floorOffset(f) { return f === 1 && ui.floors === 'ex' ? EXPLODE : 0; }
+function applyFloors() {
+  g1.visible = ui.floors !== '2';
+  g2.visible = ui.floors !== '1';
+  g2.position.y = floorOffset(1);
+  updateClip();
+}
+function updateClip() {
+  const t = ui.mode === 'walk' ? 1 : ui.cut;
+  clip1.constant = 0.6 + (9.0 - 0.6) * t;
+  clip2.constant = F2 + floorOffset(1) + 0.6 + (3.3 - 0.6) * t;
+}
+function applyTheme() {
+  const n = ui.night;
+  for (const t of THEMED) t.mesh.material = n ? t.night : t.day;
+  for (const rec of FLOORINST) paintFloor(rec);
+  for (const e of EDGE_OBJS) e.visible = n;
+  for (const o of NIGHT_ONLY) o.visible = n;
+  scene.background = new THREE.Color(n ? 0x000000 : 0xe6eef0);
+  scene.fog = n ? new THREE.Fog(0x000000, 60, 190) : null;
+  hemi.intensity = n ? 0.12 : 0.95; sun.intensity = n ? 0.0 : 0.75;
+  const root = document.documentElement;
+  if (n) root.setAttribute('data-theme', 'dark'); else if (prevTheme) root.setAttribute('data-theme', prevTheme); else root.removeAttribute('data-theme');
+  drawMini();
+}
+const prevTheme = document.documentElement.getAttribute('data-theme');
+const HL = new THREE.Color('#ffb84d');
+function paintFloor(rec) {
+  const cols = ui.night ? rec.night : rec.day;
+  for (let i = 0; i < rec.cells.length; i++) {
+    const [f, x, y] = rec.cells[i];
+    const c = new THREE.Color(cols[i]);
+    if (selected && !rec.door) { const z = zoneAt(f, x, y); if (z === selected) c.lerp(HL, ui.night ? 0.45 : 0.62); }
+    rec.mesh.setColorAt(i, c);
+  }
+  rec.mesh.instanceColor.needsUpdate = true;
+}
+
+// ---------- picking ----------
+const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+function pickZone(cx, cy) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const meshes = floorPick.filter(p => p.mesh.parent.visible).map(p => p.mesh);
+  const hits = ray.intersectObjects(meshes, false);
+  for (const h of hits) {
+    if (h.instanceId == null) continue;
+    const rec = floorPick.find(p => p.mesh === h.object); const [f, x, y] = rec.cells[h.instanceId];
+    if (f === 0 && ui.floors !== '1' && ui.floors !== 'ex' && g2.visible) {
+      // if 2F is shown at real height, prefer 2F hits (they come first anyway)
+    }
+    const z = zoneAt(f, x, y);
+    if (z) return z;
+    const ch = at(f, x, y);
+    if (ch === '+') { const d = DOORS[f].find(dd => dd.cells.some(c => c[0] === x && c[1] === y)); if (d && d.zones.length) return Z[f].zones[d.zones[0]]; }
+  }
+  return null;
+}
+function zoneDisplayName(z) { return z.name; }
+function showInfo(z) {
+  selected = z; for (const rec of FLOORINST) paintFloor(rec);
+  const box = document.getElementById('info'), body = document.getElementById('infoBody');
+  if (!z) { box.classList.remove('on'); return; }
+  const cat = CATS[z.cat] ? CATS[z.cat].label : '';
+  const objs = [];
+  const on = z.objs;
+  for (const k of "ABCDE") if (on[k]) objs.push({c:MK[k].c, t:MK[k].n});
+  for (const k of "XRS") if (on[k]) objs.push({c:MK[k].c, t:MK[k].n});
+  if (on['@']) objs.push({c:MK['@'].c, t:`배수구 ${on['@']}곳`});
+  if (on.b) objs.push({c:MK.b.c, t:`붕대 후보 ${on.b}곳`});
+  if (on.c) objs.push({c:MK.c.c, t:`찰칵이 ${on.c}곳`});
+  const conns = [];
+  for (const d of z.doors) {
+    const other = d.zones.filter(i => i !== z.id).map(i => Z[z.floor].zones[i].name);
+    const [g, gc] = grade(d.width);
+    const wtxt = d.exact ? `${d.width.toFixed(1)}m` : `약 ${Math.round(d.width)}m`;
+    conns.push({c:gc, t:d.outside && !other.length ? '건물 밖 (출구)' : (other[0] || '건물 밖 (출구)'), tag:`${wtxt} ${g}`});
+  }
+  for (const s of STAIRS) {
+    const near = (zz, f, rx, ry) => { const zt = zoneAt(f, Math.floor((rx[0] + rx[1]) / 2), Math.floor((ry[0] + ry[1]) / 2)); return zt === zz; };
+    if (z.floor === 0 && near(z, 0, s.from.x, s.from.y)) conns.push({c:'#7950f2', t:s.d1, tag:s.label});
+    if (z.floor === 1 && near(z, 1, s.back.x, s.back.y)) conns.push({c:'#7950f2', t:s.d2, tag:s.label});
+  }
+  body.innerHTML = `<h2>${z.name}</h2><div class="meta">${z.floor ? '2층' : '1층'} · ${cat} · 약 ${z.area}m²</div>
+    <p>${z.desc || ''}</p>
+    ${objs.length ? `<h3>이 방에 있는 것</h3><ul>${objs.map(o => `<li><span class="dot" style="background:${o.c}"></span>${o.t}</li>`).join('')}</ul>` : ''}
+    <h3>연결된 곳 (문 ${z.doors.length}개${conns.length === 1 ? ', 막다른 방' : ''})</h3>
+    <ul>${conns.map(o => `<li><span class="dot" style="background:${o.c}"></span>${o.t}<span class="tag">${o.tag}</span></li>`).join('')}</ul>
+    <div style="margin-top:14px;display:flex;gap:6px"><button class="btn primary" id="goWalk">여기서 걸어 보기</button></div>`;
+  box.classList.add('on');
+  document.getElementById('goWalk').onclick = () => { enterWalkAt(z); };
+}
+document.getElementById('infoClose').onclick = () => showInfo(null);
+
+// ---------- orbit interactions ----------
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = {x:e.clientX, y:e.clientY, t:performance.now()}; if (ui.mode === 'walk') walkPointerDown(e); });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (ui.mode === 'walk') { walkPointerUp(e); return; }
+  if (!downAt) return; const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
+  if (moved < 6 && e.button === 0) { const z = pickZone(e.clientX, e.clientY); showInfo(z); if (z) flyTo(z); }
+  downAt = null;
+});
+const tip = document.getElementById('tip'); let lastHover = 0;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (ui.mode === 'walk') { walkPointerMove(e); return; }
+  const now = performance.now(); if (now - lastHover < 70 || e.buttons) { if (e.buttons) tip.style.display = 'none'; return; } lastHover = now;
+  const z = pickZone(e.clientX, e.clientY);
+  if (z && e.pointerType === 'mouse') { tip.textContent = z.name; tip.style.display = 'block'; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; }
+  else tip.style.display = 'none';
+});
+renderer.domElement.addEventListener('pointerleave', () => tip.style.display = 'none');
+
+let fly = null;
+function flyTo(z) {
+  if (ui.mode !== 'orbit') return;
+  const f = z.floor; const ty = (f ? F2 + floorOffset(1) : 0);
+  const tgt = new THREE.Vector3(z.cx, ty, -z.cy);
+  const span = Math.max(14, Math.sqrt(z.area) * 1.6);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  const pos = tgt.clone().add(dir.multiplyScalar(span * 1.9));
+  if (pos.y < ty + 8) pos.y = ty + span;
+  if (prefersReduced) { controls.target.copy(tgt); camera.position.copy(pos); return; }
+  fly = {t0:performance.now(), d:650, fromP:camera.position.clone(), fromT:controls.target.clone(), toP:pos, toT:tgt};
+}
+
+// ---------- walk mode ----------
+function walkable(f, x, y) {
+  const ch = at(f, Math.floor(x), Math.floor(y));
+  if (!ch) return false;
+  if (f === 0) return !"#&o%:/".includes(ch);
+  return !"#&o:,/%".includes(ch);
+}
+function canStand(f, x, y, r = 0.28) {
+  return walkable(f, x - r, y - r) && walkable(f, x + r, y - r) && walkable(f, x - r, y + r) && walkable(f, x + r, y + r);
+}
+function nearestWalk(f, x, y) {
+  if (canStand(f, x, y)) return [x, y];
+  for (let rad = 1; rad < 20; rad++) for (let a = 0; a < 16; a++) { const px = x + Math.cos(a / 16 * Math.PI * 2) * rad, py = y + Math.sin(a / 16 * Math.PI * 2) * rad; if (canStand(f, px, py)) return [px, py]; }
+  return [32.5, 6.5];
+}
+function setMode(m) {
+  ui.mode = m;
+  document.getElementById('mOrbit').setAttribute('aria-pressed', m === 'orbit');
+  document.getElementById('mWalk').setAttribute('aria-pressed', m === 'walk');
+  controls.enabled = m === 'orbit';
+  document.getElementById('mini').style.display = m === 'walk' ? 'block' : 'none';
+  document.getElementById('walkhelp').style.display = m === 'walk' ? 'block' : 'none';
+  document.getElementById('zonebar').style.display = m === 'walk' ? 'block' : 'none';
+  document.getElementById('orbitHint').style.display = m === 'orbit' ? 'block' : 'none';
+  document.getElementById('legend').style.display = m === 'walk' ? 'none' : '';
+  document.querySelectorAll('.orbit-only').forEach(el => el.style.display = m === 'walk' ? 'none' : '');
+  if (m === 'walk') showInfo(null);
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  document.getElementById('pad').style.display = (m === 'walk' && touch) ? 'grid' : 'none';
+  document.getElementById('prompt').style.display = 'none';
+  tip.style.display = 'none';
+  CEILS.forEach(c => c.visible = m === 'walk');
+  if (m === 'walk') { ui.prevFloors = ui.floors; setFloors('all', true); camera.fov = 70; }
+  else { camera.fov = 50; if (ui.prevFloors) setFloors(ui.prevFloors, true); camera.updateProjectionMatrix(); homeView(); }
+  camera.updateProjectionMatrix(); updateClip(); drawMini();
+}
+function enterWalkAt(z) {
+  let best = null, bd = 1e9;
+  for (const [cx, cy] of z.cells) {
+    const px = cx + 0.5, py = cy + 0.5;
+    if (!canStand(z.floor, px, py, 0.3) || (z.floor === 0 && isWaterCell(0, cx, cy))) continue;
+    const d = (px - z.cx) ** 2 + (py - z.cy) ** 2; if (d < bd) { bd = d; best = [px, py]; }
+  }
+  const [x, y] = best || nearestWalk(z.floor, z.cx, z.cy);
+  walk.f = z.floor; walk.x = x; walk.y = y;
+  if (ui.mode !== 'walk') setMode('walk');
+  showInfo(null);
+}
+let look = null;
+function walkPointerDown(e) { look = {x:e.clientX, y:e.clientY}; renderer.domElement.setPointerCapture(e.pointerId); }
+function walkPointerMove(e) { if (!look) return; const dx = e.clientX - look.x, dy = e.clientY - look.y; look = {x:e.clientX, y:e.clientY};
+  walk.yaw += dx * 0.0042; walk.pitch = Math.max(-1.25, Math.min(1.25, walk.pitch - dy * 0.0042)); }
+function walkPointerUp(e) { look = null; try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {} }
+const KEYMAP = {KeyW:'f', ArrowUp:'f', KeyS:'b', ArrowDown:'b', KeyA:'l', ArrowLeft:'l', KeyD:'r', ArrowRight:'r', ShiftLeft:'run', ShiftRight:'run'};
+window.addEventListener('keydown', e => {
+  if (ui.mode !== 'walk') return; if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (KEYMAP[e.code]) { walk.keys[KEYMAP[e.code]] = true; e.preventDefault(); }
+  if (e.code === 'KeyE') useStairs();
+  if (e.code === 'Escape') setMode('orbit');
+});
+window.addEventListener('keyup', e => { if (KEYMAP[e.code]) walk.keys[KEYMAP[e.code]] = false; });
+window.addEventListener('blur', () => walk.keys = {});
+for (const b of document.querySelectorAll('#pad button')) {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); if (k === 'e') useStairs(); else walk.keys[k] = true; });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { if (k !== 'e') walk.keys[k] = false; });
+}
+function stairHere() {
+  for (const s of STAIRS) {
+    const a = walk.f === 0 ? s.from : s.back;
+    if (a.f === walk.f && walk.x >= a.x[0] && walk.x <= a.x[1] && walk.y >= a.y[0] && walk.y <= a.y[1]) return {s, up:walk.f === 0};
+  }
+  return null;
+}
+function useStairs() {
+  const h = stairHere(); if (!h) return;
+  const t = h.up ? h.s.to : h.s.backTo;
+  walk.f = t.f; walk.x = t.x; walk.y = t.y; walk.yaw = t.yaw;
+}
+function walkStep(dt) {
+  const k = walk.keys; let fx = 0, fy = 0;
+  const sy = Math.cos(walk.yaw), sx = Math.sin(walk.yaw);
+  if (k.f) { fx += sx; fy += sy; } if (k.b) { fx -= sx; fy -= sy; }
+  if (k.r) { fx += sy; fy -= sx; } if (k.l) { fx -= sy; fy += sx; }
+  const len = Math.hypot(fx, fy);
+  const inWater = walk.f === 0 && isWaterCell(0, Math.floor(walk.x), Math.floor(walk.y));
+  const speed = inWater ? 3.0 : (k.run ? 7.5 : 5.0);
+  if (len > 0) {
+    fx /= len; fy /= len;
+    const nx = walk.x + fx * speed * dt, ny = walk.y + fy * speed * dt;
+    if (canStand(walk.f, nx, walk.y)) walk.x = nx;
+    if (canStand(walk.f, walk.x, ny)) walk.y = ny;
+  }
+  const targetEye = inWater ? 0.55 : 1.6; walk.eye += (targetEye - walk.eye) * Math.min(1, dt * 6);
+  camera.position.set(walk.x, (walk.f ? F2 : 0) + (inWater ? -0.6 + walk.eye : walk.eye), -walk.y);
+  const cp = Math.cos(walk.pitch);
+  camera.lookAt(walk.x + sx * cp, camera.position.y + Math.sin(walk.pitch), -(walk.y + sy * cp));
+  const z = zoneAt(walk.f, Math.floor(walk.x), Math.floor(walk.y));
+  const zb = document.getElementById('zonebar');
+  const name = z ? z.name : (at(walk.f, Math.floor(walk.x), Math.floor(walk.y)) === '+' ? '문' : (at(walk.f, Math.floor(walk.x), Math.floor(walk.y)) === '/' ? '계단' : ''));
+  const sub = (walk.f ? '2층' : '1층') + (inWater ? ', 헤엄치는 중 (3.0 m/s)' : (k.run ? ', 달리는 중 (7.5 m/s)' : ''));
+  const html = `${name}<small>${sub}</small>`; if (zb.innerHTML !== html) zb.innerHTML = html;
+  const pr = document.getElementById('prompt'); const h = stairHere();
+  if (h) { pr.style.display = 'block'; const txt = `E 키: ${h.up ? h.s.text1 : h.s.text2}`; if (pr.textContent !== txt) pr.textContent = txt; } else pr.style.display = 'none';
+}
+
+// ---------- minimap ----------
+const miniC = document.getElementById('miniC'), mctx = miniC.getContext('2d'); const MS = 3;
+const miniBg = [null, null];
+function drawMiniBg(f) {
+  const c = document.createElement('canvas'); c.width = 66 * MS; c.height = 64 * MS; const x = c.getContext('2d');
+  x.fillStyle = ui.night ? '#000' : '#f4f7f8'; x.fillRect(0, 0, c.width, c.height);
+  for (let y = -1; y <= 62; y++) for (let gx = -1; gx <= 64; gx++) {
+    const ch = at(f, gx, y); if (!ch) continue;
+    let col = null;
+    if (ch === '#') col = ui.night ? '#dfeff5' : '#2b2b2b';
+    else if (ch === '+') col = ui.night ? '#ffb84d' : '#f39a2b';
+    else if (ch === ',') col = ui.night ? '#05080a' : '#e3e9ee';
+    else if (ch === '%') col = '#9aa0a6';
+    else if (ch === '/') col = '#a796dc';
+    else if (f === 0 && isWaterCell(0, gx, y)) col = ui.night ? '#063a44' : '#7cc3ec';
+    else { const z = zoneAt(f, gx, y); col = z ? (ui.night ? '#'+nightColor(dayColor(z)).getHexString() : dayColor(z)) : '#ddd';
+      if (ch === '&' || ch === 'o') col = ui.night ? '#33434a' : '#a9a39a'; }
+    x.fillStyle = col; x.fillRect((gx + 1) * MS, (62 - y) * MS, MS, MS);
+  }
+  return c;
+}
+function drawMini() {
+  miniBg[0] = drawMiniBg(0); miniBg[1] = drawMiniBg(1);
+}
+function renderMini() {
+  if (ui.mode !== 'walk') return;
+  mctx.drawImage(miniBg[walk.f], 0, 0);
+  const px = (walk.x + 1) * MS, py = (62 - walk.y + 1) * MS - MS;
+  mctx.save(); mctx.translate(px, py + MS / 2); mctx.rotate(walk.yaw);
+  mctx.fillStyle = '#d8392f'; mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5;
+  mctx.beginPath(); mctx.moveTo(0, -8); mctx.lineTo(5.5, 6); mctx.lineTo(0, 3); mctx.lineTo(-5.5, 6); mctx.closePath(); mctx.fill(); mctx.stroke(); mctx.restore();
+  document.getElementById('miniCap').textContent = (walk.f ? '2층' : '1층') + ' 지도';
+}
+miniC.addEventListener('pointerdown', e => {
+  const r = miniC.getBoundingClientRect(); const gx = (e.clientX - r.left) / r.width * 66 - 1, gy = 62 - ((e.clientY - r.top) / r.height * 64 - 1) + 0;
+  const [x, y] = nearestWalk(walk.f, gx, gy); walk.x = x; walk.y = y;
+});
+
+// ---------- UI wiring ----------
+function setFloors(v, silent) {
+  ui.floors = v;
+  for (const b of document.querySelectorAll('[data-fl]')) b.setAttribute('aria-pressed', b.dataset.fl === v);
+  applyFloors();
+}
+document.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => { if (ui.mode === 'walk') setMode('orbit'); setFloors(b.dataset.fl); });
+document.getElementById('mOrbit').onclick = () => setMode('orbit');
+document.getElementById('mWalk').onclick = () => { if (ui.mode !== 'walk') { walk.f = 0; const [x, y] = nearestWalk(0, 32.5, 6.5); walk.x = x; walk.y = y; walk.yaw = 0; walk.pitch = 0; setMode('walk'); } };
+document.getElementById('cut').oninput = e => { ui.cut = e.target.value / 100; updateClip(); };
+document.getElementById('tZone').onchange = e => { ui.zone = e.target.checked; };
+document.getElementById('tObj').onchange = e => { ui.obj = e.target.checked; for (const o of MARKER_OBJS) o.visible = ui.obj; };
+document.getElementById('tNight').onchange = e => { ui.night = e.target.checked; applyTheme(); };
+document.getElementById('reset').onclick = () => { setMode('orbit'); setFloors('all'); showInfo(null); };
+const zsel = document.getElementById('zsel');
+zsel.innerHTML = '<option value="">구역을 고르세요</option>' + [0, 1].map(f => `<optgroup label="${f ? '2층' : '1층'}">` +
+  Z[f].zones.filter(z => !z.name.startsWith('구역 ')).sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(z => `<option value="${f}:${z.id}">${z.name}</option>`).join('') + '</optgroup>').join('');
+zsel.onchange = () => { if (!zsel.value) return; const [f, id] = zsel.value.split(':').map(Number); const z = Z[f].zones[id];
+  if (ui.mode === 'walk') enterWalkAt(z); else { if (ui.floors === (f ? '1' : '2')) setFloors('all'); showInfo(z); flyTo(z); } zsel.value = ''; };
+const menuBtn = document.getElementById('menuBtn'), ctrl = document.getElementById('ctrl');
+menuBtn.onclick = () => { const o = ctrl.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', o); menuBtn.textContent = o ? '설정 닫기' : '설정 열기'; };
+
+// legend
+const lg = document.getElementById('lg');
+const LEG = [...Object.values(CATS).map(c => [c.day, c.label, 'sq']), ['#7cc3ec', '물', 'sq'], ['#f39a2b', '문', 'sq'], ['#40a669', '외부 출구 문', 'sq'], ['#7d93a1', '락커', 'sq'], ['#bcaeea', '계단', 'sq'],
+  ['#d62728', '밸브', 'dot'], ['#2f9e44', '출구', 'dot'], ['#139fb6', '도망자 출발', 'dot'], ['#e8590c', '술래 출발', 'dot'], ['#e64980', '붕대', 'dot'], ['#c98f00', '찰칵이', 'dot'], ['#0b3d91', '배수구', 'dot']];
+lg.innerHTML = LEG.map(([c, t, k]) => `<span><i class="${k === 'dot' ? 'dot' : 'sq'}" style="background:${c}"></i>${t}</span>`).join('');
+
+// ---------- loop ----------
+const tmpV = new THREE.Vector3();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (fly) { const t = Math.min(1, (now - fly.t0) / fly.d); const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    camera.position.lerpVectors(fly.fromP, fly.toP, e); controls.target.lerpVectors(fly.fromT, fly.toT, e); if (t >= 1) fly = null; }
+  if (ui.mode === 'orbit') controls.update(); else walkStep(dt);
+  if (!prefersReduced) { TEX.water.offset.x = (now / 9000) % 1; TEX.water.offset.y = (now / 13000) % 1; for (const a of ANIM) { a.o.position.y = a.b + Math.sin(now / 520 + a.b * 3) * 0.06; a.o.rotation.y = now / 1400; } }
+  renderer.render(scene, camera);
+  // labels
+  const w = window.innerWidth, h = window.innerHeight;
+  for (const L of LABELS) {
+    const gVis = L.f === 0 ? g1.visible : g2.visible;
+    let show = gVis && (L.marker || L.stair ? ui.obj : ui.zone);
+    if (show) {
+      tmpV.copy(L.p); if (L.f === 1) tmpV.y += floorOffset(1);
+      if (ui.mode === 'walk') {
+        const dist = tmpV.distanceTo(camera.position);
+        if (dist > (L.marker ? 22 : 34)) show = false;
+        if (L.f !== walk.f && !L.marker) show = false;
+      } else if (L.marker && tmpV.distanceTo(camera.position) > 62) { show = false;
+      } else if (ui.floors === 'all' && L.f === 0 && L.zone && L.zone !== hallZone) {
+        // 1F room names under the 2F slab are hidden in combined view unless walls are cut low
+        const under = at(1, Math.floor(L.zone.cx), Math.floor(L.zone.cy));
+        if (under && under !== ',' && ui.cut > 0.45) show = false;
+      }
+      if (show) {
+        tmpV.project(camera);
+        if (tmpV.z > 1 || tmpV.z < -1 || Math.abs(tmpV.x) > 1.1 || Math.abs(tmpV.y) > 1.1) show = false;
+        else { L.el.style.left = ((tmpV.x + 1) / 2 * w) + 'px'; L.el.style.top = ((1 - tmpV.y) / 2 * h) + 'px'; }
+      }
+    }
+    if (L.el.style.display !== (show ? 'block' : 'none')) L.el.style.display = show ? 'block' : 'none';
+  }
+  renderMini();
+  requestAnimationFrame(frame);
+}
+window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+applyFloors(); applyTheme();
+document.getElementById('loading').style.display = 'none';
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
