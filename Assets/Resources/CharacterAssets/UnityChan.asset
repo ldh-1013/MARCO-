@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 225fa2721fb348a0803abc746fa92140, type: 3}
+  m_Name: UnityChan
+  visualPrefab: {fileID: 100096, guid: 412b92d4feeb9c548bfa98f62c4d1022, type: 3}
+  modelOffset: {x: 0, y: -1, z: 0}
+  modelScale: {x: 1, y: 1, z: 1}
+  idleClip: {fileID: 7400000, guid: 0147e212f97e3d449a4b9e4f5d057180, type: 3}
+  walkClip: {fileID: 7400000, guid: e52be2fa48716194ea1d9d76686005f8, type: 3}
+  runClip: {fileID: 7400000, guid: 26055e26f15260e4e8e0e51f50c41926, type: 3}
+  attackClip: {fileID: 0}
+  interactionClip: {fileID: 0}
+  attackDuration: 0.45
+  attackSourceSpan: 0.8
+  walkCycleDuration: 1.2
+  firstPersonEyeOffset: {x: 0, y: 0.1, z: 0.08}
+  genericBones: []

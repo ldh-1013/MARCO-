@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Prototype/Scenes/Prototype_Lobby.unity
     guid: b1111111111111111111111111111111
   - enabled: 1
+    path: Assets/Prototype/Scenes/Prototype_Game.unity
+    guid: 0fc80c9ea5fa4df685b946dc907aba79
+  - enabled: 1
     path: Assets/Prototype/Scenes/Prototype_HunterTest.unity
     guid: c1111111111111111111111111111111
   - enabled: 1

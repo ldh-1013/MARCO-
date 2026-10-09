@@ -8,9 +8,12 @@ namespace Marco.Prototype
         [SerializeField] private float moveSpeed = 4.5f;
         [SerializeField] private float mouseSensitivity = 2.2f;
         [SerializeField] private float ghostSpeed = 6f;
+        [SerializeField, Min(1)] private float sprintMultiplier = 1.6f;
         [SerializeField] private Camera playerCamera;
         private CharacterController controller;
         private float pitch;
+        public bool IsRunning { get; private set; }
+        public float LookPitch => pitch;
 
         private void Start()
         {
@@ -23,10 +26,14 @@ namespace Marco.Prototype
         }
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) Cursor.lockState = CursorLockMode.None;
-            if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0)) Cursor.lockState = CursorLockMode.Locked;
+            IsRunning = false;
+            if (Input.GetKeyDown(KeyCode.Escape))
+                Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
+            if (!MatchLaunchContext.IsActive && Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
+                Cursor.lockState = CursorLockMode.Locked;
+            if (Cursor.lockState != CursorLockMode.Locked) return;
             transform.Rotate(0, Input.GetAxis("Mouse X") * mouseSensitivity, 0);
-            pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 70);
+            pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 85);
             playerCamera.transform.localRotation = Quaternion.Euler(pitch, 0, 0);
             var movement = (transform.forward * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal")).normalized;
             var survivor = GetComponent<PrototypeTarget>();
@@ -38,7 +45,11 @@ namespace Marco.Prototype
                 if (Input.GetKey(KeyCode.LeftControl)) movement += Vector3.down;
                 transform.position += Vector3.ClampMagnitude(movement, 1) * ghostSpeed * Time.deltaTime;
             }
-            else if (controller.enabled) controller.SimpleMove(movement * moveSpeed * multiplier);
+            else if (controller.enabled)
+            {
+                IsRunning = movement.sqrMagnitude > 0 && Input.GetKey(KeyCode.LeftShift);
+                controller.SimpleMove(movement * moveSpeed * multiplier * (IsRunning ? sprintMultiplier : 1));
+            }
         }
     }
 }

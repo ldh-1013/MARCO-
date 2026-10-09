@@ -1,0 +1,33 @@
+# Unity recreates these folders locally. Keep them out of version control.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# Local build output and diagnostic captures.
+/[Bb]uild/
+/[Bb]uilds/
+/[Mm]emoryCaptures/
+
+# IDE caches and Unity-generated solution/project files.
+/.vs/
+/.idea/
+/.gradle/
+/*.sln
+/*.slnx
+/*.csproj
+/*.unityproj
+/*.pidb
+/*.suo
+/*.user
+/*.userprefs
+/*.opendb
+/*.VC.db
+
+# Operating-system metadata.
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Assets (including .meta), Packages, ProjectSettings and Tools stay tracked.

@@ -37,9 +37,22 @@ namespace Marco.Prototype
         private float swingStart = -100;
         private Quaternion restingRotation;
         private string result = "좌클릭: 스윙";
+        private bool localInput = true;
+        public event System.Action<float> SwingPerformed;
+        public void SetLocalPlayer(bool value) { localInput = value; showHud = value; }
         private void Start()
         {
+            var asset = GetComponent<CharacterVisualPrototype>()?.Definition;
+            if (asset != null)
+            {
+                idleClip = asset.idleClip; walkClip = asset.walkClip; attackClip = asset.attackClip;
+                attackMotionDuration = asset.attackDuration; firstPunchDuration = asset.attackSourceSpan;
+                walkCycleDuration = asset.walkCycleDuration;
+            }
             if (swingVisual != null) restingRotation = swingVisual.localRotation;
+            // Registered player assets use the shared presenter; keep legacy dummy animation only.
+            if (GetComponent<CharacterMotionPresenter>() != null)
+            { nextAutomaticAttack = Time.time + attackInterval; return; }
             attackAnimator = GetComponentInChildren<Animator>();
             if (attackAnimator != null)
             {
@@ -85,10 +98,16 @@ namespace Marco.Prototype
                 float t = Mathf.Clamp01((Time.time - swingStart) / Mathf.Max(0.01f, swingDuration));
                 swingVisual.localRotation = restingRotation * Quaternion.Euler(0, 0, Mathf.Sin(t * Mathf.PI) * -65f);
             }
-            bool attack = automaticAttack ? Time.time >= nextAutomaticAttack : Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.Locked;
-            if (!attack || Time.time < nextTagTime) return;
+            bool attack = automaticAttack ? Time.time >= nextAutomaticAttack : localInput && Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.Locked;
+            if (attack) TrySwing();
+        }
+
+        public bool TrySwing()
+        {
+            if ((!localInput && !automaticAttack) || Time.time < nextTagTime) return false;
             nextAutomaticAttack = Time.time + Mathf.Max(0.1f, attackInterval);
             swingStart = Time.time;
+            SwingPerformed?.Invoke(swingDuration);
             BeginAttackAnimation();
             PrototypeTarget closest = null; float closestDistance = float.MaxValue;
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
@@ -106,6 +125,7 @@ namespace Marco.Prototype
             nextTagTime = Time.time + (hitTarget ? hitCooldown : missCooldown);
             result = hitTarget ? "잡았다! " + closest.name : "헛스윙";
             Debug.Log("[Swing] " + name + " / " + (automaticAttack ? "dummy timer" : "left click") + " / " + result, this);
+            return true;
         }
         private void BeginAttackAnimation()
         {
