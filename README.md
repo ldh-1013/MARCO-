@@ -3,16 +3,21 @@
 비대칭 멀티플레이 공포 술래잡기. 완전한 암전 속에서 플레이어는 **소리를 내야만** 세상을 볼 수 있고,
 소리를 내는 순간 술래에게 위치가 드러난다.
 
-- 엔진: Unity 6000.5.4f1(고정) · 렌더링: URP는 기획서 기준이며 **아직 미설치**(현재 내장 파이프라인) · 네트워크: FishNet + Steamworks는 **계획**(아직 미도입 — 현재 프로토타입 로비는 직접 TCP)
+- 엔진: Unity 6000.5.4f1(고정) · 기획 목표: URP · 네트워크: FishNet + Steamworks (현재 프로토타입은 내장 렌더 파이프라인 + 직접 TCP — 도입 현황은 아래 「구현 현황」)
 - 팀: 6명 (프로그래머 4 · 디자이너 1 · 기획 1)
-- 현재 단계: **기획 확정(기획서 v0.6) → 프로토타입 구현 중**(`Assets/Prototype/`)
+- 현재 단계: **로비·통합 게임 프로토타입 구현/검증 중**
 
 ---
 
 ## 이 리포지토리의 상태
 
-Phase 3~4 구현(스프린트 1~27, 테스트 536개)은 전량 폐기했다. 새 코드는 처음부터 작성하고 있다.
-정식 구현이 아니라 `Assets/Prototype/`의 **프로토타입**이다(2026-10-07 `player, lobby` 커밋부터).
+이전 Phase 3~4 구현(스프린트 1~27, 테스트 536개)은 폐기했고, 현재는 `Assets/Prototype`에서 새 프로토타입을 구현하고 있다. 이번 작업의 기능은 로컬 `ingame` 한 브랜치에 통합했으며 별도 작업 브랜치를 전환할 필요가 없다. 기존 `main`, `player`, `ui/ux`는 변경하지 않았다. 현재 실행 프로토타입은 Built-in 렌더링과 TCP 연결을 사용하며 기획 목표의 URP/FishNet/Steamworks 구현을 완료한 상태는 아니다.
+
+Unity에서 `Assets/Prototype/Scenes/Prototype_Lobby.unity`를 열고 Play → 방 생성/접속 → 게임 시작으로 `Prototype_Game`에 진입한다. 통합 게임 씬을 직접 Play해도 로비부터 시작한다.
+
+포함된 기능은 로비/TCP 시작 연결, 참가자별 헌터 1명 무작위 역할 배정, 원본 캐릭터 에셋의 1인칭 몸·동작, 참가자 위치·시선·동작 전송, 서바이버 임시 체력바, 개발용 F8 전체 시야와 F10 역할 전환이다. 통합 씬의 허수아비는 제거했고 개별 헌터/서바이버 테스트 씬은 유지한다. 체력·명중의 서버 권위 판정 등 완성된 멀티플레이 규칙은 아직 미구현이다.
+
+자세한 실행 방법과 검증 범위는 [프로토타입 안내](Assets/Prototype/README.md)를 참고한다. 개인 원격 저장소 주소가 정해지기 전까지 로컬 커밋만 사용하고 공용 원격에는 푸시하지 않는다.
 
 폐기 사유는 코드 품질이 아니라 팀 구성 변경이다. 1인 개발 전제로 짜인 코드를 4명이 읽고
 이어받는 비용보다, 확정된 문서를 보고 새로 짜는 비용이 낮다고 판단했다.
@@ -20,28 +25,30 @@ Phase 3~4 구현(스프린트 1~27, 테스트 536개)은 전량 폐기했다. �
 다만 **폐기한 코드에서 얻은 검증 지식은 살렸다.** `docs/권위모델_프로토타입_차이.md`가 그것이다
 (프로토타입 코드를 그대로 가져오면 안 되는 지점). `02-구현검증노트.md`는 더 이상 레포에 없다.
 
-### 구현 현황 (`Assets/Prototype/`)
+### 구현 현황 (`Assets/Prototype/`, 2026-10-12 코드 기준)
 
 | 구분 | 내용 |
 |---|---|
-| **구현됨** (씬 단독 검증) | 1인칭 이동·카메라(WASD, 마우스) · 마이크 음량(RMS/dBFS) 시야 · 술래 좌클릭 태그(사거리 1.2m, 전방 ±45°, 쿨다운 적중 2.5초/헛스윙 1.5초) · 도망자 목숨 2.0/1.5/1.0과 메아리 전환 · E 치료 · 메아리 비행(Space 상승 / Left Ctrl 하강) · 술래 공격 애니메이션 재생 · TCP 방 생성/접속 로비(참가자 수 동기화) |
-| **디버그 전용** | 신음(`Moan`)은 로그와 표시만, 붕대는 Inspector 컨텍스트 메뉴로만 확인한다. `F6` 태그 · `F7` 초기화 · `F9` 즉시 고스트 · `F8` 전체 시야는 에디터와 Development Build에서만 컴파일된다 |
-| **미구현** (기획서에만 있음) | FishNet · Steamworks 연동과 게임플레이 동기화 · 인터넷 Relay · SoundPulse(파문) · 차폐 · 밸브 · 탈출 · 배수구 · 수영장 맵 · 숨 게이지/잠수 · 아이템 · 결과 화면 |
+| **구현됨** | TCP 방 생성/접속 로비(주소 코드 `MARCO-…`, 포트 7777, 참가자 수 동기화) · 방장 시작 → `Prototype_Game` 진입 · 헌터 1명 균등 무작위 배정(방장 결정을 전원에 전송) · 등록된 캐릭터 에셋(`Demon` · `UnityChan`) 이름으로 몸·동작 교체 · 1인칭 몸(`FirstPersonBodyView`)과 걷기 / Left Shift 달리기 / 공격 / 상호작용 동작 · 참가자 위치·시선·동작 전송(`PlayerPoseReplicator`) · 서바이버 임시 체력바(로컬) · 마이크 음량(RMS/dBFS) 시야 · 술래 좌클릭 태그(사거리 1.2m, 전방 ±45°, 쿨다운 적중 2.5초/헛스윙 1.5초) · 도망자 목숨 2.0/1.5/1.0과 메아리(고스트) 전환 · E 치료 · 메아리 비행(Space 상승 / Left Ctrl 하강) |
+| **디버그 전용** (에디터와 Development Build에서만 컴파일) | `F8` 전체 시야 · `F10` 본인 역할 전환(Esc 메뉴의 `[DEV] 역할 전환`) · `F6` 태그 · `F7` 초기화 · `F9` 즉시 고스트. 신음(`Moan`)은 로그와 표시만, 붕대는 Inspector 컨텍스트 메뉴로만 확인한다 |
+| **미구현** (기획서에만 있음) | FishNet · Steamworks 연동 · 인터넷 Relay · 체력·명중의 서버 권위 판정 · SoundPulse(파문) · 차폐 · 밸브 · 탈출 · 배수구 · 수영장 맵 · 숨 게이지/잠수 · 아이템 · 결과 화면 |
+| **확인 필요** | `Prototype_Game`에서 다른 참가자를 태그·치료할 때 체력·명중이 전원에게 동기화되는지(코드상 `PrototypeTarget`은 로컬 Player에만 연결돼 있고 위치·시선·동작 전송은 체력 값을 싣지 않는다 — 에디터 실행으로 확인하지 않았다) |
 
-씬 3개는 Build Settings에 등록돼 있다.
-
-| 씬 | 확인하는 것 |
-|---|---|
-| `Prototype_Lobby` | 방 생성/접속(같은 PC · LAN · VPN). 주소 코드(`MARCO-…`)를 복사해 다른 인스턴스에 붙여넣는다. 포트 7777 |
-| `Prototype_HunterTest` | WASD 이동, 좌클릭 태그 판정 |
-| `Prototype_SurvivorTest` | WASD 이동, E 치료, 목숨 상태 |
-
-씬 조작 · 마이크 시야 설정은 `Assets/Prototype/README.md`를 본다.
+Build Settings에는 `Prototype_Lobby` · `Prototype_Game` · `Prototype_HunterTest` · `Prototype_SurvivorTest`가 등록돼 있다.
+`Prototype_HunterTest` · `Prototype_SurvivorTest`는 네트워크 없이 역할별 판정을 확인하는 개별 테스트 씬이다.
+씬 조작 · 마이크 시야 · 캐릭터 에셋 등록은 `Assets/Prototype/README.md`를 본다.
 
 ### 실행과 테스트
 
-- 실행: Unity Hub에서 **6000.5.4f1**로 이 폴더를 열고 위 씬을 연다(Build Settings 목록 기준).
-- 테스트: Unity 테스트 프레임워크는 도입하지 않았다(`com.unity.test-framework`가 manifest에 없다). 자동 테스트는 `Tools/HunterAnimationTimingTests.cs` 하나뿐인 콘솔 프로그램이며, `Assets/Prototype/Scripts/SingleAttackPlayback.cs`와 함께 컴파일해 실행한다. 레포에 `.csproj`는 없다. .NET 9 SDK로 두 파일만 담은 임시 콘솔 프로젝트에서 실행하면 `PASS: 53 attack playback assertions`가 나온다(2026-10-11 확인).
+- 실행: Unity Hub에서 **6000.5.4f1**로 이 폴더를 열고 위 설명대로 `Prototype_Lobby`에서 Play해 시작한다. 조작: WASD 이동 · 마우스 시선 · Left Shift 달리기 · 좌클릭 태그(헌터) · E 상호작용(서바이버) · Left Alt 즉시 암전/강제 뮤트 · Esc 커서 해제.
+- 테스트: Unity 테스트 프레임워크는 도입하지 않았다(`com.unity.test-framework`가 manifest에 없다). 자동 테스트는 `Tools/`의 콘솔 프로그램 두 개이며, 레포에 `.csproj`는 없다. .NET 9 SDK로 아래 파일만 담은 임시 콘솔 프로젝트를 만들어 실행한다(2026-10-12 확인).
+
+| 테스트 | 함께 컴파일할 파일 | 결과 |
+|---|---|---|
+| `Tools/HunterAnimationTimingTests.cs` | `Assets/Prototype/Scripts/SingleAttackPlayback.cs` | `PASS: 53 attack playback assertions` |
+| `Tools/RoomLaunchProtocolTests.cs` | `Assets/Prototype/Scripts/RoomLaunchProtocol.cs` · `MatchLaunchContext.cs` · `PlayerPoseProtocol.cs` | `PASS: 45 room launch assertions` |
+
+- Unity 에디터 쪽 검증 스크립트(`Assets/Prototype/Editor/`의 `LobbyFlowVerification` · `CombinedSceneVerification`)는 이 정리에서 실행하지 않았다(확인 필요).
 - 도구: `python Tools/inspect_demon_animation.py` — 레포 루트에서 실행하면 `Demon.fbx`의 애니메이션 길이와 반복 구간을 읽어 출력한다. 에셋은 수정하지 않는다(2026-10-11 확인).
 
 ---
@@ -94,7 +101,7 @@ Phase 3~4 구현(스프린트 1~27, 테스트 536개)은 전량 폐기했다. �
 **2층도 존재한 적이 없다.** 물탱크실(밸브 C)과 관람석이 만들어진 적이 없어 층간 차폐 규칙이
 한 번도 돌아가지 않았다.
 
-상세는 기획서 §5.9-1(숨 게이지) · §6.1-1(수중 밸브) · §5.6(차폐)을 볼 것. 프로토타입에는 아직 잠수 · 2층 · 맵이 없다.
+상세는 기획서 §5.9-1(숨 게이지) · §6.1-1(수중 밸브) · §5.6(차폐)을 볼 것. 프로토타입에는 아직 잠수 · 2층 · 수영장 맵이 없다.
 (예전 우선순위 정리인 `02-구현검증노트.md`는 레포에서 사라졌다.)
 
 ---
@@ -107,8 +114,9 @@ Phase 3~4 구현(스프린트 1~27, 테스트 536개)은 전량 폐기했다. �
 | 항목 | 상태 |
 |---|---|
 | 프로젝트 셋업 | 완료(Unity 6000.5.4f1) |
-| 씬 부트스트랩 | 프로토타입 수준(`PrototypeSceneBootstrap`) |
+| 씬 부트스트랩 | 프로토타입 수준(`PrototypeSceneBootstrap`, 로비 → `Prototype_Game`) |
 | 입력 시스템과 1인칭 카메라 | 프로토타입 수준(구 `Input` 매니저 사용) |
 | 음성 캡처 | 일부 — 마이크 RMS/dBFS 시야만. 밴드패스 · 캘리브레이션(기획서 §5.2)은 **미구현** |
-| 어셈블리 정의 · 빌드 파이프라인 · 테스트 하네스 | **미착수**(콘솔 테스트 1개 제외) |
+| 어셈블리 정의 · 빌드 파이프라인 | **미착수** |
+| 테스트 하네스 | 콘솔 테스트 2개뿐(Unity 테스트 프레임워크 없음) |
 | 차폐 판정 순수 함수와 진단 로그 | **미착수** |

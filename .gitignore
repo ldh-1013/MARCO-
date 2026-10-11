@@ -16,6 +16,8 @@
 
 # IDE (팀 공유 .vscode/ 설정은 커밋한다 — 프로토타입 레포도 extensions · launch · settings 3개를 추적)
 .vs/
+/.idea/
+/.gradle/
 *.DotSettings.user
 /[Aa]ssets/Plugins/Editor/JetBrains*
 
@@ -65,4 +67,5 @@ CLAUDE.local.md
 /Claude outputs/
 # OS
 Thumbs.db
+Desktop.ini
 .DS_Store

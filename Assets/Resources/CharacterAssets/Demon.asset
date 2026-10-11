@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 225fa2721fb348a0803abc746fa92140, type: 3}
+  m_Name: Demon
+  visualPrefab: {fileID: 6334826068141619221, guid: 5bba62d8b65dae44898012275d24ba9e, type: 3}
+  modelOffset: {x: 0, y: -1, z: 0}
+  modelScale: {x: 1, y: 1, z: 1}
+  idleClip: {fileID: 6782595489454084048, guid: c3d73ba06daaeef40b556c623d33fc02, type: 3}
+  walkClip: {fileID: 3486042369983476132, guid: c3d73ba06daaeef40b556c623d33fc02, type: 3}
+  runClip: {fileID: 0}
+  attackClip: {fileID: 5825753709171574083, guid: c3d73ba06daaeef40b556c623d33fc02, type: 3}
+  interactionClip: {fileID: 0}
+  attackDuration: 0.45
+  attackSourceSpan: 0.8
+  walkCycleDuration: 1.2
+  firstPersonEyeOffset: {x: 0, y: 0.1, z: 0.08}
+  genericBones:
+  - bone: 0
+    name: Pelvis
+  - bone: 1
+    name: Leg1.L
+  - bone: 2
+    name: Leg1.R
+  - bone: 5
+    name: Foot.L
+  - bone: 6
+    name: Foot.R
+  - bone: 7
+    name: Spine1
+  - bone: 8
+    name: Spine2
+  - bone: 9
+    name: Neck
+  - bone: 10
+    name: Head
+  - bone: 13
+    name: Arm1.L
+  - bone: 14
+    name: Arm1.R
+  - bone: 15
+    name: Arm2.L
+  - bone: 16
+    name: Arm2.R
+  - bone: 17
+    name: Hand.L
+  - bone: 18
+    name: Hand.R

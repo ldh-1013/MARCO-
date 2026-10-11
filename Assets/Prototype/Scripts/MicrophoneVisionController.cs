@@ -27,6 +27,9 @@ namespace Marco.Prototype
         private string status = "마이크 준비 중… 작은 목소리로 말해 보세요.";
         private bool developmentFullVision;
         public bool IsCenterVisible => developmentFullVision || radius > 0.01f;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public bool DevelopmentFullVision => developmentFullVision;
+#endif
 
         private void Start()
         {

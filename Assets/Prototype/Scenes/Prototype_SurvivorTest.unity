@@ -42,6 +42,8 @@ GameObject:
   - component: {fileID: 2009}
   - component: {fileID: 2007}
   - component: {fileID: 2008}
+  - component: {fileID: 2010}
+  - component: {fileID: 2011}
   m_Layer: 0
   m_Name: Survivor Player
   m_TagString: Untagged
@@ -109,6 +111,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2000}
   m_Enabled: 1
   m_Script: {fileID: 11500000, guid: 76111111111111111111111111111111, type: 3}
+  characterAssetName: UnityChan
   visuals:
   - {fileID: 8001}
   - {fileID: 9001}
@@ -519,3 +522,18 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 8242d247159ec462794ba075ca8c938e, type: 3}
   m_PrefabInstance: {fileID: 9000}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2010
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_GameObject: {fileID: 2000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: 91797d1a7fb441209627640d0878a183, type: 3}
+  panelSize: {x: 260, y: 84}
+  bottomRightMargin: {x: 28, y: 28}
+--- !u!114 &2011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_GameObject: {fileID: 2000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: 7a877148521b48cbbf708c4d7149130b, type: 3}
+  playerCamera: {fileID: 3002}

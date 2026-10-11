@@ -7,15 +7,14 @@ namespace Marco.Prototype
     {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private MicrophoneVisionController vision;
-        private bool enabledVision;
         private void Start() { vision = GetComponent<MicrophoneVisionController>(); }
         private void Update()
         {
             if (!Input.GetKeyDown(KeyCode.F8)) return;
-            enabledVision = !enabledVision; vision.SetDevelopmentFullVision(enabledVision);
+            bool enabledVision = !vision.DevelopmentFullVision; vision.SetDevelopmentFullVision(enabledVision);
             Debug.Log("Development full vision: " + (enabledVision ? "ON" : "OFF"));
         }
-        private void OnGUI() { if (enabledVision) GUI.Label(new Rect(Screen.width - 360, 25, 325, 28), "[DEV] 전체 시야 ON · F8로 해제"); }
+        private void OnGUI() { if (vision != null && vision.DevelopmentFullVision) GUI.Label(new Rect(Screen.width - 360, 25, 325, 28), "[DEV] 전체 시야 ON · F8로 해제"); }
 #endif
     }
 }
