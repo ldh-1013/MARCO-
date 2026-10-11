@@ -1,0 +1,68 @@
+# ---- Unity 생성 폴더 (GitHub Unity.gitignore 기준) ----
+.utmp/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild*/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+*.log
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Blender 백업
+*.blend1
+*.blend1.meta
+
+# IDE (팀 공유 .vscode/ 설정은 커밋한다 — 프로토타입 레포도 extensions · launch · settings 3개를 추적)
+.vs/
+*.DotSettings.user
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Unity가 만드는 솔루션 · 프로젝트 파일 — 루트만 (FishNet 내부 Mono.Cecil.sln은 유지)
+/*.csproj
+/*.sln
+/*.slnx
+*.unityproj
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# 크래시 · 빌드 부산물
+sysinfo.txt
+mono_crash.*
+*.apk
+*.aab
+*.unitypackage
+*.unitypackage.meta
+*.app
+crashlytics-build.properties
+
+# 테스트 러너 자동 생성 씬
+InitTestScene*.unity*
+/[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# 자동 생성 캐시
+/UIElementsSchema/
+/[Aa]ssets/[Ss]ceneDependencyCache*
+
+# ---- 이 프로젝트 추가 ----
+# Claude Code 개인 설정 (팀 공유는 CLAUDE.md)
+CLAUDE.local.md
+.claude/settings.local.json
+# 개인 작업 폴더
+/Claude outputs/
+# OS
+Thumbs.db
+.DS_Store
