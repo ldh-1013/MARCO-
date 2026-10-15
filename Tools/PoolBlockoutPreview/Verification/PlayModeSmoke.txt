@@ -1,0 +1,1 @@
+PASS: entered Play mode; viewer camera, 1F/2F/all toggles, pool visibility and wall cutaway initialized without runtime errors.

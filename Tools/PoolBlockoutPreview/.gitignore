@@ -1,0 +1,10 @@
+# Standalone preview caches
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/PoolV11Reports/
+/*.csproj
+/*.sln
+/*.slnx
