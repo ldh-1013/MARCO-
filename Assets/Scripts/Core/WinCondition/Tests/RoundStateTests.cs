@@ -61,7 +61,27 @@ namespace Marco.Core.WinCondition.Tests
         [TestCase(3)]
         [TestCase(4)]
         [TestCase(5)]
-        public void EscapeRequiredCountMet_RunnersWin(int runnerCount)
+        public void EscapeRequiredCountMet_RoundContinues(int runnerCount)
+        {
+            // 10-01 개정: 요구 인원 달성만으로는 끝나지 않는다
+            var ctx = CreateRound(runnerCount);
+
+            for (int playerId = 1; playerId <= ctx.EscapeRequired; playerId++)
+            {
+                Assert.IsTrue(ctx.Round.NotifyRunnerEscaped(playerId));
+            }
+
+            ctx.Round.Tick(0.01f);
+
+            Assert.AreEqual(RoundResult.InProgress, ctx.Round.Result);
+            Assert.AreEqual(0, ctx.Events.RoundEndedCallCount);
+        }
+
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        public void EscapeRequiredCountMet_ThenRestAllTagged_RunnersWin(int runnerCount)
         {
             var ctx = CreateRound(runnerCount);
 
@@ -72,9 +92,38 @@ namespace Marco.Core.WinCondition.Tests
 
             ctx.Round.Tick(0.01f);
 
+            for (int playerId = ctx.EscapeRequired + 1; playerId <= runnerCount; playerId++)
+            {
+                Assert.IsTrue(ctx.Round.NotifyRunnerTagged(playerId));
+            }
+
+            ctx.Round.Tick(0.01f);
+
             Assert.AreEqual(RoundResult.RunnersWin, ctx.Round.Result);
             Assert.AreEqual(1, ctx.Events.RoundEndedCallCount);
             Assert.AreEqual(RoundResult.RunnersWin, ctx.Events.LastRoundResult);
+        }
+
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        public void EscapeRequiredCountMet_ThenTimeLimitExpires_RunnersWin(int runnerCount)
+        {
+            var ctx = CreateRound(runnerCount);
+
+            for (int playerId = 1; playerId <= ctx.EscapeRequired; playerId++)
+            {
+                Assert.IsTrue(ctx.Round.NotifyRunnerEscaped(playerId));
+            }
+
+            ctx.Round.Tick(0.01f);
+            Assert.AreEqual(RoundResult.InProgress, ctx.Round.Result);
+
+            ctx.Round.Tick(ctx.TimeLimit); // 남은 도망자는 미탈출로 시간 종료
+
+            Assert.AreEqual(RoundResult.RunnersWin, ctx.Round.Result);
+            Assert.AreEqual(1, ctx.Events.RoundEndedCallCount);
         }
 
         [TestCase(2)]
@@ -152,10 +201,14 @@ namespace Marco.Core.WinCondition.Tests
             }
 
             int escapingPlayer = playerId;
-            int taggedPlayer = playerId + 1;
 
-            // 호출 순서를 일부러 태그 먼저로 뒤집어도 "탈출 먼저" 처리 순서 때문에 결과는 바뀌지 않아야 함
-            Assert.IsTrue(ctx.Round.NotifyRunnerTagged(taggedPlayer));
+            // 호출 순서를 일부러 태그 먼저로 뒤집어도 "탈출 먼저" 처리 순서 때문에 결과는 바뀌지 않아야 함.
+            // 요구 인원 달성만으로는 안 끝나므로 나머지는 전부 태그해서 전원 확정시킨다.
+            for (int taggedPlayer = escapingPlayer + 1; taggedPlayer <= runnerCount; taggedPlayer++)
+            {
+                Assert.IsTrue(ctx.Round.NotifyRunnerTagged(taggedPlayer));
+            }
+
             Assert.IsTrue(ctx.Round.NotifyRunnerEscaped(escapingPlayer));
 
             ctx.Round.Tick(0.01f);
@@ -223,6 +276,11 @@ namespace Marco.Core.WinCondition.Tests
             for (int playerId = 1; playerId <= ctx.EscapeRequired; playerId++)
             {
                 ctx.Round.NotifyRunnerEscaped(playerId);
+            }
+
+            for (int playerId = ctx.EscapeRequired + 1; playerId <= runnerCount; playerId++)
+            {
+                ctx.Round.NotifyRunnerTagged(playerId); // 전원 확정시켜서 결과를 낸다
             }
 
             ctx.Round.Tick(0.01f);

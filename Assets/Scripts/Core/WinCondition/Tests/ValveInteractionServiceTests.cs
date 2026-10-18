@@ -91,6 +91,59 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual((ValveId.A, ValveSoundEvent.RotatingStopped), sound.Notifications[1]);
         }
 
+        // 버그 수정: 열린 밸브 앞에서 E를 계속 누르고 있어도(EndWork 없음) 역류가 일어나서 닫혀야 한다.
+        [Test]
+        public void HoldingWorkThroughOpen_ValveStillClosesAfter210Seconds()
+        {
+            var (service, board, roster, _, _) = CreateService(ValveId.A);
+            roster.SetRole(1, PlayerRole.Runner);
+            var valve = board.GetValve(ValveId.A);
+
+            service.TryBeginWork(1, ValveId.A); // 누르기만 하고 끝까지 놓지 않음
+
+            for (int i = 0; i < 8; i++) board.Tick(1f);
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+
+            for (int i = 0; i < 210; i++) board.Tick(1f); // 유예 180 + 역류 30
+
+            Assert.AreEqual(ValveStatus.Closed, valve.Status);
+            Assert.AreEqual(0f, valve.Progress, Tolerance);
+        }
+
+        [Test]
+        public void OpenValve_TryBeginWork_IsRejectedWithoutSound()
+        {
+            var (service, board, roster, sound, _) = CreateService(ValveId.A);
+            roster.SetRole(1, PlayerRole.Runner);
+            roster.SetRole(2, PlayerRole.Runner);
+
+            service.TryBeginWork(1, ValveId.A);
+            board.Tick(8f); // Open
+            int soundCountAfterOpen = sound.Notifications.Count;
+
+            Assert.IsFalse(service.TryBeginWork(2, ValveId.A));
+            Assert.AreEqual(0, board.GetValve(ValveId.A).WorkerCount);
+            Assert.AreEqual(soundCountAfterOpen, sound.Notifications.Count);
+
+            board.Tick(181f); // 역류가 시작되면 다시 잡을 수 있다
+            Assert.IsTrue(service.TryBeginWork(2, ValveId.A));
+        }
+
+        [Test]
+        public void ValveOpening_NotifiesRotatingStoppedOnce()
+        {
+            var (service, board, roster, sound, _) = CreateService(ValveId.A);
+            roster.SetRole(1, PlayerRole.Runner);
+
+            service.TryBeginWork(1, ValveId.A);
+            board.Tick(8f); // Open -> 작업자 목록이 비워지면서 정지 알림
+            service.EndWork(1, ValveId.A); // 이미 빠져 있으니 추가 알림 없음
+
+            Assert.AreEqual(2, sound.Notifications.Count);
+            Assert.AreEqual((ValveId.A, ValveSoundEvent.RotatingStarted), sound.Notifications[0]);
+            Assert.AreEqual((ValveId.A, ValveSoundEvent.RotatingStopped), sound.Notifications[1]);
+        }
+
         [Test]
         public void ValveStatusAndProgress_AreForwardedToRoundEventSink()
         {

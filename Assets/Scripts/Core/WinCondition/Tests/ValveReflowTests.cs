@@ -72,33 +72,89 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual(ValveStatus.Closed, valve.Status);
         }
 
-        // v0.6: 역류 중 재작업
         [Test]
-        public void ReworkDuringReflow_CompletingRotation_ReturnsToOpen()
+        public void ValveOpening_ClearsWorkers()
+        {
+            var valve = new Valve(new WinConditionConfig());
+
+            valve.BeginWork(1);
+            valve.BeginWork(2);
+            valve.Tick(5f); // 2인 5초 -> Open
+
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+            Assert.AreEqual(0, valve.WorkerCount);
+        }
+
+        // 기획서 6.1-2: 역류 중 재작업은 0부터 다시, 회전 시간은 처음과 동일(1인 8초)
+        [Test]
+        public void ReworkDuringReflow_OneWorker_TakesFull8Seconds()
         {
             var valve = OpenValve(new WinConditionConfig());
 
-            valve.Tick(185f); // 유예 180 + 역류 5초 진행 -> Reflowing, Progress = 1 - 5/30 = 0.8333
+            valve.Tick(181f); // 유예 180 + 역류 1초 -> Reflowing
             Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
 
             valve.BeginWork(1);
-            valve.Tick(2f); // 1인 속도(0.125/초)로 0.1667만큼 더 필요 -> 1.0 넘겨서 완료
+            valve.Tick(7.9f); // 0.125 * 7.9 = 0.9875, 아직 미완료
+
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            Assert.AreEqual(0.9875f, valve.ReworkProgress, Tolerance);
+
+            valve.Tick(0.2f); // 누적 8.1초 -> 완료
 
             Assert.AreEqual(ValveStatus.Open, valve.Status);
             Assert.AreEqual(1f, valve.Progress, Tolerance);
+            Assert.AreEqual(0f, valve.ReworkProgress, Tolerance);
         }
 
         [Test]
-        public void ReworkDuringReflow_NotYetComplete_StaysReflowingStatus()
+        public void ReworkDuringReflow_TwoWorkers_TakeAbout5Seconds()
         {
             var valve = OpenValve(new WinConditionConfig());
 
-            valve.Tick(185f); // Reflowing, Progress = 0.8333
+            valve.Tick(181f); // Reflowing
             valve.BeginWork(1);
-            valve.Tick(0.5f); // 0.125 * 0.5 = 0.0625 만큼만 회복, 아직 1.0 미달
+            valve.BeginWork(2);
+            valve.Tick(4.9f); // 0.125 * 1.6 * 4.9 = 0.98
 
             Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
-            Assert.AreEqual(0.8958f, valve.Progress, Tolerance);
+
+            valve.Tick(0.2f);
+
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+        }
+
+        [Test]
+        public void ReworkDuringReflow_ReflowKeepsClosing()
+        {
+            var valve = OpenValve(new WinConditionConfig());
+
+            valve.Tick(185f); // 역류 5초 -> Progress = 1 - 5/30
+            valve.BeginWork(1);
+            valve.Tick(3f); // 재작업 중에도 역류는 계속: 1 - 8/30
+
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            Assert.AreEqual(1f - 8f / 30f, valve.Progress, Tolerance);
+            Assert.AreEqual(0.375f, valve.ReworkProgress, Tolerance);
+        }
+
+        [Test]
+        public void ReflowFinishesBeforeRework_BecomesClosed_AndDiscardsReworkProgress()
+        {
+            var valve = OpenValve(new WinConditionConfig());
+
+            valve.Tick(205f); // 역류 25초, 닫힐 때까지 5초 남음
+            valve.BeginWork(1);
+            valve.Tick(5f); // 재작업은 0.625까지밖에 못 감 -> 역류가 먼저 끝남
+
+            Assert.AreEqual(ValveStatus.Closed, valve.Status);
+            Assert.AreEqual(0f, valve.Progress, Tolerance);
+            Assert.AreEqual(0f, valve.ReworkProgress, Tolerance);
+
+            valve.Tick(1f); // 계속 잡고 있으면 Closed에서 평소처럼 0부터 회전
+
+            Assert.AreEqual(ValveStatus.Rotating, valve.Status);
+            Assert.AreEqual(0.125f, valve.Progress, Tolerance);
         }
 
         [Test]
@@ -108,7 +164,7 @@ namespace Marco.Core.WinCondition.Tests
 
             valve.Tick(185f); // Reflowing 진입
             valve.BeginWork(1);
-            valve.Tick(2f); // 재작업 완료 -> Open, 유예 타이머 0부터 재시작
+            valve.Tick(8f); // 재작업 완료 -> Open, 유예 타이머 0부터 재시작
 
             Assert.AreEqual(ValveStatus.Open, valve.Status);
 
