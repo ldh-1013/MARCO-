@@ -41,6 +41,12 @@ namespace Marco.Core.WinCondition
                 _roundEventSink.OnValveStatusChanged(valveId, status);
                 _roundEventSink.OnValveProgressChanged(valveId, valve.Progress);
 
+                // 열리는 순간 Valve가 작업자 목록을 비우므로 회전이 멈춘 것. Open은 작업자가 있어야만 도달하니 항상 알린다.
+                if (status == ValveStatus.Open)
+                {
+                    _soundSink.NotifyValveSound(valveId, ValveSoundEvent.RotatingStopped);
+                }
+
                 // 상태가 바뀔 때마다 게이트를 재평가한다. latch라서 여러 번 평가해도 안전하고,
                 // 한 Tick 안에서 밸브 여러 개가 같이 전환돼도 마지막 평가 시점엔 정확한 동시 개방 수를 보게 된다.
                 _gate.Evaluate(_valveBoard.OpenValveCount);
@@ -53,10 +59,12 @@ namespace Marco.Core.WinCondition
         }
 
         // 살아있는 Runner만 밸브를 잡을 수 있다 (Seeker, Echo 불가).
+        // 이미 열린(Open) 밸브는 돌릴 게 없으니 거부한다. 역류가 시작되면 다시 잡을 수 있다.
         public bool TryBeginWork(int playerId, ValveId valveId)
         {
             if (!_valveBoard.Valves.TryGetValue(valveId, out var valve)) return false;
             if (!IsAliveRunner(playerId)) return false;
+            if (valve.Status == ValveStatus.Open) return false;
 
             bool wasWorking = valve.WorkerCount > 0;
             valve.BeginWork(playerId);

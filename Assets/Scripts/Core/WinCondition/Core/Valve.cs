@@ -25,6 +25,10 @@ namespace Marco.Core.WinCondition
 
         public ValveStatus Status { get; private set; } = ValveStatus.Closed;
         public float Progress { get; private set; } = 0f;
+
+        // 역류 중 재작업 진행도(0.0 ~ 1.0). 역류로 줄어드는 Progress와 따로 0부터 채운다. 역류 중이 아니면 항상 0.
+        public float ReworkProgress { get; private set; } = 0f;
+
         public int WorkerCount => _activeWorkerIds.Count;
 
         // 상태가 바뀔 때마다 새 상태를 알려줌 (UI/네트워크 쪽에서 구독)
@@ -107,36 +111,44 @@ namespace Marco.Core.WinCondition
             }
         }
 
-        // Reflowing 상태: 작업자가 없으면 30초에 걸쳐 진행도를 1 -> 0으로 줄이고, 균등 간격으로 물소리 알림을 보낸다.
-        // 작업자가 있으면(v0.6: 역류 중 재작업 가능) 닫히는 걸 멈추고 평소와 같은 속도로 다시 진행도를 올린다.
+        // Reflowing 상태: 30초에 걸쳐 진행도를 1 -> 0으로 줄이고, 균등 간격으로 물소리 알림을 보낸다.
+        // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 처음과 동일).
+        // 재작업이 먼저 끝나면 Open 복귀 + 180초 유예 리셋, 역류가 먼저 끝나면 Closed.
+        // TODO(기획 확인): "재작업 중에도 역류는 멈추지 않고 계속 닫힌다"와
+        // "역류가 먼저 끝나면 재작업 진행도를 버린다"는 임시 해석.
+        // 완료 전까지는 Status를 Reflowing으로 유지한다(Rotating으로 바꾸면 다음 Tick이 TickWorking 경로로 새서 역류 타이머가 깨짐).
         private void TickReflowing(float dt)
         {
-            if (WorkerCount > 0)
-            {
-                TickReworkDuringReflow(dt);
-                return;
-            }
-
-            float remaining = dt;
             float closeLeft = _config.ReflowCloseDurationSeconds - _reflowElapsedSeconds;
-            float consumed = remaining < closeLeft ? remaining : closeLeft;
+            float step = dt < closeLeft ? dt : closeLeft; // 이번 dt 중 역류가 실제로 진행되는 시간
 
-            if (consumed > 0f)
+            // 이번 step 안에 재작업이 끝나면 그 순간까지만 역류를 진행시키고 Open으로 돌린다.
+            // 역류 종료와 정확히 같은 순간이면 재작업을 먼저 인정한다(플레이어 행동이 시간 종료보다 먼저).
+            float reworkRate = GetWorkRatePerSecond(WorkerCount);
+            if (reworkRate > 0f)
             {
-                _reflowElapsedSeconds += consumed;
-                Progress -= consumed / _config.ReflowCloseDurationSeconds;
-                remaining -= consumed;
-                FireDueRippleEvents();
+                float reworkTimeLeft = (1f - ReworkProgress) / reworkRate;
+                if (reworkTimeLeft <= step)
+                {
+                    AdvanceReflowClose(reworkTimeLeft);
+                    BecomeOpen(); // 남은 dt는 버림 (일반 작업 완료 때와 동일)
+                    return;
+                }
             }
+
+            TickReworkProgress(step);
+            AdvanceReflowClose(step);
 
             if (_reflowElapsedSeconds >= _config.ReflowCloseDurationSeconds)
             {
                 Progress = 0f;
+                ReworkProgress = 0f; // 역류가 먼저 끝났으니 재작업 진행도는 버린다
                 _reflowElapsedSeconds = 0f;
                 _reflowRipplesFired = 0;
                 _openElapsedSeconds = 0f;
                 SetStatus(ValveStatus.Closed);
 
+                float remaining = dt - step;
                 if (remaining > 0f)
                 {
                     // 완전히 닫힌 뒤 남은 시간은 그대로 다음 작업 진행에 사용 (예: 이미 작업자가 대기 중이면 바로 진행)
@@ -145,29 +157,33 @@ namespace Marco.Core.WinCondition
             }
         }
 
-        // 역류 중 재작업: 회전에 필요한 시간은 처음과 같음(1인 8초, 다인 배율 동일) → 평소와 같은 작업 속도로 Progress를 올린다.
-        // TODO(기획 확인): "역류 중 재작업 진행도를 어떻게 셀지" 공식 답변 없음.
-        // 지금은 역류로 줄어든 현재 Progress에서 이어서(처음부터 다시 X) 같은 속도로 올라가는 것으로 임시 처리함
-        // (일반 작업 중단 후 재개 때의 기존 동작과 동일한 방식이라 일관성 있게 골랐음).
-        // 완료 전까지는 Status를 Reflowing으로 유지해야 함(Rotating으로 바꾸면 다음 Tick이 TickWorking 경로로 새서
-        // 역류 타이머 상태가 깨짐 - UpdateStatusFromProgress를 그대로 재사용하면 안 되는 이유).
-        private void TickReworkDuringReflow(float dt)
+        // 역류를 seconds만큼 진행: 진행도를 줄이고, 때가 된 물소리 알림을 보낸다.
+        private void AdvanceReflowClose(float seconds)
         {
-            Progress += GetWorkRatePerSecond(WorkerCount) * dt;
+            if (seconds <= 0f) return;
 
-            if (Progress >= 1f)
+            _reflowElapsedSeconds += seconds;
+            Progress -= seconds / _config.ReflowCloseDurationSeconds;
+            FireDueRippleEvents();
+        }
+
+        // 재작업 진행도: 1인 8초, 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
+        // TODO(기획 확인): 역류 중 재작업을 멈췄을 때도 일반 작업처럼 유예 후 감쇠하는지 미정(지금은 같은 규칙으로 처리).
+        private void TickReworkProgress(float seconds)
+        {
+            if (seconds <= 0f) return;
+
+            if (WorkerCount > 0)
             {
-                Progress = 1f;
-                _openElapsedSeconds = 0f;
-                _reflowElapsedSeconds = 0f;
-                _reflowRipplesFired = 0;
-                SetStatus(ValveStatus.Open); // 180초 유예가 처음부터 다시 시작됨
+                _noWorkerTracker.ResetGrace();
+                ReworkProgress += GetWorkRatePerSecond(WorkerCount) * seconds;
             }
             else
             {
-                Progress = Clamp01(Progress);
-                // 아직 미완료: Status는 Reflowing 유지 (다음 Tick도 이 메서드를 계속 탐)
+                ReworkProgress -= _noWorkerTracker.ConsumeDecay(seconds);
             }
+
+            ReworkProgress = Clamp01(ReworkProgress);
         }
 
         // TODO(기획 확인): 균등 간격(30초 ÷ 3회 = 10초마다)으로 임시 처리. 정확한 타이밍 미정.
@@ -200,22 +216,27 @@ namespace Marco.Core.WinCondition
             }
             else if (Progress >= 1f)
             {
-                Progress = 1f;
-
-                if (Status != ValveStatus.Open)
-                {
-                    // 새로 열렸으니 역류 타이머를 처음부터 다시 시작
-                    _openElapsedSeconds = 0f;
-                    _reflowElapsedSeconds = 0f;
-                    _reflowRipplesFired = 0;
-                }
-
-                SetStatus(ValveStatus.Open);
+                BecomeOpen();
             }
             else
             {
                 SetStatus(ValveStatus.Rotating);
             }
+        }
+
+        // 일반 작업 완료와 역류 중 재작업 완료가 같이 쓰는 "열림" 처리. 역류 타이머를 처음부터 다시 시작한다.
+        // 작업자 목록을 비우는 이유: E를 계속 누르고 있던 사람이 남아 있으면 역류가 시작되자마자
+        // 재작업으로 다시 열려버려서 역류가 영원히 안 일어나기 때문. 다시 돌리려면 역류 중에 새로 잡아야 한다.
+        private void BecomeOpen()
+        {
+            Progress = 1f;
+            ReworkProgress = 0f;
+            _openElapsedSeconds = 0f;
+            _reflowElapsedSeconds = 0f;
+            _reflowRipplesFired = 0;
+            _activeWorkerIds.Clear();
+            _noWorkerTracker.ResetGrace();
+            SetStatus(ValveStatus.Open); // 구독자가 WorkerCount == 0을 보도록, 비운 다음에 알린다
         }
 
         private void SetStatus(ValveStatus next)

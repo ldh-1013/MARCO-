@@ -40,7 +40,7 @@
 | 호출 | 뜻 | 언제 호출되나 |
 |---|---|---|
 | `NotifyValveSound(valveId, ValveSoundEvent.RotatingStarted)` | 밸브 회전 시작 | 그 밸브에 아무도 없다가 **첫 작업자**가 잡는 순간 (같은 밸브에 2번째, 3번째 사람이 추가돼도 다시 안 울림) |
-| `NotifyValveSound(valveId, ValveSoundEvent.RotatingStopped)` | 밸브 회전 중지 | **마지막 작업자**가 손을 떼거나 탈락하는 순간 |
+| `NotifyValveSound(valveId, ValveSoundEvent.RotatingStopped)` | 밸브 회전 중지 | **마지막 작업자**가 손을 떼거나 탈락하는 순간, 또는 **밸브가 열리는(Open) 순간** (열리면 작업자 목록이 비워지므로 1번 울림. 그 뒤 `EndWork`가 와도 다시 안 울림) |
 | `NotifyValveSound(valveId, ValveSoundEvent.ReflowRipple)` | 역류 물소리 파문 | 역류 30초 동안 균등 간격으로 3회 (TODO: 정확한 타이밍은 기획 확인 전) |
 
 **남경 쪽이 할 일**: 이 인터페이스를 구현해서 `valveId` + `ValveSoundEvent`만 보고 실제 사운드/파문을 재생하면 됨.
@@ -72,9 +72,12 @@
 
 | 메서드 | 설명 | 거부 조건 |
 |---|---|---|
-| `TryBeginWork(playerId, valveId)` | 밸브 잡기 시작. 성공하면 `true` | 활성 밸브가 아님 / Runner가 아님(Seeker, Echo) / 탈락한 Runner |
+| `TryBeginWork(playerId, valveId)` | 밸브 잡기 시작. 성공하면 `true` | 활성 밸브가 아님 / Runner가 아님(Seeker, Echo) / 탈락한 Runner / **이미 열린(Open) 밸브** (거부 시 소리 없음) |
 | `EndWork(playerId, valveId)` | 밸브 놓기 | 없음 (항상 적용, 등록 안 된 사람이면 조용히 무시) |
 | `RemovePlayerFromAllValves(playerId)` | 탈락·연결 끊김 처리 | 모든 밸브의 작업자 목록에서 그 사람을 뺀다. 리셋이 아니라 "작업 중단"과 같은 취급(진행도는 유예 후 감쇠) |
+
+- **밸브가 열리는 순간 작업자 목록이 비워진다.** E를 계속 누르고 있어도 그 사람은 더 이상 작업자가 아니다. 역류 중에 다시 돌리려면 `TryBeginWork`를 **새로** 호출해야 한다(E를 떼었다 다시 누르기).
+- **역류 중 재작업**: 별도 진행도 `Valve.ReworkProgress`(0.0~1.0)를 0부터 채운다(1인 8초, 다인 배율 동일). 그동안 역류는 멈추지 않고 계속 닫힌다(`Valve.Progress`는 계속 줄어듦). 재작업이 먼저 끝나면 Open 복귀 + 180초 유예 리셋, 역류가 먼저 끝나면 Closed가 되고 재작업 진행도는 버린다. 재운 쪽 UI에서 재작업 게이지를 보여주려면 `ReworkProgress`를 폴링하면 됨. (TODO: 역류 계속 진행/재작업 진행도 폐기/손 뗐을 때 감쇠 여부는 기획 확인 전)
 
 **승민 쪽이 할 일**: 입력(E 홀드 등, 재운 파트에서 받은 신호)을 받으면 `playerId`만 뽑아서 이 서비스의 `TryBeginWork`/`EndWork`를 호출. 플레이어가 죽거나 나가면 `RemovePlayerFromAllValves`를 호출.
 
@@ -92,7 +95,9 @@
 | `Tick(dt)` | 시간 진행 + 그동안 쌓인 탈출/태그를 **탈출 → 태그 → 시간 종료 → 판정** 순서로 한꺼번에 처리 | 결과가 이미 확정되면 아무 것도 안 함 |
 
 - `NotifyRunnerTagged`/`NotifyPlayerLeft`로 처리된 사람은 자동으로 `ValveInteractionService.RemovePlayerFromAllValves`가 호출돼서 밸브 작업에서 빠진다.
-- 같은 틱에 탈출과 태그가 동시에 들어오면(호출 순서와 무관하게) **탈출 쪽이 먼저 판정**된다. 탈출로 이미 승부가 나면 그 틱의 나머지(태그, 시간 종료 확인)는 처리되지 않는다.
+- **라운드가 끝나는 경우 (기획서 10-01 개정)**: ① 도망자 전원 확정(탈출+태그) ② 마지막 생존자 탈출 ③ 최후 생존자 페이즈 시간 종료 ④ 제한시간 종료 ⑤ 술래 이탈(`Void`). **탈출 요구 인원을 채운 것만으로는 끝나지 않는다.**
+- **판정**: 끝나는 순간 `탈출 인원 ≥ 탈출 요구`면 `RunnersWin`, 아니면 `SeekersWin`. 단 마지막 생존자 탈출(마지막 남은 도망자가 탈출로 확정)은 항상 `RunnersWin`.
+- 같은 틱에 탈출과 태그가 동시에 들어오면(호출 순서와 무관하게) **탈출 쪽이 먼저 처리**된다. 그 틱에서 승부가 나면 나머지(태그, 시간 종료 확인)는 처리되지 않는다.
 - 결과(`RoundState.Result`)는 한 번 확정되면 절대 안 바뀌고, 그 뒤 모든 Notify/Tick 호출은 조용히 무시된다.
 - **`NotifyPlayerLeft`의 역할별 처리 (v0.6, 확정됨)**:
   - **술래(Seeker)가 나가면**: `Tick`을 기다리지 않고 **그 자리에서 즉시** `RoundResult.Void`로 확정된다(승패 없음, `OnRoundEnded(Void)` 호출).
@@ -129,7 +134,7 @@
 
 - 배수구 진행도 규칙은 밸브와 같음(작업자 0명 되면 유예 3초 → 초당 0.10 감쇠). **다만 다인 배율과 역류는 없음** — 몇 명이 붙어도 속도는 그대로고, 완료되면 그걸로 끝(다시 안 닫힘).
 - **배수구 작업이 끝나면(`Progress`가 1.0에 도달) 그 작업자는 게이트 상태와 무관하게 즉시 탈출이 인정된다.** `RoundState`가 내부적으로 감지해서 자동으로 처리하므로 승민 쪽에서 따로 호출할 필요 없음.
-- 마지막 생존자가 (배수구든, 게이트가 이미 열려있어서 일반 경로든) 탈출하면 즉시 도망자 승리. 페이즈가 시간 초과되면 술래 승리.
+- 마지막 생존자가 (배수구든, 게이트가 이미 열려있어서 일반 경로든) 탈출하면 즉시 도망자 승리. 페이즈가 시간 초과되면 그때까지의 탈출 인원으로 판정(요구 인원 이상이면 도망자 승, 아니면 술래 승).
 
 **승민 쪽이 할 일**: 입력(E 홀드 등)을 받으면 `playerId`만 뽑아서 `DrainHatchInteractionService.TryBeginWork`/`EndWork` 호출. 활성화된 배수구가 어디인지는 `IRoundEventSink.OnDrainHatchActivated`로 알려주므로 그걸로 UI/안내를 띄우면 됨. 배수구 완료로 인한 탈출은 `RoundState`가 알아서 처리하니 별도 호출 불필요.
 

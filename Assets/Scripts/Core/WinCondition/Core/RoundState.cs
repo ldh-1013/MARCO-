@@ -170,7 +170,7 @@ namespace Marco.Core.WinCondition
 
                 if (!_lastSurvivorPhase.IsActive)
                 {
-                    // 90초(또는 라운드 잔여, 더 짧은 쪽) 소진 -> 술래 승
+                    // 90초(또는 라운드 잔여, 더 짧은 쪽) 소진 -> 그때까지의 탈출 인원으로 판정
                     Finalize(_escapedCount >= _escapeRequiredCount ? RoundResult.RunnersWin : RoundResult.SeekersWin);
                     return;
                 }
@@ -231,8 +231,9 @@ namespace Marco.Core.WinCondition
             _escapedCount++;
             bool allResolved = _escapedCount + _taggedCount == _totalRunnerCount;
 
-            // 탈출 요구 인원 달성, 또는 마지막 생존자가 탈출
-            if (_escapedCount >= _escapeRequiredCount || allResolved)
+            // 요구 인원 달성만으로는 끝나지 않는다(기획서 10-01 개정: 전원 확정 또는 시간 종료 때 판정).
+            // 마지막으로 남은 도망자가 탈출로 확정됐다면 = 마지막 생존자 탈출 → 항상 도망자 승.
+            if (allResolved)
             {
                 Finalize(RoundResult.RunnersWin);
             }
