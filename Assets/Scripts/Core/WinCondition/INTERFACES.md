@@ -4,7 +4,7 @@
 실제 구현은 각 담당자가 만들어서 `ValveInteractionService`/`RoundState` 생성자에 넘겨주면 된다.
 지금(6단계, 전체 완료 + v0.6 패치 반영)은 밸브 상태/소리/상호작용 + 라운드 진행·승패 판정 + 최후 생존자 페이즈·배수구까지 전부 있다.
 
-파일 위치: `Assets/Scripts/WinCondition/Core/`
+파일 위치: `Assets/Scripts/Core/WinCondition/Core/`
 - `IPlayerRoster.cs`, `PlayerRole.cs`
 - `IValveSoundSink.cs`, `ValveSoundEvent.cs`
 - `IRoundEventSink.cs`, `RoundResult.cs`
@@ -13,7 +13,39 @@
 - `LastSurvivorPhase.cs`, `DrainHatch.cs`, `DrainHatchId.cs`, `DrainHatchStatus.cs`, `DrainHatchActivation.cs`
 - `DrainHatchInteractionService.cs` (배수구 작업 잡기/놓기 진입점)
 
-테스트용 가짜 구현(`Fake*.cs`)은 `Assets/Scripts/WinCondition/Tests/`에 있다. 실제 구현을 만들 때 참고만 하고, 팀 리포로 옮길 필요는 없다.
+테스트용 가짜 구현(`Fake*.cs`)은 `Assets/Scripts/Core/WinCondition/Tests/`에 있다. 테스트 전용(Editor)이라 게임 코드에서 참조하지 않는다. 실제 구현을 만들 때 참고만 하면 된다.
+
+---
+
+## 0. 빠른 시작 — 조립 순서와 매 틱 호출 순서 (서버에서만)
+
+**라운드를 시작할 때 이 순서로 만든다.** 앞에서 만든 객체를 뒤에서 넘겨받기 때문에 순서가 바뀌면 안 된다.
+
+```csharp
+using Marco.Core.WinCondition;
+
+var config = new WinConditionConfig();
+var active = ValveActivation.SelectActiveValves(new System.Random().Next); // [B, E, 무작위 1개]
+var board  = new ValveBoard(active, config);
+var gate   = new Gate(config.RequiredOpenValveCount);                      // 항상 3
+var valves = new ValveInteractionService(board, gate, roster, soundSink, eventSink);
+var round  = new RoundState(config, roster, gate, valves, eventSink);
+var drains = new DrainHatchInteractionService(round.LastSurvivorPhase, roster);
+```
+
+- `roster`(IPlayerRoster), `soundSink`(IValveSoundSink), `eventSink`(IRoundEventSink)는 각 담당자가 구현해서 넣는다(1~3번 섹션).
+- `roster.TotalRunnerCount`는 `RoundState`를 만드는 순간 한 번만 읽는다. 역할 배정이 끝난 뒤에 만들어야 한다.
+
+**매 서버 틱마다 반드시 이 순서로 두 개를 모두 호출한다.**
+
+```csharp
+board.Tick(dt);   // ① 밸브 진행도·감쇠·역류. 이걸 빼면 밸브가 전혀 움직이지 않는다
+round.Tick(dt);   // ② 탈출·태그 처리, 최후 생존자 페이즈, 제한시간, 승패 판정
+```
+
+- `RoundState.Tick`은 밸브를 진행시키지 않는다. 밸브는 `ValveBoard.Tick`만 진행시킨다.
+- 결과가 확정된 뒤(`round.Result != RoundResult.InProgress`)에는 두 호출을 멈춰도 된다.
+- 클라이언트에서는 호출하지 않는다. 판정은 서버(호스트)만 한다.
 
 ---
 
@@ -106,7 +138,7 @@
 - 살아있는(=아직 탈출/태그/이탈로 안 끝난) 도망자가 1명이 되면 `RoundState`가 내부적으로 `LastSurvivorPhase`에 1회 진입시킨다. 자세한 내용은 아래 6번 섹션 참고.
 - `RoundState` 생성자의 마지막 인자(`drainHatchRandomNextIndex`)는 선택값(기본 null → 진짜 `System.Random` 사용). 배수구 2곳 중 어느 쪽이 뽑히는지 테스트에서 고정하고 싶으면 `(max) => 0` 같은 함수를 넘기면 됨. 안 넘겨도 기존 호출 코드는 그대로 동작함.
 
-**승민 쪽이 할 일**: 클라이언트에서 탈출 지점 도달/태그 판정이 일어나면 `playerId`만 뽑아서 `NotifyRunnerEscaped`/`NotifyRunnerTagged`를 호출. 매 서버 틱마다 `Tick(dt)`를 호출. 플레이어가 나가면 `NotifyPlayerLeft`도 호출(밸브 쪽 `RemovePlayerFromAllValves`와는 별개로, 라운드 판정 쪽에도 알려줘야 함).
+**승민 쪽이 할 일**: 클라이언트에서 탈출 지점 도달/태그 판정이 일어나면 `playerId`만 뽑아서 `NotifyRunnerEscaped`/`NotifyRunnerTagged`를 호출. 매 서버 틱마다 `board.Tick(dt)`를 먼저, 그다음 `round.Tick(dt)`를 호출(0번 섹션). 플레이어가 나가면 `NotifyPlayerLeft`도 호출(밸브 쪽 `RemovePlayerFromAllValves`와는 별개로, 라운드 판정 쪽에도 알려줘야 함).
 
 ---
 
