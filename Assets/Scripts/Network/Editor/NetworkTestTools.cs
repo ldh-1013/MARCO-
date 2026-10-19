@@ -5,6 +5,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using Marco.Network.Player;
+using Marco.Network.Roles;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
@@ -53,6 +54,8 @@ namespace Marco.Network.Editor
                 point.position = SpawnPositions[i];
                 spawner.Spawns[i] = point;
             }
+            manager.AddComponent<RoleAssigner>();
+            manager.AddComponent<NetworkPlayerRoster>();
 
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);

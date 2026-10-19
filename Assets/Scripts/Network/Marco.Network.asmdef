@@ -2,7 +2,8 @@
     "name": "Marco.Network",
     "rootNamespace": "Marco.Network",
     "references": [
-        "FishNet.Runtime"
+        "FishNet.Runtime",
+        "Marco.Core.WinCondition"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

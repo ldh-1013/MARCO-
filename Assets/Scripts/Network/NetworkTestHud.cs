@@ -1,8 +1,9 @@
+using Marco.Network.Player;
 using UnityEngine;
 
 namespace Marco.Network
 {
-    // Temporary IMGUI panel for the LAN test scene: Host / IP Join / status and player count.
+    // Temporary IMGUI panel for the LAN test scene: Host / IP Join / status, player count and roles.
     [RequireComponent(typeof(LanConnector))]
     public sealed class NetworkTestHud : MonoBehaviour
     {
@@ -17,13 +18,14 @@ namespace Marco.Network
         {
             statusStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold };
 
-            GUILayout.BeginArea(new Rect(16, 16, 320, 260), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(16, 16, 320, 480), GUI.skin.box);
             switch (connector.Status)
             {
                 case LanConnectionStatus.Connected:
                     GUILayout.Label("연결됨", statusStyle);
-                    GUILayout.Label(connector.IsHost ? "역할: Host" : "역할: Client");
+                    GUILayout.Label(connector.IsHost ? "접속: Host" : "접속: Client");
                     GUILayout.Label($"접속 인원: {connector.PlayerCount}명", statusStyle);
+                    DrawRoles();
                     if (GUILayout.Button("연결 끊기", GUILayout.Height(32))) connector.Leave();
                     break;
 
@@ -42,6 +44,14 @@ namespace Marco.Network
                     break;
             }
             GUILayout.EndArea();
+        }
+
+        private void DrawRoles()
+        {
+            foreach (var player in NetworkPlayer.All)
+                if (player.IsOwner) GUILayout.Label($"내 역할: {player.Role}", statusStyle);
+            foreach (var player in NetworkPlayer.All)
+                GUILayout.Label($"P{player.PlayerId}: {player.Role}{(player.IsOwner ? " (나)" : "")}");
         }
     }
 }
