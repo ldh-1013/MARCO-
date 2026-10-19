@@ -1,5 +1,8 @@
 {
   "dependencies": {
+    "com.firstgeargames.fishnet": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#4.7.3",
+    "com.firstgeargames.fishysteamworks": "file:com.firstgeargames.fishysteamworks",
+    "com.rlabrecque.steamworks.net": "https://github.com/rlabrecque/Steamworks.NET.git?path=/com.rlabrecque.steamworks.net#2025.164.1",
     "com.unity.multiplayer.center": "1.0.1",
     "com.unity.test-framework": "1.7.0",
     "com.unity.ugui": "2.5.0",
