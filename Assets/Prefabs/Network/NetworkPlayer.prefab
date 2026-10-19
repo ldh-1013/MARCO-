@@ -108,6 +108,7 @@ GameObject:
   - component: {fileID: 4772701556788309860}
   - component: {fileID: 1415870860838325762}
   - component: {fileID: 9137818437950055621}
+  - component: {fileID: 8971957327741753543}
   m_Layer: 0
   m_Name: NetworkPlayer
   m_TagString: Untagged
@@ -350,6 +351,24 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6639437800047803135}
   _networkObjectCache: {fileID: 0}
   ownerCamera: {fileID: 412158414049368070}
+  seekerColor: {r: 0.9, g: 0.15, b: 0.15, a: 1}
+  runnerColor: {r: 0.15, g: 0.35, b: 0.9, a: 1}
+  echoColor: {r: 0.6, g: 0.6, b: 0.6, a: 1}
+--- !u!114 &8971957327741753543
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1620065039340859134}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3234f07869ce0bd43a41ca599bd93d65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveInteractor
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6639437800047803135}
+  _networkObjectCache: {fileID: 0}
 --- !u!1 &2484753038327001002
 GameObject:
   m_ObjectHideFlags: 0

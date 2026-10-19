@@ -3,7 +3,8 @@
     "rootNamespace": "Marco.Network.Editor",
     "references": [
         "Marco.Network",
-        "FishNet.Runtime"
+        "FishNet.Runtime",
+        "Marco.Core.WinCondition"
     ],
     "includePlatforms": [
         "Editor"

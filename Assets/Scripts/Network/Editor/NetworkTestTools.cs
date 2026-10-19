@@ -6,6 +6,9 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using Marco.Network.Player;
 using Marco.Network.Roles;
+using Marco.Network.Round;
+using Marco.Network.Valves;
+using Marco.Core.WinCondition;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
@@ -21,6 +24,8 @@ namespace Marco.Network.Editor
         public const string ScenePath = "Assets/Scenes/Network/NetworkTest.unity";
         public const string PlayerPrefabPath = "Assets/Prefabs/Network/NetworkPlayer.prefab";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
+        private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
+
         private static readonly Vector3[] SpawnPositions =
             { new(-2, 1, -2), new(2, 1, -2), new(-2, 1, 2), new(2, 1, 2) };
 
@@ -33,6 +38,7 @@ namespace Marco.Network.Editor
 
             var playerPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(PlayerPrefabPath);
             if (playerPrefab == null) playerPrefab = CreatePlayerPrefab();
+            else EnsurePlayerPrefabComponents();
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
@@ -57,9 +63,53 @@ namespace Marco.Network.Editor
             manager.AddComponent<RoleAssigner>();
             manager.AddComponent<NetworkPlayerRoster>();
 
+            for (var id = ValveId.A; id <= ValveId.E; id++) CreateValve(id);
+            var round = new GameObject("Round");
+            var roundObject = round.AddComponent<NetworkObject>();
+            round.AddComponent<NetworkRound>();
+
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);
+            // FishNet derives scene ids from the scene path, which a brand-new scene lacks until saved;
+            // set one explicitly so every client resolves the same scene object.
+            roundObject.SetSceneId(RoundSceneId);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
             Debug.Log($"[MARCO] Network test scene saved: {ScenePath}");
+        }
+
+        // Cube body + flat handle bar on top, in a row in front of the spawn points.
+        private static void CreateValve(ValveId id)
+        {
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = $"Valve {id}";
+            body.transform.position = new Vector3(-8 + 4 * (int)id, 0.5f, 8);
+
+            var handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            handle.name = "Handle";
+            Object.DestroyImmediate(handle.GetComponent<BoxCollider>());
+            handle.transform.SetParent(body.transform, false);
+            handle.transform.localPosition = new Vector3(0, 0.6f, 0);
+            handle.transform.localScale = new Vector3(0.9f, 0.1f, 0.15f);
+
+            var view = body.AddComponent<ValveView>();
+            var serialized = new SerializedObject(view);
+            serialized.FindProperty("id").enumValueIndex = (int)id;
+            serialized.FindProperty("handle").objectReferenceValue = handle.transform;
+            serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // Adds components introduced after the prefab was first made, keeping existing file ids.
+        private static void EnsurePlayerPrefabComponents()
+        {
+            var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
+            if (root.GetComponent<ValveInteractor>() == null)
+            {
+                root.AddComponent<ValveInteractor>();
+                PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
+            }
+            PrefabUtility.UnloadPrefabContents(root);
         }
 
         // Capsule body with a client-authoritative NetworkTransform; the camera child stays off
@@ -75,6 +125,7 @@ namespace Marco.Network.Editor
             root.AddComponent<NetworkTransform>();
             var movement = root.AddComponent<PlayerMovement>();
             var player = root.AddComponent<NetworkPlayer>();
+            root.AddComponent<ValveInteractor>();
 
             var pivot = new GameObject("CameraPivot").transform;
             pivot.SetParent(root.transform, false);
