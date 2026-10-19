@@ -18,6 +18,14 @@ namespace Marco.Prototype
             if (!enabled || (self != null && self.Health.IsEcho)) return false;
             foreach (var hit in Physics.OverlapSphere(transform.position, interactionRange))
             {
+                var temporaryValve = hit.GetComponentInParent<TemporaryValvePrototype>();
+                if (temporaryValve != null)
+                {
+                    if (!temporaryValve.TryInteract()) continue;
+                    InteractionPerformed?.Invoke(true);
+                    return true;
+                }
+
                 var target = hit.GetComponentInParent<PrototypeTarget>();
                 if (target == null || target.transform.root == transform.root || !target.Health.IsWounded) continue;
                 target.Treat(); InteractionPerformed?.Invoke(true); Debug.Log("Survivor interaction complete"); return true;

@@ -23,6 +23,11 @@ namespace Marco.Prototype
 
         private void Awake()
         {
+            if (sceneKind == PrototypeSceneKind.SurvivorTest)
+            {
+                CreateTemporaryValve();
+                return;
+            }
             if (sceneKind != PrototypeSceneKind.Game) return;
             if (!MatchLaunchContext.IsActive)
             {
@@ -48,6 +53,17 @@ namespace Marco.Prototype
             }
             ConfigurePlayer(hunterPlayer, LocalRole == PrototypePlayerRole.Hunter);
             ConfigurePlayer(survivorPlayer, LocalRole == PrototypePlayerRole.Survivor);
+        }
+
+        private static void CreateTemporaryValve()
+        {
+            if (FindObjectsByType<TemporaryValvePrototype>(FindObjectsSortMode.None).Length > 0) return;
+
+            var valve = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            valve.name = "Temporary Valve (replace with production valve)";
+            valve.transform.position = new Vector3(0f, 0.55f, 0f);
+            valve.transform.localScale = new Vector3(0.65f, 0.55f, 0.65f);
+            valve.AddComponent<TemporaryValvePrototype>();
         }
 
         private void SpawnParticipants()
