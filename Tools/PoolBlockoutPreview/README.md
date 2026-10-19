@@ -1,22 +1,32 @@
-# 수영장 v1.1 블록아웃 검토용 프로젝트
+# 수영장 블록아웃 검토용 프로젝트 — 최신 v1.2
 
-현재 제작한 맵 원본을 팀원이 독립적으로 열어볼 수 있도록 공유합니다. 표시 전용 검토 도구이며 게임 로직이나 네트워크 기능은 없습니다.
+## 팀원이 확인하는 방법
+1. `codex/pool-map-v1-1` 브랜치를 내려받습니다. 브랜치 이름은 이전과 같고, 최신 v1.2도 이 안에 있습니다.
+2. Unity Hub > Add project from disk에서 `Tools/PoolBlockoutPreview` 폴더를 선택합니다.
+3. 원본 제작·검증 버전 Unity **6000.3.10f1**로 엽니다.
+4. **Assets/Scenes/IndoorPool_v1_2.unity**를 열고 Play를 누릅니다.
+5. 왼쪽 1F / 2F / ALL로 층을 선택합니다. Explore inside (fly)는 오른쪽 마우스 + WASD, Q/E로 이동합니다.
 
-## 열기
-1. 이 브랜치를 내려받습니다.
-2. Unity Hub > Add > Add project from disk에서 `Tools/PoolBlockoutPreview` 폴더를 선택합니다.
-3. 원본 검증 버전 Unity 6000.3.10f1로 엽니다.
-4. Assets/Scenes/IndoorPool_v1_1.unity를 엽니다.
-5. Play 후 왼쪽 패널에서 1F / 2F / ALL을 선택합니다. Explore inside (fly)는 오른쪽 마우스 + WASD, Q/E로 이동합니다.
+이전 v1.1은 Assets/Scenes/IndoorPool_v1_1.unity에 보존했습니다. 최신 빌드 씬은 v1.2입니다.
+
+## v1.2 변경
+- 전체 64×62m 유지. 1층 14구역 / 전체 18구역.
+- 직원 통로 전 구간 5m, 꺾이는 곳도 5m로 연결.
+- 직원 구역 SZ / 구조·응급실 AID 통합, 사이 벽과 d04·dE2·dE3 제거. 구간별 바닥 재질 유지.
+- 여 탈의실·샤워실, 기계실·PS2와 관련 락커·샤워부스·벤치·설비를 정본 좌표로 변경.
+- 기계실 문 d16 중심(53,43) 폭2m, 하역장 문 d19 중심(50,54) 폭4m.
+- 2층·계단·풀 깊이와 침강부, 밸브·배수구·출구·스폰 위치 유지. 배수구는 수면 아래 Y=-3.5.
+
+상세 기준·한계는 Assets/PoolV12/README.md와 Design/MapDesign_v1_2.md에 있습니다. FBX 교체는 Tools > Indoor Pool v1.2 > Replace Selected Module Visual을 사용합니다.
 
 ## 팀 프로젝트와의 관계
-팀 루트 프로젝트는 Unity 6000.5.4f1 고정이며 현재 URP와 Input System 도입 전입니다. 이 폴더는 이전에 제작·검증한 URP 17.3 / Input System 1.18 기반 맵의 독립 검토본입니다. 팀 루트 Assets, Packages, ProjectSettings는 변경하지 않았습니다. 팀 에디터로 루트 프로젝트를 열면 이 폴더의 스크립트는 컴파일 대상이 아닙니다.
+이 폴더는 원본 URP17.3 / InputSystem1.18 맵을 공유하는 **독립 검토 프로젝트**입니다. 팀 루트 Assets, Packages, ProjectSettings는 변경하지 않았으며 main에 병합하거나 팀 게임에 직접 통합한 상태가 아닙니다. 팀 루트의 버전과 렌더링 설정에 맞춘 통합은 별도 검토해야 합니다. 이 폴더의 설정을 팀 프로젝트에 통째로 덮어쓰지 마세요. 맵 카메라는 UniversalRP 렌더러 목록 1번을 사용합니다.
 
-팀 게임에 직접 통합한 상태는 아닙니다. 통합 시 담당자가 팀의 Unity 버전에서 URP / Input System 도입을 확인하고 렌더러를 등록해야 합니다. 이 프로젝트의 ProjectSettings를 팀 프로젝트에 덮어쓰지 마세요. 맵 카메라는 UniversalRP의 렌더러 목록 1번을 사용합니다.
+## 검증과 한계
+원본 프로젝트에서 v1.2 저장·재열기 490개 검사, Play 모드 카메라·층 선택·수면 표시 검사를 통과했습니다. Verification/v1.2는 그때의 기록입니다. 이 공유본을 독립적으로 Unity에서 다시 실행한 기록은 아닙니다. 업로드 전 원본과 복사본의 v1.2 파일 일치, 로컬 에셋 참조 누락 여부를 확인합니다.
 
-## 내용과 검증
-64×62m, 21구역, 41개 재사용 Prefab, 밸브 5개, 출구 2개, 배수구 2개와 4인 시작 위치를 포함합니다. Assets/PoolV11/README.md에 상세 사용법과 임시값·한계가 있습니다.
+테스트용 파이프 FBX는 포함하지 않았습니다. 기록에 남은 FBX 교체 샘플 검사는 당시 원본에서 수행했으며, 공유본에서 재실행하면 해당 샘플 검사는 SKIP됩니다. 일반 FBX 교체 도구는 유지합니다.
 
-Verification의 결과는 원본 프로젝트에서 저장·재열기·Play 모드로 검사한 기록입니다. 이 공유 폴더 자체를 Unity에서 재실행한 결과는 아닙니다. 테스트용 파이프 FBX는 포함하지 않아 해당 FBX 교체 샘플 검사는 재실행 시 SKIP 처리됩니다. Scene 생성·검증 도구는 Assets/Editor에 있습니다.
+서버·플레이어·수영·상호작용·승패 코드는 없습니다. 밸브 동시감시 여유1.9m, 음향 차폐와 실제 플레이 밸런스는 재현 검증하지 않았습니다.
 
-구현에는 OpenAI Codex를 사용했습니다. 팀 규칙에 따라 main 병합 전 다른 프로그래머의 검토가 필요합니다.
+AI 사용: OpenAI Codex. 팀 규칙에 따라 main 병합 전 다른 프로그래머의 검토가 필요합니다.

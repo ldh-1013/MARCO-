@@ -1,0 +1,2186 @@
+{
+  "version": "1.2",
+  "width": 64,
+  "depth": 62,
+  "upperFloor": 3.5,
+  "rooms": [
+    {
+      "id": "LOB",
+      "name": "로비 · 안내데스크",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 0,
+          "z0": 0,
+          "x1": 46,
+          "z1": 9
+        },
+        {
+          "x0": 25,
+          "z0": 9,
+          "x1": 29,
+          "z1": 16
+        }
+      ],
+      "floorMaterial": "카펫",
+      "ceiling": 4.5,
+      "area": 442,
+      "landmark": "정문 자동 양개문 · 동쪽 끝 안내데스크(8.0m) · 북벽 신발장 4열 · 서쪽 자판기 열 · 매점 카운터"
+    },
+    {
+      "id": "OF1",
+      "name": "관리 사무실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 46,
+          "z0": 0,
+          "x1": 56,
+          "z1": 9
+        }
+      ],
+      "floorMaterial": "카펫",
+      "ceiling": 3,
+      "area": 90,
+      "landmark": "벽 붙임 사무 책상 열 · 서류 캐비닛 · 안내데스크 뒤 직원문"
+    },
+    {
+      "id": "SZ",
+      "name": "직원 구역",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 56,
+          "z0": 0,
+          "x1": 64,
+          "z1": 27
+        }
+      ],
+      "floorMaterial": "카펫",
+      "ceiling": 3,
+      "area": 216,
+      "landmark": "기존 직원 가구 유지; 남쪽 카펫 / 북쪽 콘크리트"
+    },
+    {
+      "id": "AID",
+      "name": "구조 · 응급실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 0,
+          "z0": 9,
+          "x1": 9,
+          "z1": 31
+        }
+      ],
+      "floorMaterial": "타일",
+      "ceiling": 3,
+      "area": 198,
+      "landmark": "기존 응급·구조 가구 유지; 남쪽 타일 / 북쪽 카펫"
+    },
+    {
+      "id": "ML",
+      "name": "남 탈의실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 9,
+          "z0": 9,
+          "x1": 25,
+          "z1": 24
+        }
+      ],
+      "floorMaterial": "매트",
+      "ceiling": 3,
+      "area": 240,
+      "landmark": "벽 부착 락커 8열(빗살) · 가운데 6.5m 탈의 공간"
+    },
+    {
+      "id": "WL",
+      "name": "여 탈의실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 29,
+          "z0": 9,
+          "x1": 43,
+          "z1": 24
+        }
+      ],
+      "floorMaterial": "매트",
+      "ceiling": 3,
+      "area": 210,
+      "landmark": "동벽 락커 이동; 가운데 4m 탈의 공간"
+    },
+    {
+      "id": "MS",
+      "name": "남 샤워실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 9,
+          "z0": 24,
+          "x1": 21,
+          "z1": 31
+        }
+      ],
+      "floorMaterial": "타일",
+      "ceiling": 3,
+      "area": 84,
+      "landmark": "양 벽 샤워 부스 열"
+    },
+    {
+      "id": "WS",
+      "name": "여 샤워실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 33,
+          "z0": 24,
+          "x1": 43,
+          "z1": 31
+        }
+      ],
+      "floorMaterial": "타일",
+      "ceiling": 3,
+      "area": 70,
+      "landmark": "양 벽 샤워 부스 열"
+    },
+    {
+      "id": "H",
+      "name": "메인 풀 홀",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 0,
+          "z0": 31,
+          "x1": 43,
+          "z1": 33
+        },
+        {
+          "x0": 0,
+          "z0": 33,
+          "x1": 46,
+          "z1": 62
+        },
+        {
+          "x0": 46,
+          "z0": 33,
+          "x1": 48,
+          "z1": 54
+        }
+      ],
+      "floorMaterial": "타일",
+      "ceiling": 9,
+      "area": 1462,
+      "landmark": "경영풀 8레인 · 출발대 8개 · 1m 스프링보드 · 구조원 감시 의자 3개 · 레인 로프 릴 · 관람석 기둥 열(9.1 · 9.2)"
+    },
+    {
+      "id": "SC",
+      "name": "직원 통로",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 43,
+          "z0": 9,
+          "x1": 48,
+          "z1": 33
+        },
+        {
+          "x0": 48,
+          "z0": 28,
+          "x1": 53,
+          "z1": 54
+        }
+      ],
+      "floorMaterial": "그레이팅",
+      "ceiling": 3,
+      "area": 250,
+      "landmark": "전 구간 5m, X48 Z28~33에서 연결"
+    },
+    {
+      "id": "ST2",
+      "name": "직원 계단실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 48,
+          "z0": 9,
+          "x1": 56,
+          "z1": 19
+        }
+      ],
+      "floorMaterial": "그레이팅",
+      "ceiling": 3,
+      "area": 80,
+      "landmark": "금속 그레이팅 직원 계단(동벽 붙임)"
+    },
+    {
+      "id": "A",
+      "name": "기계실(여과 · 펌프)",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 53,
+          "z0": 27,
+          "x1": 64,
+          "z1": 54
+        }
+      ],
+      "floorMaterial": "콘크리트",
+      "ceiling": 5,
+      "area": 297,
+      "landmark": "여과기 3기 + 배관 헤더(동벽) · 순환 펌프 열 · 밸런스 탱크 · 문 옆 전기 제어반"
+    },
+    {
+      "id": "DR",
+      "name": "약품 저장실",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 48,
+          "z0": 19,
+          "x1": 56,
+          "z1": 27
+        }
+      ],
+      "floorMaterial": "콘크리트",
+      "ceiling": 3,
+      "area": 64,
+      "landmark": "약품 드럼 선반 2개(벽 부착)"
+    },
+    {
+      "id": "LD",
+      "name": "하역장 · 직원 출입구",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 46,
+          "z0": 54,
+          "x1": 64,
+          "z1": 62
+        }
+      ],
+      "floorMaterial": "콘크리트",
+      "ceiling": 5,
+      "area": 144,
+      "landmark": "하역 셔터(출구 1) · 적재 팔레트 · 홀 장비 반입 양개문(4.0m)"
+    },
+    {
+      "id": "C",
+      "name": "물탱크실",
+      "floor": 2,
+      "rects": [
+        {
+          "x0": 0,
+          "z0": 9,
+          "x1": 9,
+          "z1": 24
+        }
+      ],
+      "floorMaterial": "콘크리트",
+      "ceiling": 3,
+      "area": 135,
+      "landmark": "저수조 2기(SUS 패널, 서벽)"
+    },
+    {
+      "id": "CL",
+      "name": "관람 로비 · 학부모 대기",
+      "floor": 2,
+      "rects": [
+        {
+          "x0": 9,
+          "z0": 16,
+          "x1": 46,
+          "z1": 26
+        }
+      ],
+      "floorMaterial": "카펫",
+      "ceiling": 3,
+      "area": 370,
+      "landmark": "관람 매점 카운터 · 자판기 열 · 정수기 · 대기 벤치 4개 · 대형 화분 2개 · 관람석 입구 2곳"
+    },
+    {
+      "id": "ST",
+      "name": "관람석",
+      "floor": 2,
+      "rects": [
+        {
+          "x0": 15,
+          "z0": 26,
+          "x1": 40,
+          "z1": 34
+        }
+      ],
+      "floorMaterial": "카펫",
+      "ceiling": 5.5,
+      "area": 200,
+      "landmark": "계단식 좌석 단 · 앞 난간(y 34.0)"
+    },
+    {
+      "id": "L2",
+      "name": "관리 복도(직원 계단 상부)",
+      "floor": 2,
+      "rects": [
+        {
+          "x0": 46,
+          "z0": 16,
+          "x1": 56,
+          "z1": 19
+        }
+      ],
+      "floorMaterial": "그레이팅",
+      "ceiling": 3,
+      "area": 30,
+      "landmark": "직원 계단 상단"
+    }
+  ],
+  "voids": [
+    {
+      "id": "PS1",
+      "name": "급수 배관 샤프트",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 25,
+          "z0": 16,
+          "x1": 29,
+          "z1": 24
+        }
+      ],
+      "ceiling": 3.5
+    },
+    {
+      "id": "PS2",
+      "name": "배관 샤프트",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 48,
+          "z0": 27,
+          "x1": 53,
+          "z1": 28
+        }
+      ],
+      "ceiling": 3.5
+    },
+    {
+      "id": "PS3",
+      "name": "관람석 하부 공조 덕트 공간(1-2)",
+      "floor": 1,
+      "rects": [
+        {
+          "x0": 21,
+          "z0": 24,
+          "x1": 33,
+          "z1": 31
+        }
+      ],
+      "ceiling": 3.5
+    }
+  ],
+  "doors": [
+    {
+      "id": "d02",
+      "name": "LOB ↔ OF1 (로비 · 안내데스크 ↔ 관리 사무실)",
+      "floor": 1,
+      "x": 46,
+      "z": 2,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "LOB",
+        "OF1"
+      ]
+    },
+    {
+      "id": "d03",
+      "name": "LOB ↔ AID",
+      "floor": 1,
+      "x": 4.5,
+      "z": 9,
+      "alongX": true,
+      "width": 2,
+      "kind": "양개(들것)",
+      "connections": [
+        "LOB",
+        "AID"
+      ]
+    },
+    {
+      "id": "d05",
+      "name": "AID ↔ H",
+      "floor": 1,
+      "x": 4.5,
+      "z": 31,
+      "alongX": true,
+      "width": 2,
+      "kind": "양개(들것)",
+      "connections": [
+        "AID",
+        "H"
+      ]
+    },
+    {
+      "id": "d06",
+      "name": "LOB ↔ ML (로비 · 안내데스크 ↔ 남 탈의실)",
+      "floor": 1,
+      "x": 17,
+      "z": 9,
+      "alongX": true,
+      "width": 3,
+      "kind": "개구부(신발장)",
+      "connections": [
+        "LOB",
+        "ML"
+      ]
+    },
+    {
+      "id": "d07",
+      "name": "ML ↔ MS (남 탈의실 ↔ 남 샤워실)",
+      "floor": 1,
+      "x": 13,
+      "z": 24,
+      "alongX": true,
+      "width": 3,
+      "kind": "개구부",
+      "connections": [
+        "ML",
+        "MS"
+      ]
+    },
+    {
+      "id": "d08",
+      "name": "MS ↔ H (남 샤워실 ↔ 메인 풀 홀)",
+      "floor": 1,
+      "x": 17.5,
+      "z": 31,
+      "alongX": true,
+      "width": 4,
+      "kind": "개구부",
+      "connections": [
+        "MS",
+        "H"
+      ]
+    },
+    {
+      "id": "d09",
+      "name": "LOB ↔ WL (로비 · 안내데스크 ↔ 여 탈의실)",
+      "floor": 1,
+      "x": 37.5,
+      "z": 9,
+      "alongX": true,
+      "width": 3,
+      "kind": "개구부(신발장)",
+      "connections": [
+        "LOB",
+        "WL"
+      ]
+    },
+    {
+      "id": "d10",
+      "name": "WL ↔ WS (여 탈의실 ↔ 여 샤워실)",
+      "floor": 1,
+      "x": 40.5,
+      "z": 24,
+      "alongX": true,
+      "width": 3,
+      "kind": "개구부",
+      "connections": [
+        "WL",
+        "WS"
+      ]
+    },
+    {
+      "id": "d11",
+      "name": "WS ↔ H (여 샤워실 ↔ 메인 풀 홀)",
+      "floor": 1,
+      "x": 36,
+      "z": 31,
+      "alongX": true,
+      "width": 4,
+      "kind": "개구부",
+      "connections": [
+        "WS",
+        "H"
+      ]
+    },
+    {
+      "id": "d12",
+      "name": "OF1 ↔ SC (관리 사무실 ↔ 직원 통로)",
+      "floor": 1,
+      "x": 47,
+      "z": 9,
+      "alongX": true,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "OF1",
+        "SC"
+      ]
+    },
+    {
+      "id": "dE1",
+      "name": "OF1 ↔ SZ",
+      "floor": 1,
+      "x": 56,
+      "z": 4.5,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "OF1",
+        "SZ"
+      ]
+    },
+    {
+      "id": "d14",
+      "name": "SC ↔ ST2 (직원 통로 ↔ 직원 계단실)",
+      "floor": 1,
+      "x": 48,
+      "z": 14,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "SC",
+        "ST2"
+      ]
+    },
+    {
+      "id": "d16",
+      "name": "SC ↔ A (직원 통로 ↔ 기계실(여과 · 펌프))",
+      "floor": 1,
+      "x": 53,
+      "z": 43,
+      "alongX": false,
+      "width": 2,
+      "kind": "양개",
+      "connections": [
+        "SC",
+        "A"
+      ]
+    },
+    {
+      "id": "d17",
+      "name": "SC ↔ H (직원 통로 ↔ 메인 풀 홀)",
+      "floor": 1,
+      "x": 48,
+      "z": 36,
+      "alongX": false,
+      "width": 2,
+      "kind": "양개(비상문)",
+      "connections": [
+        "SC",
+        "H"
+      ]
+    },
+    {
+      "id": "d18",
+      "name": "SC ↔ DR (직원 통로 ↔ 약품 저장실)",
+      "floor": 1,
+      "x": 48,
+      "z": 23,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "SC",
+        "DR"
+      ]
+    },
+    {
+      "id": "d19",
+      "name": "SC ↔ LD (직원 통로 ↔ 하역장 · 직원 출입구)",
+      "floor": 1,
+      "x": 50,
+      "z": 54,
+      "alongX": true,
+      "width": 4,
+      "kind": "양개",
+      "connections": [
+        "SC",
+        "LD"
+      ]
+    },
+    {
+      "id": "d20",
+      "name": "DR ↔ SZ",
+      "floor": 1,
+      "x": 56,
+      "z": 23,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "DR",
+        "SZ"
+      ]
+    },
+    {
+      "id": "d21",
+      "name": "H ↔ LD (메인 풀 홀 ↔ 하역장 · 직원 출입구)",
+      "floor": 1,
+      "x": 46,
+      "z": 58,
+      "alongX": false,
+      "width": 4,
+      "kind": "양개(장비 반입)",
+      "connections": [
+        "H",
+        "LD"
+      ]
+    },
+    {
+      "id": "u01",
+      "name": "C ↔ CL (물탱크실 ↔ 관람 로비 · 학부모 대기)",
+      "floor": 2,
+      "x": 9,
+      "z": 20,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "C",
+        "CL"
+      ]
+    },
+    {
+      "id": "u02",
+      "name": "CL ↔ ST (관람 로비 · 학부모 대기 ↔ 관람석)",
+      "floor": 2,
+      "x": 16,
+      "z": 26,
+      "alongX": true,
+      "width": 2,
+      "kind": "개구부",
+      "connections": [
+        "CL",
+        "ST"
+      ]
+    },
+    {
+      "id": "u03",
+      "name": "CL ↔ ST (관람 로비 · 학부모 대기 ↔ 관람석)",
+      "floor": 2,
+      "x": 39,
+      "z": 26,
+      "alongX": true,
+      "width": 2,
+      "kind": "개구부",
+      "connections": [
+        "CL",
+        "ST"
+      ]
+    },
+    {
+      "id": "u04",
+      "name": "CL ↔ L2 (관람 로비 · 학부모 대기 ↔ 관리 복도(직원 계단 상부))",
+      "floor": 2,
+      "x": 46,
+      "z": 17.5,
+      "alongX": false,
+      "width": 1,
+      "kind": "일반",
+      "connections": [
+        "CL",
+        "L2"
+      ]
+    }
+  ],
+  "stairs": [
+    {
+      "id": "S1",
+      "name": "주계단(로비 → 관람 로비)",
+      "rect": {
+        "x0": 25.5,
+        "z0": 10,
+        "x1": 28.5,
+        "z1": 16
+      },
+      "alongX": false,
+      "rise": 3.5,
+      "width": 3,
+      "run": 6
+    },
+    {
+      "id": "S2",
+      "name": "직원 계단(직원 계단실 → 관리 복도)",
+      "rect": {
+        "x0": 53,
+        "z0": 10.5,
+        "x1": 56,
+        "z1": 16.5
+      },
+      "alongX": false,
+      "rise": 3.5,
+      "width": 3,
+      "run": 6
+    },
+    {
+      "id": "S3",
+      "name": "비상계단(관람석 서단 → 데크)",
+      "rect": {
+        "x0": 9,
+        "z0": 31,
+        "x1": 15,
+        "z1": 33
+      },
+      "alongX": true,
+      "rise": 3.5,
+      "width": 2,
+      "run": 6
+    }
+  ],
+  "points": [
+    {
+      "id": "Valve_A",
+      "name": "밸브 A",
+      "floor": 1,
+      "x": 58.5,
+      "z": 36,
+      "height": 1,
+      "zone": "A"
+    },
+    {
+      "id": "Valve_B",
+      "name": "밸브 B",
+      "floor": 1,
+      "x": 38.5,
+      "z": 52,
+      "height": -3,
+      "zone": "H"
+    },
+    {
+      "id": "Valve_C",
+      "name": "밸브 C",
+      "floor": 2,
+      "x": 6,
+      "z": 16.5,
+      "height": 4.5,
+      "zone": "C"
+    },
+    {
+      "id": "Valve_D",
+      "name": "밸브 D",
+      "floor": 1,
+      "x": 50.5,
+      "z": 20,
+      "height": 1,
+      "zone": "DR"
+    },
+    {
+      "id": "Valve_E",
+      "name": "밸브 E",
+      "floor": 1,
+      "x": 4.5,
+      "z": 51,
+      "height": -0.7,
+      "zone": "H"
+    },
+    {
+      "id": "Exit_1",
+      "name": "직원 출입구 · 하역 셔터 — 판정점 · 반경 2.0",
+      "floor": 1,
+      "x": 55,
+      "z": 61,
+      "height": 0,
+      "zone": "LD"
+    },
+    {
+      "id": "Exit_2",
+      "name": "정문 자동 양개문 — 판정점 · 반경 2.0",
+      "floor": 1,
+      "x": 23,
+      "z": 1,
+      "height": 0,
+      "zone": "LOB"
+    },
+    {
+      "id": "Drain_1",
+      "name": "배수구",
+      "floor": 1,
+      "x": 36,
+      "z": 47.5,
+      "height": -3.5,
+      "zone": "H"
+    },
+    {
+      "id": "Drain_2",
+      "name": "배수구",
+      "floor": 1,
+      "x": 7,
+      "z": 47,
+      "height": -3.5,
+      "zone": "H"
+    },
+    {
+      "id": "R",
+      "name": "도망자 스폰",
+      "floor": 1,
+      "x": 31,
+      "z": 6.5,
+      "height": 0,
+      "zone": "LOB"
+    },
+    {
+      "id": "S",
+      "name": "술래 스폰(격리 지점)",
+      "floor": 2,
+      "x": 55,
+      "z": 18,
+      "height": 3.5,
+      "zone": "L2"
+    },
+    {
+      "id": "b1",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 2,
+      "z": 21.5,
+      "height": 0,
+      "zone": "AID"
+    },
+    {
+      "id": "b2",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 2,
+      "z": 29,
+      "height": 0,
+      "zone": "AID"
+    },
+    {
+      "id": "b3",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 1,
+      "z": 52,
+      "height": 0,
+      "zone": "H"
+    },
+    {
+      "id": "b4",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 29,
+      "z": 60.5,
+      "height": 0,
+      "zone": "H"
+    },
+    {
+      "id": "b5",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 49,
+      "z": 44.5,
+      "height": 0,
+      "zone": "SC"
+    },
+    {
+      "id": "b6",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 16.5,
+      "z": 16,
+      "height": 0,
+      "zone": "ML"
+    },
+    {
+      "id": "b7",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 38.5,
+      "z": 16,
+      "height": 0,
+      "zone": "WL"
+    },
+    {
+      "id": "b8",
+      "name": "붕대 후보",
+      "floor": 1,
+      "x": 37,
+      "z": 6.5,
+      "height": 0,
+      "zone": "LOB"
+    },
+    {
+      "id": "b9",
+      "name": "붕대 후보",
+      "floor": 2,
+      "x": 44,
+      "z": 24,
+      "height": 3.5,
+      "zone": "CL"
+    },
+    {
+      "id": "c1",
+      "name": "찰칵이",
+      "floor": 1,
+      "x": 44.5,
+      "z": 2.5,
+      "height": 0,
+      "zone": "LOB"
+    },
+    {
+      "id": "c2",
+      "name": "찰칵이",
+      "floor": 2,
+      "x": 33,
+      "z": 18,
+      "height": 3.5,
+      "zone": "CL"
+    },
+    {
+      "id": "c3",
+      "name": "찰칵이",
+      "floor": 1,
+      "x": 50,
+      "z": 60,
+      "height": 0,
+      "zone": "LD"
+    },
+    {
+      "id": "c4",
+      "name": "찰칵이",
+      "floor": 1,
+      "x": 1,
+      "z": 58,
+      "height": 0,
+      "zone": "H"
+    }
+  ],
+  "obstacles": [
+    {
+      "id": "o01",
+      "name": "안내데스크",
+      "floor": 1,
+      "rect": {
+        "x0": 38,
+        "z0": 4,
+        "x1": 46,
+        "z1": 5.5
+      },
+      "height": 1.1,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o02",
+      "name": "신발장(남)",
+      "floor": 1,
+      "rect": {
+        "x0": 10,
+        "z0": 8,
+        "x1": 15.5,
+        "z1": 9
+      },
+      "height": 1.8,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o03",
+      "name": "신발장(남)",
+      "floor": 1,
+      "rect": {
+        "x0": 18.5,
+        "z0": 8,
+        "x1": 24,
+        "z1": 9
+      },
+      "height": 1.8,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o04",
+      "name": "신발장(여)",
+      "floor": 1,
+      "rect": {
+        "x0": 30,
+        "z0": 8,
+        "x1": 36,
+        "z1": 9
+      },
+      "height": 1.8,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o05",
+      "name": "신발장(여)",
+      "floor": 1,
+      "rect": {
+        "x0": 39,
+        "z0": 8,
+        "x1": 45,
+        "z1": 9
+      },
+      "height": 1.8,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o06",
+      "name": "자판기 열",
+      "floor": 1,
+      "rect": {
+        "x0": 1,
+        "z0": 0,
+        "x1": 5,
+        "z1": 1
+      },
+      "height": 1.8,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o07",
+      "name": "매점 카운터",
+      "floor": 1,
+      "rect": {
+        "x0": 0,
+        "z0": 5,
+        "x1": 3,
+        "z1": 6.5
+      },
+      "height": 1.1,
+      "zone": "LOB",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e01",
+      "name": "사무 책상 열",
+      "floor": 1,
+      "rect": {
+        "x0": 48,
+        "z0": 0,
+        "x1": 55,
+        "z1": 1
+      },
+      "height": 0.8,
+      "zone": "OF1",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e02",
+      "name": "서류 캐비닛",
+      "floor": 1,
+      "rect": {
+        "x0": 49,
+        "z0": 8.5,
+        "x1": 55,
+        "z1": 9
+      },
+      "height": 1.8,
+      "zone": "OF1",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e03",
+      "name": "방재 콘솔(CCTV · 방송 · 소방 수신반)",
+      "floor": 1,
+      "rect": {
+        "x0": 63,
+        "z0": 2,
+        "x1": 64,
+        "z1": 7
+      },
+      "height": 1.2,
+      "zone": "SZ",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e04",
+      "name": "당직 침대",
+      "floor": 1,
+      "rect": {
+        "x0": 57,
+        "z0": 0,
+        "x1": 59,
+        "z1": 1
+      },
+      "height": 0.6,
+      "zone": "SZ",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e05",
+      "name": "간이 주방 · 냉장고",
+      "floor": 1,
+      "rect": {
+        "x0": 63,
+        "z0": 10,
+        "x1": 64,
+        "z1": 14
+      },
+      "height": 1.8,
+      "zone": "SZ",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e06",
+      "name": "식탁(벽 붙임)",
+      "floor": 1,
+      "rect": {
+        "x0": 61,
+        "z0": 17,
+        "x1": 64,
+        "z1": 18
+      },
+      "height": 0.8,
+      "zone": "SZ",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "e07",
+      "name": "직원 사물함",
+      "floor": 1,
+      "rect": {
+        "x0": 63.5,
+        "z0": 19,
+        "x1": 64,
+        "z1": 26
+      },
+      "height": 1.8,
+      "zone": "SZ",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "e08",
+      "name": "작업대 · 공구 벽",
+      "floor": 1,
+      "rect": {
+        "x0": 58,
+        "z0": 26.5,
+        "x1": 63,
+        "z1": 27
+      },
+      "height": 0.9,
+      "zone": "SZ",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "oML0",
+      "name": "남 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 9,
+        "z0": 11.5,
+        "x1": 13.5,
+        "z1": 12
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oML1",
+      "name": "남 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 9,
+        "z0": 14.5,
+        "x1": 13.5,
+        "z1": 15
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oML2",
+      "name": "남 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 9,
+        "z0": 17.5,
+        "x1": 13.5,
+        "z1": 18
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oML3",
+      "name": "남 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 9,
+        "z0": 20.5,
+        "x1": 13.5,
+        "z1": 21
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oMR0",
+      "name": "남 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 20,
+        "z0": 13,
+        "x1": 25,
+        "z1": 13.5
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oMR1",
+      "name": "남 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 20,
+        "z0": 16,
+        "x1": 25,
+        "z1": 16.5
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oMR2",
+      "name": "남 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 20,
+        "z0": 19,
+        "x1": 25,
+        "z1": 19.5
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oMR3",
+      "name": "남 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 20,
+        "z0": 22,
+        "x1": 25,
+        "z1": 22.5
+      },
+      "height": 2,
+      "zone": "ML",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWL0",
+      "name": "여 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 29,
+        "z0": 11.5,
+        "x1": 35,
+        "z1": 12
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWL1",
+      "name": "여 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 29,
+        "z0": 14.5,
+        "x1": 35,
+        "z1": 15
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWL2",
+      "name": "여 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 29,
+        "z0": 17.5,
+        "x1": 35,
+        "z1": 18
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWL3",
+      "name": "여 탈의실 서벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 29,
+        "z0": 20.5,
+        "x1": 35,
+        "z1": 21
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWR0",
+      "name": "여 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 39,
+        "z0": 13,
+        "x1": 43,
+        "z1": 13.5
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWR1",
+      "name": "여 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 39,
+        "z0": 16,
+        "x1": 43,
+        "z1": 16.5
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWR2",
+      "name": "여 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 39,
+        "z0": 19,
+        "x1": 43,
+        "z1": 19.5
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "oWR3",
+      "name": "여 탈의실 동벽 락커 열(빗살)",
+      "floor": 1,
+      "rect": {
+        "x0": 39,
+        "z0": 22,
+        "x1": 43,
+        "z1": 22.5
+      },
+      "height": 2,
+      "zone": "WL",
+      "occludes": true,
+      "stepped": false
+    },
+    {
+      "id": "o10",
+      "name": "샤워 부스 열",
+      "floor": 1,
+      "rect": {
+        "x0": 9,
+        "z0": 25,
+        "x1": 11,
+        "z1": 30
+      },
+      "height": 2,
+      "zone": "MS",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o11",
+      "name": "샤워 부스 열",
+      "floor": 1,
+      "rect": {
+        "x0": 19,
+        "z0": 25,
+        "x1": 21,
+        "z1": 30
+      },
+      "height": 2,
+      "zone": "MS",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o12",
+      "name": "샤워 부스 열",
+      "floor": 1,
+      "rect": {
+        "x0": 33,
+        "z0": 25,
+        "x1": 35,
+        "z1": 30
+      },
+      "height": 2,
+      "zone": "WS",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o13",
+      "name": "샤워 부스 열",
+      "floor": 1,
+      "rect": {
+        "x0": 41,
+        "z0": 26,
+        "x1": 43,
+        "z1": 31
+      },
+      "height": 2,
+      "zone": "WS",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "oCol0",
+      "name": "관람석 하부 기둥(0.5 각)",
+      "floor": 1,
+      "rect": {
+        "x0": 15.5,
+        "z0": 33.5,
+        "x1": 16,
+        "z1": 34
+      },
+      "height": 3.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "oCol1",
+      "name": "관람석 하부 기둥(0.5 각)",
+      "floor": 1,
+      "rect": {
+        "x0": 23.5,
+        "z0": 33.5,
+        "x1": 24,
+        "z1": 34
+      },
+      "height": 3.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "oCol2",
+      "name": "관람석 하부 기둥(0.5 각)",
+      "floor": 1,
+      "rect": {
+        "x0": 31.5,
+        "z0": 33.5,
+        "x1": 32,
+        "z1": 34
+      },
+      "height": 3.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "oCol3",
+      "name": "관람석 하부 기둥(0.5 각)",
+      "floor": 1,
+      "rect": {
+        "x0": 39.5,
+        "z0": 33.5,
+        "x1": 40,
+        "z1": 34
+      },
+      "height": 3.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h01",
+      "name": "킥판 · 풀부이 거치대(교습풀)",
+      "floor": 1,
+      "rect": {
+        "x0": 0,
+        "z0": 35,
+        "x1": 0.5,
+        "z1": 38
+      },
+      "height": 1.2,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h02",
+      "name": "구조 장비 스탠드(남서)",
+      "floor": 1,
+      "rect": {
+        "x0": 6,
+        "z0": 31,
+        "x1": 8.5,
+        "z1": 31.5
+      },
+      "height": 1.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h03",
+      "name": "벽면 벤치(서)",
+      "floor": 1,
+      "rect": {
+        "x0": 0,
+        "z0": 43,
+        "x1": 0.5,
+        "z1": 49
+      },
+      "height": 0.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h04",
+      "name": "구조원 감시 의자(교습풀)",
+      "floor": 1,
+      "rect": {
+        "x0": 6.5,
+        "z0": 54,
+        "x1": 7,
+        "z1": 54.5
+      },
+      "height": 1.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h05",
+      "name": "벽면 벤치(북서)",
+      "floor": 1,
+      "rect": {
+        "x0": 2,
+        "z0": 61.5,
+        "x1": 8,
+        "z1": 62
+      },
+      "height": 0.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h06",
+      "name": "구조원 감시 의자(두 풀 사이)",
+      "floor": 1,
+      "rect": {
+        "x0": 12.5,
+        "z0": 47,
+        "x1": 13,
+        "z1": 47.5
+      },
+      "height": 1.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o24",
+      "name": "구조원 감시 의자(경영풀)",
+      "floor": 1,
+      "rect": {
+        "x0": 27,
+        "z0": 59.5,
+        "x1": 27.5,
+        "z1": 60
+      },
+      "height": 1.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h07",
+      "name": "벽면 벤치(북)",
+      "floor": 1,
+      "rect": {
+        "x0": 17,
+        "z0": 61.5,
+        "x1": 23,
+        "z1": 62
+      },
+      "height": 0.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o23",
+      "name": "1m 스프링보드 받침대",
+      "floor": 1,
+      "rect": {
+        "x0": 36.5,
+        "z0": 58,
+        "x1": 37,
+        "z1": 60
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB0",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 38.5,
+        "x1": 40.5,
+        "z1": 39
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB1",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 41,
+        "x1": 40.5,
+        "z1": 41.5
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB2",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 43.5,
+        "x1": 40.5,
+        "z1": 44
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB3",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 46,
+        "x1": 40.5,
+        "z1": 46.5
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB4",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 48.5,
+        "x1": 40.5,
+        "z1": 49
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB5",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 51,
+        "x1": 40.5,
+        "z1": 51.5
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB6",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 53.5,
+        "x1": 40.5,
+        "z1": 54
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "hB7",
+      "name": "출발대(0.5 각, 레인마다 1개)",
+      "floor": 1,
+      "rect": {
+        "x0": 40,
+        "z0": 56,
+        "x1": 40.5,
+        "z1": 56.5
+      },
+      "height": 0.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h08",
+      "name": "레인 로프 릴",
+      "floor": 1,
+      "rect": {
+        "x0": 46.5,
+        "z0": 40,
+        "x1": 48,
+        "z1": 42
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h09",
+      "name": "레인 로프 릴",
+      "floor": 1,
+      "rect": {
+        "x0": 46.5,
+        "z0": 47,
+        "x1": 48,
+        "z1": 49
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h10",
+      "name": "구조 장비 스탠드(북동)",
+      "floor": 1,
+      "rect": {
+        "x0": 42,
+        "z0": 61.5,
+        "x1": 44.5,
+        "z1": 62
+      },
+      "height": 1.8,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h11",
+      "name": "벽면 벤치(남동)",
+      "floor": 1,
+      "rect": {
+        "x0": 41,
+        "z0": 31,
+        "x1": 43,
+        "z1": 31.5
+      },
+      "height": 0.5,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h12",
+      "name": "입수 계단 손잡이(교습풀)",
+      "floor": 1,
+      "rect": {
+        "x0": 6.5,
+        "z0": 40.5,
+        "x1": 7.5,
+        "z1": 41
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h13",
+      "name": "입수 사다리 손잡이(경영풀 남서)",
+      "floor": 1,
+      "rect": {
+        "x0": 14.5,
+        "z0": 39,
+        "x1": 15,
+        "z1": 40
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "h14",
+      "name": "입수 사다리 손잡이(경영풀 북서)",
+      "floor": 1,
+      "rect": {
+        "x0": 14.5,
+        "z0": 55,
+        "x1": 15,
+        "z1": 56
+      },
+      "height": 1,
+      "zone": "H",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o30",
+      "name": "여과기 3기 + 배관 헤더",
+      "floor": 1,
+      "rect": {
+        "x0": 59,
+        "z0": 29,
+        "x1": 64,
+        "z1": 42
+      },
+      "height": 2.5,
+      "zone": "A",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o31",
+      "name": "순환 펌프 · 열교환기 열",
+      "floor": 1,
+      "rect": {
+        "x0": 53,
+        "z0": 48,
+        "x1": 56,
+        "z1": 54
+      },
+      "height": 2,
+      "zone": "A",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o32",
+      "name": "전기 제어반",
+      "floor": 1,
+      "rect": {
+        "x0": 53,
+        "z0": 32,
+        "x1": 54,
+        "z1": 38
+      },
+      "height": 2,
+      "zone": "A",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o33",
+      "name": "밸런스 탱크(콘크리트 수조)",
+      "floor": 1,
+      "rect": {
+        "x0": 56,
+        "z0": 46,
+        "x1": 64,
+        "z1": 54
+      },
+      "height": 2,
+      "zone": "A",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o40",
+      "name": "약품 드럼 선반",
+      "floor": 1,
+      "rect": {
+        "x0": 48,
+        "z0": 25.5,
+        "x1": 52,
+        "z1": 27
+      },
+      "height": 2,
+      "zone": "DR",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o41",
+      "name": "약품 드럼 선반",
+      "floor": 1,
+      "rect": {
+        "x0": 52,
+        "z0": 19,
+        "x1": 56,
+        "z1": 20.5
+      },
+      "height": 2,
+      "zone": "DR",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o50",
+      "name": "적재 팔레트",
+      "floor": 1,
+      "rect": {
+        "x0": 62,
+        "z0": 55,
+        "x1": 64,
+        "z1": 59
+      },
+      "height": 1.2,
+      "zone": "LD",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o60",
+      "name": "저수조(SUS 패널)",
+      "floor": 2,
+      "rect": {
+        "x0": 0,
+        "z0": 10,
+        "x1": 5,
+        "z1": 15.5
+      },
+      "height": 2.5,
+      "zone": "C",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o61",
+      "name": "저수조(SUS 패널)",
+      "floor": 2,
+      "rect": {
+        "x0": 0,
+        "z0": 17.5,
+        "x1": 5,
+        "z1": 23
+      },
+      "height": 2.5,
+      "zone": "C",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "o70",
+      "name": "계단식 좌석 단",
+      "floor": 2,
+      "rect": {
+        "x0": 17,
+        "z0": 26,
+        "x1": 38,
+        "z1": 32.5
+      },
+      "height": 2.4,
+      "zone": "ST",
+      "occludes": false,
+      "stepped": true
+    },
+    {
+      "id": "o71",
+      "name": "관람 매점 카운터",
+      "floor": 2,
+      "rect": {
+        "x0": 30,
+        "z0": 16,
+        "x1": 36,
+        "z1": 17
+      },
+      "height": 1.1,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l01",
+      "name": "자판기 열",
+      "floor": 2,
+      "rect": {
+        "x0": 20,
+        "z0": 25,
+        "x1": 24,
+        "z1": 26
+      },
+      "height": 1.8,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l02",
+      "name": "정수기 · 자판기",
+      "floor": 2,
+      "rect": {
+        "x0": 45,
+        "z0": 21,
+        "x1": 46,
+        "z1": 24
+      },
+      "height": 1.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l03",
+      "name": "대기 벤치",
+      "floor": 2,
+      "rect": {
+        "x0": 12,
+        "z0": 20.5,
+        "x1": 14.5,
+        "z1": 21
+      },
+      "height": 0.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l04",
+      "name": "대기 벤치",
+      "floor": 2,
+      "rect": {
+        "x0": 19,
+        "z0": 20.5,
+        "x1": 21.5,
+        "z1": 21
+      },
+      "height": 0.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l05",
+      "name": "대기 벤치",
+      "floor": 2,
+      "rect": {
+        "x0": 33.5,
+        "z0": 20.5,
+        "x1": 36,
+        "z1": 21
+      },
+      "height": 0.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l06",
+      "name": "대기 벤치",
+      "floor": 2,
+      "rect": {
+        "x0": 40,
+        "z0": 20.5,
+        "x1": 42.5,
+        "z1": 21
+      },
+      "height": 0.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l07",
+      "name": "대형 화분",
+      "floor": 2,
+      "rect": {
+        "x0": 25.5,
+        "z0": 22.5,
+        "x1": 26,
+        "z1": 23
+      },
+      "height": 1.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    },
+    {
+      "id": "l08",
+      "name": "대형 화분",
+      "floor": 2,
+      "rect": {
+        "x0": 9,
+        "z0": 25.5,
+        "x1": 9.5,
+        "z1": 26
+      },
+      "height": 1.5,
+      "zone": "CL",
+      "occludes": false,
+      "stepped": false
+    }
+  ]
+}
