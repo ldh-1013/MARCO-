@@ -24,6 +24,8 @@ namespace Marco.Network.Editor
     {
         public const string ScenePath = "Assets/Scenes/Network/NetworkTest.unity";
         public const string PlayerPrefabPath = "Assets/Prefabs/Network/NetworkPlayer.prefab";
+        public const string PlaceholderMaterialPath = "Assets/Materials/Network/NetworkPlaceholder.mat";
+        private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
 
@@ -37,15 +39,41 @@ namespace Marco.Network.Editor
                 !EditorUtility.DisplayDialog("NetworkTest", $"{ScenePath} 를 다시 만들까요?", "다시 만들기", "취소"))
                 return;
 
-            var playerPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(PlayerPrefabPath);
-            if (playerPrefab == null) playerPrefab = CreatePlayerPrefab();
-            else EnsurePlayerPrefabComponents();
+            var playerPrefab = LoadOrCreatePlayerPrefab();
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-            var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            floor.name = "Floor";
+            var floor = CreatePrimitive(PrimitiveType.Plane, "Floor");
             floor.transform.localScale = new Vector3(5, 1, 5);
 
+            var spawner = CreateNetworkManager(playerPrefab);
+            spawner.Spawns = new Transform[SpawnPositions.Length];
+            for (int i = 0; i < SpawnPositions.Length; i++)
+            {
+                var point = new GameObject($"SpawnPoint{i + 1}").transform;
+                point.position = SpawnPositions[i];
+                spawner.Spawns[i] = point;
+            }
+
+            for (var id = ValveId.A; id <= ValveId.E; id++) CreateValve(id, new Vector3(-8 + 4 * (int)id, 0.5f, 8));
+            CreateExit(ExitId.MainGate, new Vector3(0, 1.5f, -14), new Vector3(3, 3, 0.5f));
+            CreateExit(ExitId.StaffDoor, new Vector3(14, 1.5f, 0), new Vector3(0.5f, 3, 2));
+            CreateDrainHatch(DrainHatchId.First, new Vector3(-14, 0.05f, -8));
+            CreateDrainHatch(DrainHatchId.Second, new Vector3(-14, 0.05f, 8));
+            SaveWithRound(scene, ScenePath, RoundSceneId);
+            Debug.Log($"[MARCO] Network test scene saved: {ScenePath}");
+        }
+
+        internal static NetworkObject LoadOrCreatePlayerPrefab()
+        {
+            var playerPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(PlayerPrefabPath);
+            if (playerPrefab == null) return CreatePlayerPrefab();
+            EnsurePlayerPrefabComponents();
+            return playerPrefab;
+        }
+
+        // LAN connect + HUD + spawning + roles; callers fill spawner.Spawns.
+        internal static PlayerSpawner CreateNetworkManager(NetworkObject playerPrefab)
+        {
             var manager = new GameObject("NetworkManager");
             // FishNet only auto-fills this on later inspector validation; builds log an error when it stays null.
             manager.AddComponent<NetworkManager>().SpawnablePrefabs = FindDefaultPrefabObjects();
@@ -54,44 +82,34 @@ namespace Marco.Network.Editor
 
             var spawner = manager.AddComponent<PlayerSpawner>();
             spawner.SetPlayerPrefab(playerPrefab);
-            spawner.Spawns = new Transform[SpawnPositions.Length];
-            for (int i = 0; i < SpawnPositions.Length; i++)
-            {
-                var point = new GameObject($"SpawnPoint{i + 1}").transform;
-                point.position = SpawnPositions[i];
-                spawner.Spawns[i] = point;
-            }
             manager.AddComponent<RoleAssigner>();
             manager.AddComponent<NetworkPlayerRoster>();
+            return spawner;
+        }
 
-            for (var id = ValveId.A; id <= ValveId.E; id++) CreateValve(id);
-            CreateExit(ExitId.MainGate, new Vector3(0, 1.5f, -14), new Vector3(3, 3, 0.5f));
-            CreateExit(ExitId.StaffDoor, new Vector3(14, 1.5f, 0), new Vector3(0.5f, 3, 2));
-            CreateDrainHatch(DrainHatchId.First, new Vector3(-14, 0.05f, -8));
-            CreateDrainHatch(DrainHatchId.Second, new Vector3(-14, 0.05f, 8));
+        // Adds the Round scene object and saves the scene at path.
+        internal static void SaveWithRound(UnityEngine.SceneManagement.Scene scene, string path, ulong roundSceneId)
+        {
             var round = new GameObject("Round");
             var roundObject = round.AddComponent<NetworkObject>();
             round.AddComponent<NetworkRound>();
 
-            Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            EditorSceneManager.SaveScene(scene, path);
             // FishNet derives scene ids from the scene path, which a brand-new scene lacks until saved;
             // set one explicitly so every client resolves the same scene object.
-            roundObject.SetSceneId(RoundSceneId);
+            roundObject.SetSceneId(roundSceneId);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            Debug.Log($"[MARCO] Network test scene saved: {ScenePath}");
         }
 
-        // Cube body + flat handle bar on top, in a row in front of the spawn points.
-        private static void CreateValve(ValveId id)
+        // Cube body + flat handle bar on top.
+        internal static GameObject CreateValve(ValveId id, Vector3 position)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = $"Valve {id}";
-            body.transform.position = new Vector3(-8 + 4 * (int)id, 0.5f, 8);
+            var body = CreatePrimitive(PrimitiveType.Cube, $"Valve {id}");
+            body.transform.position = position;
 
-            var handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            handle.name = "Handle";
+            var handle = CreatePrimitive(PrimitiveType.Cube, "Handle");
             Object.DestroyImmediate(handle.GetComponent<BoxCollider>());
             handle.transform.SetParent(body.transform, false);
             handle.transform.localPosition = new Vector3(0, 0.6f, 0);
@@ -103,13 +121,13 @@ namespace Marco.Network.Editor
             serialized.FindProperty("handle").objectReferenceValue = handle.transform;
             serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            return body;
         }
 
         // Tall cube without a collider so players can walk into it to escape.
-        private static void CreateExit(ExitId id, Vector3 position, Vector3 size)
+        internal static GameObject CreateExit(ExitId id, Vector3 position, Vector3 size)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = $"Exit {id}";
+            var body = CreatePrimitive(PrimitiveType.Cube, $"Exit {id}");
             Object.DestroyImmediate(body.GetComponent<BoxCollider>());
             body.transform.position = position;
             body.transform.localScale = size;
@@ -119,13 +137,13 @@ namespace Marco.Network.Editor
             serialized.FindProperty("id").enumValueIndex = (int)id;
             serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            return body;
         }
 
         // Flat square on the floor.
-        private static void CreateDrainHatch(DrainHatchId id, Vector3 position)
+        internal static GameObject CreateDrainHatch(DrainHatchId id, Vector3 position)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = $"DrainHatch {id}";
+            var body = CreatePrimitive(PrimitiveType.Cube, $"DrainHatch {id}");
             Object.DestroyImmediate(body.GetComponent<BoxCollider>());
             body.transform.position = position;
             body.transform.localScale = new Vector3(1.5f, 0.1f, 1.5f);
@@ -135,18 +153,47 @@ namespace Marco.Network.Editor
             serialized.FindProperty("id").enumValueIndex = (int)id;
             serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            return body;
         }
 
-        // Adds components introduced after the prefab was first made, keeping existing file ids.
+        // Adds components / settings introduced after the prefab was first made, keeping existing file ids.
         private static void EnsurePlayerPrefabComponents()
         {
             var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
+            bool changed = false;
             if (root.GetComponent<PlayerInteractor>() == null)
             {
                 root.AddComponent<PlayerInteractor>();
-                PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
+                changed = true;
             }
+            var material = LoadOrCreatePlaceholderMaterial();
+            var body = root.GetComponent<Renderer>();
+            if (body.sharedMaterial != material)
+            {
+                body.sharedMaterial = material;
+                changed = true;
+            }
+            if (changed) PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
             PrefabUtility.UnloadPrefabContents(root);
+        }
+
+        // CreatePrimitive gives the built-in Default-Material (Standard), which the project's URP
+        // 2D Renderer never draws; every placeholder uses NetworkPlaceholder instead.
+        internal static GameObject CreatePrimitive(PrimitiveType type, string name)
+        {
+            var primitive = GameObject.CreatePrimitive(type);
+            primitive.name = name;
+            primitive.GetComponent<Renderer>().sharedMaterial = LoadOrCreatePlaceholderMaterial();
+            return primitive;
+        }
+
+        internal static Material LoadOrCreatePlaceholderMaterial()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(PlaceholderMaterialPath);
+            if (material != null) return material;
+            material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(PlaceholderShaderPath));
+            AssetDatabase.CreateAsset(material, PlaceholderMaterialPath);
+            return material;
         }
 
         // Capsule body with a client-authoritative NetworkTransform; the camera child stays off
@@ -154,8 +201,7 @@ namespace Marco.Network.Editor
         [MenuItem("MARCO/Network/Create Player Prefab")]
         public static NetworkObject CreatePlayerPrefab()
         {
-            var root = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            root.name = "NetworkPlayer";
+            var root = CreatePrimitive(PrimitiveType.Capsule, "NetworkPlayer");
             Object.DestroyImmediate(root.GetComponent<CapsuleCollider>());
             root.AddComponent<CharacterController>();
             root.AddComponent<NetworkObject>();
@@ -189,7 +235,7 @@ namespace Marco.Network.Editor
             return prefab;
         }
 
-        private static void SetReference(Object target, string field, Object value)
+        internal static void SetReference(Object target, string field, Object value)
         {
             var serialized = new SerializedObject(target);
             serialized.FindProperty(field).objectReferenceValue = value;
