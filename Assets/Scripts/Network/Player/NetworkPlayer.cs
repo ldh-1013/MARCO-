@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Marco.Core.WinCondition;
@@ -57,6 +58,14 @@ namespace Marco.Network.Player
 
         [Server]
         public void SetStatus(PlayerStatus value) => status.Value = value;
+
+        // Movement is client-authoritative, so the server asks the owning client to move itself.
+        [Server]
+        public void TeleportOwner(Vector3 position) => TeleportTarget(Owner, position);
+
+        [TargetRpc]
+        private void TeleportTarget(NetworkConnection conn, Vector3 position) =>
+            GetComponent<PlayerMovement>().Teleport(position);
 
         public override void OnStartNetwork()
         {

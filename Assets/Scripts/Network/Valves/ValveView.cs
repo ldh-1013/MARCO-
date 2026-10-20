@@ -5,8 +5,9 @@ using UnityEngine;
 
 namespace Marco.Network.Valves
 {
-    // Placeholder valve (cube + handle). Reads NetworkRound's synced snapshot: handle angle follows
-    // progress, body color follows status. Also the position source for server range checks.
+    // Valve visual (NetworkTest: cube + bar; pool map: the map's wheel + a status lamp). Reads
+    // NetworkRound's synced snapshot: handle angle follows progress, body color follows status.
+    // Also the position source for server range checks.
     public sealed class ValveView : MonoBehaviour
     {
         private const float HandleTurnsAtFullProgress = 2f;
@@ -14,6 +15,8 @@ namespace Marco.Network.Valves
 
         [SerializeField] private ValveId id;
         [SerializeField] private Transform handle;
+        // Handle-local spin axis: up for the NetworkTest bar, forward for the map's wheel.
+        [SerializeField] private Vector3 handleAxis = Vector3.up;
         [SerializeField] private Renderer body;
 
         public ValveId Id => id;
@@ -42,7 +45,7 @@ namespace Marco.Network.Valves
             ValveSnapshot state = default;
             bool known = round != null && round.TryGetValveState(id, out state);
 
-            handle.localRotation = Quaternion.Euler(0, state.Progress * 360f * HandleTurnsAtFullProgress, 0);
+            handle.localRotation = Quaternion.AngleAxis(state.Progress * 360f * HandleTurnsAtFullProgress, handleAxis);
             body.material.color = !known || !state.Active ? Color.gray : state.Status switch
             {
                 ValveStatus.Rotating => Color.yellow,

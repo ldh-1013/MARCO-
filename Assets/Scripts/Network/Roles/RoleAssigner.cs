@@ -7,8 +7,9 @@ using UnityEngine;
 
 namespace Marco.Network.Roles
 {
-    // Server-only role policy: choose one connected player uniformly as Seeker;
-    // every other player is a Runner. Clients only read the synced role.
+    // Server-only role policy: NetworkRound draws one connected player uniformly as Seeker once per
+    // round start; every other player is a Runner. Until then everyone waits as a Runner.
+    // Clients only read the synced role.
     [RequireComponent(typeof(PlayerSpawner))]
     public sealed class RoleAssigner : MonoBehaviour
     {
@@ -29,29 +30,22 @@ namespace Marco.Network.Roles
         private void OnPlayerSpawned(NetworkObject nob)
         {
             if (!nob.TryGetComponent(out NetworkPlayer player)) return;
+            player.SetRole(PlayerRole.Runner);
             // RoundState fixed its Runner count at start, so late joiners wait for the next round.
             var round = NetworkRound.Instance;
-            if (round != null && round.Mode != RoundMode.NotStarted)
-            {
-                player.SetRole(PlayerRole.Runner);
-                player.SetStatus(PlayerStatus.Spectating);
-                return;
-            }
-
-            AssignRandomSeeker();
+            bool started = round != null && round.Mode != RoundMode.NotStarted;
+            player.SetStatus(started ? PlayerStatus.Spectating : PlayerStatus.Alive);
         }
 
-        private static void AssignRandomSeeker()
+        // Called by NetworkRound.StartRound before RoundState reads the Runner count.
+        public void AssignRoles()
         {
             var players = NetworkPlayer.All;
             if (players.Count == 0) return;
 
             int seekerIndex = UnityEngine.Random.Range(0, players.Count);
             for (int i = 0; i < players.Count; i++)
-            {
                 players[i].SetRole(i == seekerIndex ? PlayerRole.Seeker : PlayerRole.Runner);
-                players[i].SetStatus(PlayerStatus.Alive);
-            }
         }
     }
 }

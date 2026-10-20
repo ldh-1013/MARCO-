@@ -6,6 +6,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Transporting;
 using Marco.Core.WinCondition;
 using Marco.Network.Escape;
+using Marco.Network.Map;
 using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Valves;
@@ -38,6 +39,8 @@ namespace Marco.Network.Round
         [SerializeField] private float tagCooldownSeconds = 1f;
         // Design value is 90 s; lower it in the inspector to test the phase timeout quickly.
         [SerializeField] private float lastSurvivorPhaseSeconds = 90f;
+        // GamePoints marker the Seeker is moved to when a round starts.
+        [SerializeField] private string seekerSpawnPoint = "SpawnPoint_4";
 
         // Index = (int)ValveId.
         private readonly SyncList<ValveSnapshot> valveStates = new();
@@ -127,8 +130,11 @@ namespace Marco.Network.Round
             Debug.Log($"[MARCO][Round] StartRound (mode {mode.Value})");
             if (mode.Value != RoundMode.NotStarted) return;
             roster = NetworkManager.GetComponent<NetworkPlayerRoster>();
+            // The Seeker is drawn once per round, before RoundState reads the Runner count.
+            if (NetworkManager.TryGetComponent(out RoleAssigner roles)) roles.AssignRoles();
             // Everyone connected now takes part, including last round's spectators.
             foreach (var player in NetworkPlayer.All) player.SetStatus(PlayerStatus.Alive);
+            MoveSeekersToSpawn();
 
             // INTERFACES.md §0 assembly order.
             var config = new WinConditionConfig { LastSurvivorPhaseDurationSeconds = lastSurvivorPhaseSeconds };
@@ -160,6 +166,14 @@ namespace Marco.Network.Round
                 valveStates[index] = state;
             }
             TimeManager.OnTick += OnServerTick;
+        }
+
+        // Scenes without GamePoints (NetworkTest) have no such marker and leave the Seeker in place.
+        private void MoveSeekersToSpawn()
+        {
+            if (!GamePoints.TryGet(seekerSpawnPoint, out var point)) return;
+            foreach (var player in NetworkPlayer.All)
+                if (player.Role == PlayerRole.Seeker) player.TeleportOwner(point.position + Vector3.up * GamePoints.PlayerStandHeight);
         }
 
         // Host's "다시 시작": throw the finished Core objects away and assemble a fresh round.

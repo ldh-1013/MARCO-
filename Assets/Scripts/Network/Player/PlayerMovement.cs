@@ -1,3 +1,4 @@
+using FishNet.Component.Transforming;
 using FishNet.Object;
 using UnityEngine;
 
@@ -16,6 +17,16 @@ namespace Marco.Network.Player
         private float pitch;
 
         private void Awake() => controller = GetComponent<CharacterController>();
+
+        // Owner only. An enabled CharacterController overrides direct transform writes, and
+        // NetworkTransform.Teleport makes other clients snap instead of sliding across the map.
+        public void Teleport(Vector3 position)
+        {
+            controller.enabled = false;
+            transform.position = position;
+            controller.enabled = true;
+            if (TryGetComponent(out NetworkTransform networkTransform)) networkTransform.Teleport();
+        }
 
         private void Update()
         {
