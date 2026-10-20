@@ -5,10 +5,13 @@ using System.Net.Sockets;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using FishNet.Component.Spawning;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Object;
 using FishNet.Transporting;
+using Marco.Network.Roles;
 using FishySteamworksTransport = FishySteamworks.FishySteamworks;
 using Steamworks;
 using UnityEngine;
@@ -19,6 +22,8 @@ namespace Marco.Prototype
     public sealed class RoomSessionPrototype : MonoBehaviour
     {
         [SerializeField] private int port = 7777;
+        [Header("FishNet player connection")]
+        [SerializeField] private NetworkObject fishNetPlayerPrefab;
         [Header("Registered character names (all participants use the host's selection)")]
         [SerializeField] private string hunterAssetName = "Demon";
         [SerializeField] private string survivorAssetName = "UnityChan";
@@ -195,12 +200,43 @@ namespace Marco.Prototype
 
             _fishNetNetworkManager = networkObject.AddComponent<NetworkManager>();
             _fishNetPrefabObjects = ScriptableObject.CreateInstance<DefaultPrefabObjects>();
+            if (fishNetPlayerPrefab != null)
+            {
+                _fishNetPrefabObjects.AddObject(fishNetPlayerPrefab, checkForDuplicates: true, initializeAdded: false);
+                var playerSpawner = networkObject.AddComponent<PlayerSpawner>();
+                playerSpawner.SetPlayerPrefab(fishNetPlayerPrefab);
+                playerSpawner.Spawns = CreateFishNetSpawnPoints(networkObject.transform);
+                networkObject.AddComponent<RoleAssigner>();
+                networkObject.AddComponent<NetworkPlayerRoster>();
+            }
+            else
+            {
+                Debug.LogError("[FishNet] Player prefab is not assigned on RoomSessionPrototype; Steam connections will not spawn players.", this);
+            }
             _fishNetNetworkManager.SpawnablePrefabs = _fishNetPrefabObjects;
             networkObject.SetActive(true);
             _fishNetNetworkManager.ClientManager.OnAuthenticated += OnFishNetClientAuthenticated;
             _fishNetNetworkManager.ClientManager.OnClientConnectionState += OnFishNetClientConnectionState;
             _fishNetNetworkManager.ServerManager.OnServerConnectionState += OnFishNetServerConnectionState;
             _fishNetNetworkManager.ServerManager.OnRemoteConnectionState += OnFishNetRemoteConnectionState;
+        }
+
+        private static Transform[] CreateFishNetSpawnPoints(Transform parent)
+        {
+            var positions = new[]
+            {
+                new Vector3(-2, 1, -2), new Vector3(2, 1, -2),
+                new Vector3(-2, 1, 2), new Vector3(2, 1, 2)
+            };
+            var points = new Transform[positions.Length];
+            for (int i = 0; i < positions.Length; i++)
+            {
+                var point = new GameObject($"FishNetSpawnPoint{i + 1}").transform;
+                point.SetParent(parent, false);
+                point.localPosition = positions[i];
+                points[i] = point;
+            }
+            return points;
         }
 
         private void OnFishNetClientAuthenticated()

@@ -60,6 +60,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   port: 7777
+  fishNetPlayerPrefab: {fileID: 6639437800047803135, guid: 670566fa27926914884c34c679f5460e, type: 3}
   menuPosition: {x: 8, y: 330}
   nicknamePosition: {x: 350, y: 140}
   menuFontSize: 40
