@@ -1,0 +1,3 @@
+PASS: 179 pre-existing asset GUIDs preserved against pre-upgrade ZIP.
+PASS: 4 scene/layout files unchanged apart from line endings.
+Backup ZIP is local in UnityProject/Backups; original Gameproject remains on 6000.3.10f1.

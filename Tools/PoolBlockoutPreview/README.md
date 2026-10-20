@@ -3,7 +3,7 @@
 ## 팀원이 확인하는 방법
 1. `codex/pool-map-v1-1` 브랜치를 내려받습니다. 브랜치 이름은 이전과 같고, 최신 v1.2도 이 안에 있습니다.
 2. Unity Hub > Add project from disk에서 `Tools/PoolBlockoutPreview` 폴더를 선택합니다.
-3. 원본 제작·검증 버전 Unity **6000.3.10f1**로 엽니다.
+3. Unity **6000.5.4f1**로 엽니다. 2026-10-20에 해당 Editor에서 실제 변환·검증했습니다.
 4. **Assets/Scenes/IndoorPool_v1_2.unity**를 열고 Play를 누릅니다.
 5. 왼쪽 1F / 2F / ALL로 층을 선택합니다. Explore inside (fly)는 오른쪽 마우스 + WASD, Q/E로 이동합니다.
 
@@ -20,10 +20,10 @@
 상세 기준·한계는 Assets/PoolV12/README.md와 Design/MapDesign_v1_2.md에 있습니다. FBX 교체는 Tools > Indoor Pool v1.2 > Replace Selected Module Visual을 사용합니다.
 
 ## 팀 프로젝트와의 관계
-이 폴더는 원본 URP17.3 / InputSystem1.18 맵을 공유하는 **독립 검토 프로젝트**입니다. 팀 루트 Assets, Packages, ProjectSettings는 변경하지 않았으며 main에 병합하거나 팀 게임에 직접 통합한 상태가 아닙니다. 팀 루트의 버전과 렌더링 설정에 맞춘 통합은 별도 검토해야 합니다. 이 폴더의 설정을 팀 프로젝트에 통째로 덮어쓰지 마세요. 맵 카메라는 UniversalRP 렌더러 목록 1번을 사용합니다.
+이 폴더는 Unity6000.5.4f1 / URP17.5.0 / InputSystem1.19.0 맵을 공유하는 **독립 검토 프로젝트**입니다. 팀 루트 Assets, Packages, ProjectSettings는 변경하지 않았으며 main에 병합하거나 팀 게임에 직접 통합한 상태가 아닙니다. Editor 버전은 팀 기준과 맞췄습니다. 팀 루트의 렌더링·게임 시스템에 맞춘 통합은 별도 검토해야 합니다. 이 폴더의 설정을 팀 프로젝트에 통째로 덮어쓰지 마세요. 맵 카메라는 UniversalRP 렌더러 목록 1번을 사용합니다.
 
 ## 검증과 한계
-원본 프로젝트에서 v1.2 저장·재열기 490개 검사, Play 모드 카메라·층 선택·수면 표시 검사를 통과했습니다. Verification/v1.2는 그때의 기록입니다. 이 공유본을 독립적으로 Unity에서 다시 실행한 기록은 아닙니다. 업로드 전 원본과 복사본의 v1.2 파일 일치, 로컬 에셋 참조 누락 여부를 확인합니다.
+원본 프로젝트에서 v1.2 저장·재열기 490개 검사, Play 모드 카메라·층 선택·수면 표시 검사를 통과했습니다. Verification/v1.2는 그때의 기록입니다. 이전 버전 기록입니다. 현재 버전 변환 결과는 Verification/Unity6000.5.4f1에 별도로 보관합니다. 공유 프로젝트 자체를 목표 Editor에서 열어 두 씬의 구조·충돌, 렌더링을 검사했으며 Play 모드 결과도 이 폴더에 기록합니다. 변환 전 원본 일치 결과는 v1.2/UploadIntegrity.txt의 과거 기록입니다.
 
 테스트용 파이프 FBX는 포함하지 않았습니다. 기록에 남은 FBX 교체 샘플 검사는 당시 원본에서 수행했으며, 공유본에서 재실행하면 해당 샘플 검사는 SKIP됩니다. 일반 FBX 교체 도구는 유지합니다.
 

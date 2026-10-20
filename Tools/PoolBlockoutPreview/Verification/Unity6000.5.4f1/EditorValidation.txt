@@ -1,0 +1,6 @@
+PASS: Unity 6000.5.4f1
+PASS: both saved map versions passed geometry and collision validation.
+PASS: renderer materials have supported shaders.
+PASS: rendered ALL/1F/2F without blank or error-pink frames.
+PASS: scenes, prefabs and materials reserialized by target Editor.
+Test pipe FBX is absent; its optional replacement sample test is skipped. No gameplay or networking validation.

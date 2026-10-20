@@ -8,3 +8,6 @@
 /*.csproj
 /*.sln
 /*.slnx
+/PoolV12Reports/
+/.vscode/
+/Verification/Unity6000.5.4f1/*.png
