@@ -1,0 +1,20 @@
+{
+    "name": "Marco.Network.Editor",
+    "rootNamespace": "Marco.Network.Editor",
+    "references": [
+        "Marco.Network",
+        "FishNet.Runtime",
+        "Marco.Core.WinCondition"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
