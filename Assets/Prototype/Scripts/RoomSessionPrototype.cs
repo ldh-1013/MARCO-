@@ -57,6 +57,8 @@ namespace Marco.Prototype
         private bool joined;
         private int members;
         private float deadline;
+        private bool runInBackgroundBeforeNetworking;
+        private bool networkingBackgroundModeActive;
         private string playerName = "Player";
         private readonly List<string> roster = new List<string>();
         private Vector2 rosterScroll;
@@ -89,8 +91,30 @@ namespace Marco.Prototype
         {
             if (instance != null && instance != this) { Destroy(gameObject); return; }
             instance = this;
+            runInBackgroundBeforeNetworking = Application.runInBackground;
             MatchLaunchContext.Clear();
             DontDestroyOnLoad(gameObject);
+        }
+
+        private void KeepNetworkingAliveInBackground()
+        {
+            if (!networkingBackgroundModeActive)
+            {
+                runInBackgroundBeforeNetworking = Application.runInBackground;
+                networkingBackgroundModeActive = true;
+            }
+            Application.runInBackground = true;
+        }
+
+        private void RestoreBackgroundModeWhenDisconnected()
+        {
+            bool fishNetRunning = _fishNetNetworkManager != null
+                && (_fishNetNetworkManager.IsServerStarted || _fishNetNetworkManager.IsClientStarted);
+            if (!networkingBackgroundModeActive || listener != null || connectTask != null || server != null || fishNetRunning)
+                return;
+
+            Application.runInBackground = runInBackgroundBeforeNetworking;
+            networkingBackgroundModeActive = false;
         }
 
         private sealed class Peer : IDisposable
@@ -479,6 +503,7 @@ namespace Marco.Prototype
             try
             {
                 if (!IPAddress.TryParse(advertisedIp, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork) { status = "공유할 IPv4 주소를 확인하세요."; return; }
+                KeepNetworkingAliveInBackground();
                 listener = new TcpListener(IPAddress.Any, port); listener.Start(); acceptTask = listener.AcceptTcpClientAsync();
                 playerName = CleanName(playerName);
                 address = advertisedIp + ":" + port; joined = true; members = 1; status = "친구를 초대하고 참가자를 기다리세요.";
@@ -498,6 +523,7 @@ namespace Marco.Prototype
         private void JoinRoom()
         {
             if (!TryParseAddress(joinInput, out var ip, out int targetPort)) { status = "올바른 IP:port 또는 MARCO 코드를 입력하세요."; return; }
+            KeepNetworkingAliveInBackground();
             connectTask = Connect(ip, targetPort); deadline = Time.unscaledTime + 8; status = "방에 연결 중…";
         }
 
@@ -810,6 +836,7 @@ namespace Marco.Prototype
             developmentRoleSwitchAt.Clear(); developmentRequestAt = 0;
 #endif
             MatchLaunchContext.Clear();
+            RestoreBackgroundModeWhenDisconnected();
         }
         private void OnDestroy()
         {
