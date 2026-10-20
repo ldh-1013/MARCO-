@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Marco.Prototype
 {
@@ -59,10 +60,21 @@ namespace Marco.Prototype
                 source.updateWhenOffscreen = true;
             }
             if (!IsReady) { Fail("The original asset has no skinned body."); return; }
-            Camera.onPreCull += BeforeCamera;
-            Camera.onPostRender += AfterCamera;
+            if (GraphicsSettings.currentRenderPipeline == null)
+            {
+                Camera.onPreCull += BeforeCamera;
+                Camera.onPostRender += AfterCamera;
+            }
+            else
+            {
+                RenderPipelineManager.beginCameraRendering += BeforeSrpCamera;
+                RenderPipelineManager.endCameraRendering += AfterSrpCamera;
+            }
             AlignEyes();
         }
+
+        private void BeforeSrpCamera(ScriptableRenderContext context, Camera camera) { BeforeCamera(camera); }
+        private void AfterSrpCamera(ScriptableRenderContext context, Camera camera) { AfterCamera(camera); }
 
         private Mesh MaskHead(SkinnedMeshRenderer source, Transform neck)
         {
@@ -146,6 +158,8 @@ namespace Marco.Prototype
         private void OnDestroy()
         {
             Camera.onPreCull -= BeforeCamera; Camera.onPostRender -= AfterCamera;
+            RenderPipelineManager.beginCameraRendering -= BeforeSrpCamera;
+            RenderPipelineManager.endCameraRendering -= AfterSrpCamera;
             RestoreMeshes();
             foreach (var skin in skins) if (skin.OwnView != skin.Original) Destroy(skin.OwnView);
         }

@@ -17,4 +17,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Prototype/Scenes/Prototype_SurvivorTest.unity
     guid: d1111111111111111111111111111111
+  - enabled: 1
+    path: Assets/Scenes/Maps/IndoorPool_v1_2.unity
+    guid: 9eb057da31d49734cb0bd0317d9258df
+  - enabled: 1
+    path: Assets/Scenes/Maps/IndoorPool_PrototypeGame.unity
+    guid: 5e32662a7a034485947d1b1d566eaf40
   m_configObjects: {}

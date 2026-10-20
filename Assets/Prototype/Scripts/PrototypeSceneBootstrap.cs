@@ -16,6 +16,7 @@ namespace Marco.Prototype
         private Transform developmentTemplates;
         private GameObject developmentHunterTemplate, developmentSurvivorTemplate;
         private readonly System.Collections.Generic.Dictionary<int, GameObject> participants = new System.Collections.Generic.Dictionary<int, GameObject>();
+        private DevelopmentCheatMode? pendingDevelopmentMode;
 #endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -142,7 +143,51 @@ namespace Marco.Prototype
                 participants[member.Id] = replacement;
                 replacement.transform.SetParent(null); replacement.SetActive(true);
             }
+            if (pendingDevelopmentMode.HasValue)
+            {
+                var mode = pendingDevelopmentMode.Value;
+                pendingDevelopmentMode = null;
+                ApplyDevelopmentMode(mode);
+            }
         }
+
+        private void Update()
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (sceneKind != PrototypeSceneKind.Game || !MatchLaunchContext.IsActive) return;
+            if (Input.GetKeyDown(KeyCode.F11)) SelectDevelopmentMode(DevelopmentCheatMode.Survivor);
+            if (Input.GetKeyDown(KeyCode.F9) && LocalRole == PrototypePlayerRole.Hunter) SelectDevelopmentMode(DevelopmentCheatMode.Ghost);
+            if (Input.GetKeyDown(KeyCode.F12)) SelectDevelopmentMode(DevelopmentCheatMode.Hunter);
+#endif
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private void SelectDevelopmentMode(DevelopmentCheatMode mode)
+        {
+            if (sceneKind != PrototypeSceneKind.Game || !MatchLaunchContext.IsActive) return;
+            int localId = MatchLaunchContext.LocalPlayerId;
+            if (!participants.TryGetValue(localId, out var localPlayer) || localPlayer == null) return;
+            var requestedRole = mode == DevelopmentCheatMode.Hunter ? PrototypePlayerRole.Hunter : PrototypePlayerRole.Survivor;
+            if (LocalRole != requestedRole)
+            {
+                if (developmentRoom == null) developmentRoom = RoomSessionPrototype.Instance;
+                if (developmentRoom == null) return;
+                pendingDevelopmentMode = mode;
+                if (!developmentRoom.RequestDevelopmentRoleSwitch()) pendingDevelopmentMode = null;
+                return;
+            }
+            ApplyDevelopmentMode(mode);
+        }
+
+        private void ApplyDevelopmentMode(DevelopmentCheatMode mode)
+        {
+            if (mode == DevelopmentCheatMode.Hunter) return;
+            if (!participants.TryGetValue(MatchLaunchContext.LocalPlayerId, out var localPlayer) || localPlayer == null) return;
+            var ghost = localPlayer.GetComponent<SurvivorGhostPrototype>();
+            if (ghost == null) return;
+            ghost.SetGhostForDevelopment(mode == DevelopmentCheatMode.Ghost);
+        }
+#endif
         private void OnDestroy()
         {
             if (developmentRoom != null) developmentRoom.DevelopmentRolesChanged -= ApplyDevelopmentRoles;
@@ -179,7 +224,20 @@ namespace Marco.Prototype
             GUI.Label(new Rect(35, 25, 800, 35), sceneKind == PrototypeSceneKind.Game
                 ? "MARCO · " + (hunter ? "헌터" : "서바이버") : hunter ? "HUNTER TEST" : "SURVIVOR TEST");
             GUI.Label(new Rect(35, 55, 1050, 28), hunter ? "WASD 이동 · Shift 달리기 · 마우스 회전 · 좌클릭 태그" : "WASD 이동 · Shift 달리기 · 마우스 회전 · E 상호작용");
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (sceneKind == PrototypeSceneKind.Game && MatchLaunchContext.IsActive && Cursor.lockState != CursorLockMode.Locked)
+            {
+                GUI.depth = -10;
+                GUI.Label(new Rect(Screen.width - 390, 160, 360, 25), "[DEV] 플레이 상태 선택 · F11 서바이버 / F9 고스트 / F12 헌터");
+                if (GUI.Button(new Rect(Screen.width - 390, 188, 112, 36), "서바이버")) SelectDevelopmentMode(DevelopmentCheatMode.Survivor);
+                if (GUI.Button(new Rect(Screen.width - 274, 188, 112, 36), "고스트")) SelectDevelopmentMode(DevelopmentCheatMode.Ghost);
+                if (GUI.Button(new Rect(Screen.width - 158, 188, 112, 36), "헌터")) SelectDevelopmentMode(DevelopmentCheatMode.Hunter);
+            }
+#endif
         }
     }
     public enum PrototypeSceneKind { Lobby, HunterTest, SurvivorTest, Game }
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    internal enum DevelopmentCheatMode { Survivor, Ghost, Hunter }
+#endif
 }

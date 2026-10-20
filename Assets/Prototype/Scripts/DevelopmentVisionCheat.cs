@@ -14,7 +14,12 @@ namespace Marco.Prototype
             bool enabledVision = !vision.DevelopmentFullVision; vision.SetDevelopmentFullVision(enabledVision);
             Debug.Log("Development full vision: " + (enabledVision ? "ON" : "OFF"));
         }
-        private void OnGUI() { if (vision != null && vision.DevelopmentFullVision) GUI.Label(new Rect(Screen.width - 360, 25, 325, 28), "[DEV] 전체 시야 ON · F8로 해제"); }
+        private void OnGUI()
+        {
+            if (vision == null) return;
+            GUI.Label(new Rect(Screen.width - 390, 25, 355, 28), vision.DevelopmentFullVision
+                ? "[DEV] 전체 시야 ON · F8로 해제" : "[DEV] F8 전체 시야 켜기");
+        }
 #endif
     }
 }

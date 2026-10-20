@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Marco.Prototype
 {
@@ -11,6 +12,7 @@ namespace Marco.Prototype
         [SerializeField] private Transform[] visuals = new Transform[0];
         [SerializeField] private bool hideFromFirstPerson = true;
         private readonly Dictionary<Renderer, int> originalLayers = new Dictionary<Renderer, int>();
+        private readonly List<Material> runtimeMaterials = new List<Material>();
         private bool initialized, failed;
         public string AssetName => characterAssetName;
         public CharacterAssetDefinition Definition { get; private set; }
@@ -77,7 +79,59 @@ namespace Marco.Prototype
             foreach (var audio in visual.GetComponentsInChildren<AudioListener>(true)) audio.enabled = false;
             foreach (var animator in visual.GetComponentsInChildren<Animator>(true)) animator.applyRootMotion = false;
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
                 if (!originalLayers.ContainsKey(renderer)) originalLayers.Add(renderer, renderer.gameObject.layer);
+                MakeUnityChanMaterialsUrpCompatible(renderer);
+            }
+        }
+
+        // The UnityChan package ships Built-in Render Pipeline shaders. They have
+        // no URP pass, so URP can silently omit the survivor renderers. Replace
+        // only this character instance's materials; shared map materials remain untouched.
+        private void MakeUnityChanMaterialsUrpCompatible(Renderer renderer)
+        {
+            if (GraphicsSettings.currentRenderPipeline == null) return;
+            var materials = renderer.sharedMaterials;
+            bool changed = false;
+            for (int i = 0; i < materials.Length; i++)
+            {
+                var source = materials[i];
+                if (source == null || source.shader == null || !source.shader.name.StartsWith("UnityChan/")) continue;
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                if (lit == null || !lit.isSupported) continue;
+                var replacement = new Material(lit) { name = source.name + " (URP runtime)" };
+                if (source.HasProperty("_MainTex"))
+                {
+                    var texture = source.GetTexture("_MainTex");
+                    replacement.SetTexture("_BaseMap", texture);
+                    replacement.SetTextureScale("_BaseMap", source.GetTextureScale("_MainTex"));
+                    replacement.SetTextureOffset("_BaseMap", source.GetTextureOffset("_MainTex"));
+                }
+                if (source.HasProperty("_Color")) replacement.SetColor("_BaseColor", source.GetColor("_Color"));
+                bool transparent = source.shader.name.Contains("Transparent");
+                bool hair = source.shader.name.Contains("Hair");
+                replacement.SetFloat("_Surface", transparent ? 1f : 0f);
+                replacement.SetFloat("_AlphaClip", hair ? 1f : 0f);
+                replacement.SetFloat("_Cutoff", 0.25f);
+                replacement.SetFloat("_Cull", source.shader.name.Contains("Double-sided") || hair ? 0f : 2f);
+                replacement.SetFloat("_ZWrite", transparent ? 0f : 1f);
+                replacement.renderQueue = transparent ? (int)RenderQueue.Transparent : (hair ? (int)RenderQueue.AlphaTest : (int)RenderQueue.Geometry);
+                if (transparent) replacement.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                else replacement.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                if (hair) replacement.EnableKeyword("_ALPHATEST_ON");
+                else replacement.DisableKeyword("_ALPHATEST_ON");
+                replacement.SetOverrideTag("RenderType", transparent ? "Transparent" : hair ? "TransparentCutout" : "Opaque");
+                runtimeMaterials.Add(replacement);
+                materials[i] = replacement;
+                changed = true;
+            }
+            if (changed) renderer.sharedMaterials = materials;
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var material in runtimeMaterials) if (material != null) Destroy(material);
+            runtimeMaterials.Clear();
         }
     }
 }

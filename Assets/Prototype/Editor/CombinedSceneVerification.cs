@@ -20,7 +20,7 @@ public static class CombinedSceneVerification
         {
             foreach (PrototypePlayerRole role in Enum.GetValues(typeof(PrototypePlayerRole)))
             {
-                var scene = EditorSceneManager.OpenScene("Assets/Prototype/Scenes/Prototype_Game.unity");
+                var scene = EditorSceneManager.OpenScene("Assets/Scenes/Maps/IndoorPool_PrototypeGame.unity");
                 var roots = scene.GetRootGameObjects();
                 var hud = roots.SelectMany(r => r.GetComponentsInChildren<PrototypeSceneBootstrap>(true)).Single();
                 var hunter = roots.Single(r => r.name == "Hunter Player");
@@ -44,7 +44,7 @@ public static class CombinedSceneVerification
                     foreach (var transform in root.GetComponentsInChildren<Transform>(true))
                         Check(GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(transform.gameObject) == 0, "No missing scripts: " + transform.name);
             }
-            Check(EditorBuildSettings.scenes.Any(s => s.enabled && s.path.EndsWith("/Prototype_Game.unity")), "Game is registered for build");
+            Check(EditorBuildSettings.scenes.Any(s => s.enabled && s.path.EndsWith("/IndoorPool_PrototypeGame.unity")), "Map-backed game is registered for build");
             Debug.Log("PASS: combined scene references, both role inputs, camera/audio/microphone ownership");
         }
         finally

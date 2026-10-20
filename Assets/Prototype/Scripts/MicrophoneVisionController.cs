@@ -33,6 +33,12 @@ namespace Marco.Prototype
 
         private void Start()
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // A quiet/unavailable microphone draws a fully black mask. Start
+            // with the map visible while developing so character/rendering
+            // issues can be inspected; F8 still tests the actual vision loop.
+            developmentFullVision = true;
+#endif
             if (Microphone.devices.Length == 0) { status = "마이크를 찾지 못했습니다 — F8 개발 시야로 화면을 확인할 수 있습니다."; return; }
             microphoneDevice = Microphone.devices[0]; microphoneClip = Microphone.Start(microphoneDevice, true, 1, SampleRate);
         }

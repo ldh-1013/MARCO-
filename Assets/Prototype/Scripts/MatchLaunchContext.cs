@@ -13,7 +13,7 @@ namespace Marco.Prototype
     // Local launch data only; the room host sends each client's role before loading.
     public static class MatchLaunchContext
     {
-        public const string GameScene = "Prototype_Game";
+        public const string GameScene = "IndoorPool_PrototypeGame";
         public const string LobbyScene = "Prototype_Lobby";
         public static bool IsActive { get; private set; }
         public static PrototypePlayerRole LocalRole { get; private set; }

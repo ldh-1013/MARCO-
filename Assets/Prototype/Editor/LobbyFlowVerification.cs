@@ -11,6 +11,7 @@ using Marco.Prototype;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 // Batch-only integration check: -executeMethod LobbyFlowVerification.Run (without -quit).
@@ -32,7 +33,7 @@ public static class LobbyFlowVerification
         if (!Application.isBatchMode) throw new InvalidOperationException("Use a separate batch project for this integration check.");
         CombinedSceneVerification.Run();
         // Start from the game scene itself to exercise the lobby-first entry guard.
-        EditorSceneManager.OpenScene("Assets/Prototype/Scenes/Prototype_Game.unity");
+        EditorSceneManager.OpenScene("Assets/Scenes/Maps/IndoorPool_PrototypeGame.unity");
         // Seed a stale role and keep statics across Play entry: startup must still reset it.
         EditorSettings.enterPlayModeOptionsEnabled = true;
         EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
@@ -425,11 +426,32 @@ public sealed class LobbyFlowProbe : MonoBehaviour
         var target = survivor.GetComponent<PrototypeTarget>();
         Check(healthHud.enabled == (hud.LocalRole == PrototypePlayerRole.Survivor), "Health HUD ownership");
         Check(healthHud.FillAmount == 1, "Full health bar");
+        var ghostState = survivor.GetComponent<SurvivorGhostPrototype>();
+        Check(ghostState != null && ghostState.GhostVisual != null, "Survivor has a separate ghost visual");
+        Check(ghostState.GhostVisual.GetComponentsInChildren<Renderer>(true).Any(r => r.sharedMaterials.Any(m => m != null && m.shader != null)),
+            "Ghost visual has renderers with assigned shaders");
+        var characterVisual = survivor.GetComponent<CharacterVisualPrototype>();
+        var playerCamera = survivor.GetComponentInChildren<Camera>(true);
+        bool isLocalSurvivor = survivor.GetComponent<PlayerPoseReplicator>().IsLocal;
         target.Tag(); Check(healthHud.FillAmount == 0.5f, "First hit halves bar");
         target.Health.Bandage(); Check(healthHud.FillAmount == 0.75f, "Bandage restores half a life");
         target.Treat(); Check(healthHud.FillAmount == 1, "Treatment restores bar");
-        target.Tag(); target.Tag(); Check(!healthHud.IsVisible && healthHud.FillAmount == 0, "Ghost hides health bar");
-        target.ResetHealth();
+        ghostState.SetGhostForDevelopment(true);
+        Check(ghostState.IsGhost && target.Health.IsEcho, "Ghost cheat sets the survivor to echo state");
+        Check(!healthHud.IsVisible && healthHud.FillAmount == 0, "Ghost hides health bar");
+        Check(!survivor.GetComponent<CharacterController>().enabled, "Ghost disables character controller collision");
+        Check(survivor.GetComponentsInChildren<Collider>(true).All(c => !c.enabled), "Ghost disables all child colliders");
+        Check(ghostState.GhostVisual.activeSelf, "Ghost visual activates on death");
+        Check(!characterVisual.IsFirstPerson, "Ghost suspends survivor first-person mesh masking");
+        Check(ghostState.GhostVisual.GetComponentsInChildren<Renderer>(true).Where(r => r.enabled)
+            .All(r => (playerCamera.cullingMask & (1 << r.gameObject.layer)) != 0), "Ghost renderers use layers visible to the player's camera");
+        ghostState.SetGhostForDevelopment(false);
+        Check(!ghostState.IsGhost && !target.Health.IsEcho && target.Health.Lives == 2, "Survivor cheat restores full health");
+        Check(survivor.GetComponent<CharacterController>().enabled, "Survivor restores character controller");
+        Check(survivor.GetComponentsInChildren<Collider>(true).All(c => c.enabled), "Survivor restores child colliders");
+        Check(!ghostState.GhostVisual.activeSelf, "Survivor hides ghost visual");
+        Check(characterVisual.IsFirstPerson == isLocalSurvivor && characterVisual.BodyRoot.gameObject.activeSelf,
+            "Survivor restores the original body and first-person view");
     }
 
     private IEnumerator VerifyHostPose(RoomSessionPrototype room, StreamWriter writer, StreamReader reader, int guestId)
@@ -653,12 +675,20 @@ public sealed class LobbyFlowProbe : MonoBehaviour
                 }
             }
         };
-        Camera.onPreRender += inspect;
+        bool usesSrp = GraphicsSettings.currentRenderPipeline != null;
+        Action<ScriptableRenderContext, Camera> inspectSrp = (context, drawn) => inspect(drawn);
+        if (usesSrp) RenderPipelineManager.beginCameraRendering += inspectSrp;
+        else Camera.onPreRender += inspect;
         try { Capture(camera, SceneManager.GetActiveScene().name + "-body-mesh-regression.png"); }
-        finally { Camera.onPreRender -= inspect; }
+        finally
+        {
+            if (usesSrp) RenderPipelineManager.beginCameraRendering -= inspectSrp;
+            else Camera.onPreRender -= inspect;
+        }
         Check(sawMask, "Regression inspects the actual own-camera visibility mesh during render");
         Check(geometryUnchanged, "Head masking preserves all original vertices, skin weights, bind poses and blend shapes");
         Check(protectedTriangles > 1000 && bodyPreserved, "All non-head body/arm/leg triangles survive, including imported scaled renderers");
+        Check(!body.IsMaskApplied, "The full body mesh is restored after the camera render");
         Check(Array.TrueForAll(Enumerable.Range(0, skins.Length).ToArray(), i => skins[i].sharedMesh == originals[i]),
             "Regression restores the full original renderer meshes for other cameras");
         Debug.Log("Body clipping regression: preserved " + protectedTriangles + " non-head triangles on " + visual.AssetName);
@@ -677,7 +707,14 @@ public sealed class LobbyFlowProbe : MonoBehaviour
         var image = new Texture2D(960, 600, TextureFormat.RGB24, false);
         try
         {
-            camera.targetTexture = target; camera.Render(); RenderTexture.active = target;
+            camera.targetTexture = target;
+            if (GraphicsSettings.currentRenderPipeline == null) camera.Render();
+            else
+            {
+                var request = new RenderPipeline.StandardRequest { destination = target };
+                RenderPipeline.SubmitRenderRequest(camera, request);
+            }
+            RenderTexture.active = target;
             image.ReadPixels(new Rect(0, 0, 960, 600), 0, 0); image.Apply();
             File.WriteAllBytes(path, image.EncodeToPNG());
         }
