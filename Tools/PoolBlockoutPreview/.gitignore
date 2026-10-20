@@ -1,0 +1,13 @@
+# Standalone preview caches
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/PoolV11Reports/
+/*.csproj
+/*.sln
+/*.slnx
+/PoolV12Reports/
+/.vscode/
+/Verification/Unity6000.5.4f1/*.png

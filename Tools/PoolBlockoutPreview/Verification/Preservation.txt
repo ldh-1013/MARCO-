@@ -1,0 +1,10 @@
+Assets/Scenes/IndoorPool_Blockout.unity: UNCHANGED vs initial snapshot
+Assets/Scenes/SampleScene.unity: UNCHANGED vs initial snapshot
+Assets/Editor/IndoorPoolBlockoutBuilder.cs: UNCHANGED vs initial snapshot
+Assets/Settings/UniversalRP.asset: UNCHANGED vs initial snapshot
+ProjectSettings/EditorBuildSettings.asset: UNCHANGED vs initial snapshot
+ProjectSettings/GraphicsSettings.asset: UNCHANGED vs initial snapshot
+ProjectSettings/QualitySettings.asset: UNCHANGED vs initial snapshot
+ProjectSettings/ProjectVersion.txt: UNCHANGED vs initial snapshot
+Packages/manifest.json: UNCHANGED vs initial snapshot
+Assets/InputSystem_Actions.inputactions: UNCHANGED vs initial snapshot

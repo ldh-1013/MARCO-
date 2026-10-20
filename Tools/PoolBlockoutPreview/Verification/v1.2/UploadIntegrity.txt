@@ -1,0 +1,4 @@
+PASS: 160 v1.2 and supporting files including meta match source SHA256.
+PASS: no duplicate asset GUIDs.
+PASS: no missing source-local GUID dependencies.
+Original Unity tests: ReloadValidation.txt and PlayModeSmoke.txt. Shared project Unity execution not repeated.

@@ -1,0 +1,443 @@
+PASS: 21 rooms: 17 ground floor + 4 upper floor
+PASS: 64 x 62m footprint is fully assigned to rooms or 3 sealed service spaces
+PASS: Ground-floor room area plus service spaces = 3968m2
+PASS: All 25 door entries, 3 stairs and 82 expanded obstacle entries imported
+PASS: Room exists exactly once: LOB
+PASS: Room exists exactly once: OF1
+PASS: Room exists exactly once: OF2
+PASS: Room exists exactly once: OF3
+PASS: Room exists exactly once: OF4
+PASS: Room exists exactly once: FA
+PASS: Room exists exactly once: LG
+PASS: Room exists exactly once: ML
+PASS: Room exists exactly once: WL
+PASS: Room exists exactly once: MS
+PASS: Room exists exactly once: WS
+PASS: Room exists exactly once: H
+PASS: Room exists exactly once: SC
+PASS: Room exists exactly once: ST2
+PASS: Room exists exactly once: A
+PASS: Room exists exactly once: DR
+PASS: Room exists exactly once: LD
+PASS: Room exists exactly once: C
+PASS: Room exists exactly once: CL
+PASS: Room exists exactly once: ST
+PASS: Room exists exactly once: L2
+PASS: Actual floor geometry area: LOB = 442m2
+PASS: Actual floor geometry area: OF1 = 90m2
+PASS: Actual floor geometry area: OF2 = 72m2
+PASS: Actual floor geometry area: OF3 = 72m2
+PASS: Actual floor geometry area: OF4 = 72m2
+PASS: Actual floor geometry area: FA = 135m2
+PASS: Actual floor geometry area: LG = 63m2
+PASS: Actual floor geometry area: ML = 240m2
+PASS: Actual floor geometry area: WL = 255m2
+PASS: Actual floor geometry area: MS = 84m2
+PASS: Actual floor geometry area: WS = 91m2
+PASS: Actual floor geometry area: H = 847m2
+PASS: Actual floor geometry area: SC = 94m2
+PASS: Actual floor geometry area: ST2 = 80m2
+PASS: Actual floor geometry area: A = 378m2
+PASS: Actual floor geometry area: DR = 64m2
+PASS: Actual floor geometry area: LD = 144m2
+PASS: Actual floor geometry area: C = 135m2
+PASS: Actual floor geometry area: CL = 370m2
+PASS: Actual floor geometry area: ST = 200m2
+PASS: Actual floor geometry area: L2 = 28.5m2
+PASS: Exact point coordinate: Valve_A
+PASS: Exact point coordinate: Valve_B
+PASS: Exact point coordinate: Valve_C
+PASS: Exact point coordinate: Valve_D
+PASS: Exact point coordinate: Valve_E
+PASS: Exact point coordinate: Exit_1
+PASS: Exact point coordinate: Exit_2
+PASS: Exact point coordinate: Drain_1
+PASS: Exact point coordinate: Drain_2
+PASS: Exact point coordinate: R
+PASS: Exact point coordinate: S
+PASS: Exact point coordinate: b1
+PASS: Exact point coordinate: b2
+PASS: Exact point coordinate: b3
+PASS: Exact point coordinate: b4
+PASS: Exact point coordinate: b5
+PASS: Exact point coordinate: b6
+PASS: Exact point coordinate: b7
+PASS: Exact point coordinate: b8
+PASS: Exact point coordinate: b9
+PASS: Exact point coordinate: c1
+PASS: Exact point coordinate: c2
+PASS: Exact point coordinate: c3
+PASS: Exact point coordinate: c4
+PASS: 5 reusable valve instances
+PASS: 2 reusable drains at Y=-3.5
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d02
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d03
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d04
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d05
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d06
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d07
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d08
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d09
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d10
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d11
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d12
+PASS: Door centre clearance for radius 0.35m / height 1.8m: dE1
+PASS: Door centre clearance for radius 0.35m / height 1.8m: dE2
+PASS: Door centre clearance for radius 0.35m / height 1.8m: dE3
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d14
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d16
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d17
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d18
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d19
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d20
+PASS: Door centre clearance for radius 0.35m / height 1.8m: d21
+PASS: Door centre clearance for radius 0.35m / height 1.8m: u01
+PASS: Door centre clearance for radius 0.35m / height 1.8m: u02
+PASS: Door centre clearance for radius 0.35m / height 1.8m: u03
+PASS: Door centre clearance for radius 0.35m / height 1.8m: u04
+PASS: Empty, clear spawn: SpawnPoint_1
+PASS: Ground support: SpawnPoint_1
+PASS: Empty, clear spawn: SpawnPoint_2
+PASS: Ground support: SpawnPoint_2
+PASS: Empty, clear spawn: SpawnPoint_3
+PASS: Ground support: SpawnPoint_3
+PASS: Empty, clear spawn: SpawnPoint_4
+PASS: Ground support: SpawnPoint_4
+PASS: Canonical obstacle bounds: o01
+PASS: Locker/other obstacle classification: o01
+PASS: Actual obstacle collider bounds: o01
+PASS: Canonical obstacle bounds: o02
+PASS: Locker/other obstacle classification: o02
+PASS: Actual obstacle collider bounds: o02
+PASS: Canonical obstacle bounds: o03
+PASS: Locker/other obstacle classification: o03
+PASS: Actual obstacle collider bounds: o03
+PASS: Canonical obstacle bounds: o04
+PASS: Locker/other obstacle classification: o04
+PASS: Actual obstacle collider bounds: o04
+PASS: Canonical obstacle bounds: o05
+PASS: Locker/other obstacle classification: o05
+PASS: Actual obstacle collider bounds: o05
+PASS: Canonical obstacle bounds: o06
+PASS: Locker/other obstacle classification: o06
+PASS: Actual obstacle collider bounds: o06
+PASS: Canonical obstacle bounds: o07
+PASS: Locker/other obstacle classification: o07
+PASS: Actual obstacle collider bounds: o07
+PASS: Canonical obstacle bounds: e01
+PASS: Locker/other obstacle classification: e01
+PASS: Actual obstacle collider bounds: e01
+PASS: Canonical obstacle bounds: e02
+PASS: Locker/other obstacle classification: e02
+PASS: Actual obstacle collider bounds: e02
+PASS: Canonical obstacle bounds: e03
+PASS: Locker/other obstacle classification: e03
+PASS: Actual obstacle collider bounds: e03
+PASS: Canonical obstacle bounds: e04
+PASS: Locker/other obstacle classification: e04
+PASS: Actual obstacle collider bounds: e04
+PASS: Canonical obstacle bounds: e05
+PASS: Locker/other obstacle classification: e05
+PASS: Actual obstacle collider bounds: e05
+PASS: Canonical obstacle bounds: e06
+PASS: Locker/other obstacle classification: e06
+PASS: Actual obstacle collider bounds: e06
+PASS: Canonical obstacle bounds: e07
+PASS: Locker/other obstacle classification: e07
+PASS: Actual obstacle collider bounds: e07
+PASS: Canonical obstacle bounds: e08
+PASS: Locker/other obstacle classification: e08
+PASS: Actual obstacle collider bounds: e08
+PASS: Canonical obstacle bounds: oML0
+PASS: Locker/other obstacle classification: oML0
+PASS: Actual obstacle collider bounds: oML0
+PASS: Canonical obstacle bounds: oML1
+PASS: Locker/other obstacle classification: oML1
+PASS: Actual obstacle collider bounds: oML1
+PASS: Canonical obstacle bounds: oML2
+PASS: Locker/other obstacle classification: oML2
+PASS: Actual obstacle collider bounds: oML2
+PASS: Canonical obstacle bounds: oML3
+PASS: Locker/other obstacle classification: oML3
+PASS: Actual obstacle collider bounds: oML3
+PASS: Canonical obstacle bounds: oMR0
+PASS: Locker/other obstacle classification: oMR0
+PASS: Actual obstacle collider bounds: oMR0
+PASS: Canonical obstacle bounds: oMR1
+PASS: Locker/other obstacle classification: oMR1
+PASS: Actual obstacle collider bounds: oMR1
+PASS: Canonical obstacle bounds: oMR2
+PASS: Locker/other obstacle classification: oMR2
+PASS: Actual obstacle collider bounds: oMR2
+PASS: Canonical obstacle bounds: oMR3
+PASS: Locker/other obstacle classification: oMR3
+PASS: Actual obstacle collider bounds: oMR3
+PASS: Canonical obstacle bounds: oWL0
+PASS: Locker/other obstacle classification: oWL0
+PASS: Actual obstacle collider bounds: oWL0
+PASS: Canonical obstacle bounds: oWL1
+PASS: Locker/other obstacle classification: oWL1
+PASS: Actual obstacle collider bounds: oWL1
+PASS: Canonical obstacle bounds: oWL2
+PASS: Locker/other obstacle classification: oWL2
+PASS: Actual obstacle collider bounds: oWL2
+PASS: Canonical obstacle bounds: oWL3
+PASS: Locker/other obstacle classification: oWL3
+PASS: Actual obstacle collider bounds: oWL3
+PASS: Canonical obstacle bounds: oWR0
+PASS: Locker/other obstacle classification: oWR0
+PASS: Actual obstacle collider bounds: oWR0
+PASS: Canonical obstacle bounds: oWR1
+PASS: Locker/other obstacle classification: oWR1
+PASS: Actual obstacle collider bounds: oWR1
+PASS: Canonical obstacle bounds: oWR2
+PASS: Locker/other obstacle classification: oWR2
+PASS: Actual obstacle collider bounds: oWR2
+PASS: Canonical obstacle bounds: oWR3
+PASS: Locker/other obstacle classification: oWR3
+PASS: Actual obstacle collider bounds: oWR3
+PASS: Canonical obstacle bounds: o10
+PASS: Locker/other obstacle classification: o10
+PASS: Actual obstacle collider bounds: o10
+PASS: Canonical obstacle bounds: o11
+PASS: Locker/other obstacle classification: o11
+PASS: Actual obstacle collider bounds: o11
+PASS: Canonical obstacle bounds: o12
+PASS: Locker/other obstacle classification: o12
+PASS: Actual obstacle collider bounds: o12
+PASS: Canonical obstacle bounds: o13
+PASS: Locker/other obstacle classification: o13
+PASS: Actual obstacle collider bounds: o13
+PASS: Canonical obstacle bounds: oCol0
+PASS: Locker/other obstacle classification: oCol0
+PASS: Actual obstacle collider bounds: oCol0
+PASS: Canonical obstacle bounds: oCol1
+PASS: Locker/other obstacle classification: oCol1
+PASS: Actual obstacle collider bounds: oCol1
+PASS: Canonical obstacle bounds: oCol2
+PASS: Locker/other obstacle classification: oCol2
+PASS: Actual obstacle collider bounds: oCol2
+PASS: Canonical obstacle bounds: oCol3
+PASS: Locker/other obstacle classification: oCol3
+PASS: Actual obstacle collider bounds: oCol3
+PASS: Canonical obstacle bounds: h01
+PASS: Locker/other obstacle classification: h01
+PASS: Actual obstacle collider bounds: h01
+PASS: Canonical obstacle bounds: h02
+PASS: Locker/other obstacle classification: h02
+PASS: Actual obstacle collider bounds: h02
+PASS: Canonical obstacle bounds: h03
+PASS: Locker/other obstacle classification: h03
+PASS: Actual obstacle collider bounds: h03
+PASS: Canonical obstacle bounds: h04
+PASS: Locker/other obstacle classification: h04
+PASS: Actual obstacle collider bounds: h04
+PASS: Canonical obstacle bounds: h05
+PASS: Locker/other obstacle classification: h05
+PASS: Actual obstacle collider bounds: h05
+PASS: Canonical obstacle bounds: h06
+PASS: Locker/other obstacle classification: h06
+PASS: Actual obstacle collider bounds: h06
+PASS: Canonical obstacle bounds: o24
+PASS: Locker/other obstacle classification: o24
+PASS: Actual obstacle collider bounds: o24
+PASS: Canonical obstacle bounds: h07
+PASS: Locker/other obstacle classification: h07
+PASS: Actual obstacle collider bounds: h07
+PASS: Canonical obstacle bounds: o23
+PASS: Locker/other obstacle classification: o23
+PASS: Actual obstacle collider bounds: o23
+PASS: Canonical obstacle bounds: hB0
+PASS: Locker/other obstacle classification: hB0
+PASS: Actual obstacle collider bounds: hB0
+PASS: Canonical obstacle bounds: hB1
+PASS: Locker/other obstacle classification: hB1
+PASS: Actual obstacle collider bounds: hB1
+PASS: Canonical obstacle bounds: hB2
+PASS: Locker/other obstacle classification: hB2
+PASS: Actual obstacle collider bounds: hB2
+PASS: Canonical obstacle bounds: hB3
+PASS: Locker/other obstacle classification: hB3
+PASS: Actual obstacle collider bounds: hB3
+PASS: Canonical obstacle bounds: hB4
+PASS: Locker/other obstacle classification: hB4
+PASS: Actual obstacle collider bounds: hB4
+PASS: Canonical obstacle bounds: hB5
+PASS: Locker/other obstacle classification: hB5
+PASS: Actual obstacle collider bounds: hB5
+PASS: Canonical obstacle bounds: hB6
+PASS: Locker/other obstacle classification: hB6
+PASS: Actual obstacle collider bounds: hB6
+PASS: Canonical obstacle bounds: hB7
+PASS: Locker/other obstacle classification: hB7
+PASS: Actual obstacle collider bounds: hB7
+PASS: Canonical obstacle bounds: h08
+PASS: Locker/other obstacle classification: h08
+PASS: Actual obstacle collider bounds: h08
+PASS: Canonical obstacle bounds: h09
+PASS: Locker/other obstacle classification: h09
+PASS: Actual obstacle collider bounds: h09
+PASS: Canonical obstacle bounds: h10
+PASS: Locker/other obstacle classification: h10
+PASS: Actual obstacle collider bounds: h10
+PASS: Canonical obstacle bounds: h11
+PASS: Locker/other obstacle classification: h11
+PASS: Actual obstacle collider bounds: h11
+PASS: Canonical obstacle bounds: h12
+PASS: Locker/other obstacle classification: h12
+PASS: Actual obstacle collider bounds: h12
+PASS: Canonical obstacle bounds: h13
+PASS: Locker/other obstacle classification: h13
+PASS: Actual obstacle collider bounds: h13
+PASS: Canonical obstacle bounds: h14
+PASS: Locker/other obstacle classification: h14
+PASS: Actual obstacle collider bounds: h14
+PASS: Canonical obstacle bounds: o30
+PASS: Locker/other obstacle classification: o30
+PASS: Actual obstacle collider bounds: o30
+PASS: Canonical obstacle bounds: o31
+PASS: Locker/other obstacle classification: o31
+PASS: Actual obstacle collider bounds: o31
+PASS: Canonical obstacle bounds: o32
+PASS: Locker/other obstacle classification: o32
+PASS: Actual obstacle collider bounds: o32
+PASS: Canonical obstacle bounds: o33
+PASS: Locker/other obstacle classification: o33
+PASS: Actual obstacle collider bounds: o33
+PASS: Canonical obstacle bounds: o40
+PASS: Locker/other obstacle classification: o40
+PASS: Actual obstacle collider bounds: o40
+PASS: Canonical obstacle bounds: o41
+PASS: Locker/other obstacle classification: o41
+PASS: Actual obstacle collider bounds: o41
+PASS: Canonical obstacle bounds: o50
+PASS: Locker/other obstacle classification: o50
+PASS: Actual obstacle collider bounds: o50
+PASS: Canonical obstacle bounds: o60
+PASS: Locker/other obstacle classification: o60
+PASS: Actual obstacle collider bounds: o60
+PASS: Canonical obstacle bounds: o61
+PASS: Locker/other obstacle classification: o61
+PASS: Actual obstacle collider bounds: o61
+PASS: Canonical obstacle bounds: o70
+PASS: Locker/other obstacle classification: o70
+PASS: Actual obstacle collider bounds: o70
+PASS: Canonical obstacle bounds: o71
+PASS: Locker/other obstacle classification: o71
+PASS: Actual obstacle collider bounds: o71
+PASS: Canonical obstacle bounds: l01
+PASS: Locker/other obstacle classification: l01
+PASS: Actual obstacle collider bounds: l01
+PASS: Canonical obstacle bounds: l02
+PASS: Locker/other obstacle classification: l02
+PASS: Actual obstacle collider bounds: l02
+PASS: Canonical obstacle bounds: l03
+PASS: Locker/other obstacle classification: l03
+PASS: Actual obstacle collider bounds: l03
+PASS: Canonical obstacle bounds: l04
+PASS: Locker/other obstacle classification: l04
+PASS: Actual obstacle collider bounds: l04
+PASS: Canonical obstacle bounds: l05
+PASS: Locker/other obstacle classification: l05
+PASS: Actual obstacle collider bounds: l05
+PASS: Canonical obstacle bounds: l06
+PASS: Locker/other obstacle classification: l06
+PASS: Actual obstacle collider bounds: l06
+PASS: Canonical obstacle bounds: l07
+PASS: Locker/other obstacle classification: l07
+PASS: Actual obstacle collider bounds: l07
+PASS: Canonical obstacle bounds: l08
+PASS: Locker/other obstacle classification: l08
+PASS: Actual obstacle collider bounds: l08
+PASS: Water depth at (20,45) = 1.8m
+PASS: Water depth at (36,47.5) = 3.5m
+PASS: Water depth at (4,44) = 1.2m
+PASS: Water depth at (7,47) = 3.5m
+PASS: Water depth at (8.1,47) = 3.5m
+PASS: Water depth at (8.3,47) = 1.2m
+PASS: Only two dead-end regions in the design connection graph: A and C
+PASS: no missing scripts; no network or gameplay activation code added
+PASS: Connected floor route: LOB
+PASS: Connected floor route: OF1
+PASS: Connected floor route: OF2
+PASS: Connected floor route: OF3
+PASS: Connected floor route: OF4
+PASS: Connected floor route: FA
+PASS: Connected floor route: LG
+PASS: Connected floor route: ML
+PASS: Connected floor route: WL
+PASS: Connected floor route: MS
+PASS: Connected floor route: WS
+PASS: Connected floor route: H
+PASS: Connected floor route: SC
+PASS: Connected floor route: ST2
+PASS: Connected floor route: A
+PASS: Connected floor route: DR
+PASS: Connected floor route: LD
+PASS: Stair landing connects to floor 1: S1
+PASS: Stair landing connects to floor 1: S2
+PASS: Stair landing connects to floor 1: S3
+PASS: Connected floor route: C
+PASS: Connected floor route: CL
+PASS: Connected floor route: ST
+PASS: Connected floor route: L2
+PASS: Stair landing connects to floor 2: S1
+PASS: Stair landing connects to floor 2: S2
+PASS: Stair landing connects to floor 2: S3
+PASS: Stair headroom S1 at 0.1
+PASS: Continuous stair collision support S1 at 0.1
+PASS: Stair headroom S1 at 0.2
+PASS: Continuous stair collision support S1 at 0.2
+PASS: Stair headroom S1 at 0.3
+PASS: Continuous stair collision support S1 at 0.3
+PASS: Stair headroom S1 at 0.4
+PASS: Continuous stair collision support S1 at 0.4
+PASS: Stair headroom S1 at 0.5
+PASS: Continuous stair collision support S1 at 0.5
+PASS: Stair headroom S1 at 0.6
+PASS: Continuous stair collision support S1 at 0.6
+PASS: Stair headroom S1 at 0.7
+PASS: Continuous stair collision support S1 at 0.7
+PASS: Stair headroom S1 at 0.8
+PASS: Continuous stair collision support S1 at 0.8
+PASS: Stair headroom S1 at 0.9
+PASS: Continuous stair collision support S1 at 0.9
+PASS: Stair headroom S2 at 0.1
+PASS: Continuous stair collision support S2 at 0.1
+PASS: Stair headroom S2 at 0.2
+PASS: Continuous stair collision support S2 at 0.2
+PASS: Stair headroom S2 at 0.3
+PASS: Continuous stair collision support S2 at 0.3
+PASS: Stair headroom S2 at 0.4
+PASS: Continuous stair collision support S2 at 0.4
+PASS: Stair headroom S2 at 0.5
+PASS: Continuous stair collision support S2 at 0.5
+PASS: Stair headroom S2 at 0.6
+PASS: Continuous stair collision support S2 at 0.6
+PASS: Stair headroom S2 at 0.7
+PASS: Continuous stair collision support S2 at 0.7
+PASS: Stair headroom S2 at 0.8
+PASS: Continuous stair collision support S2 at 0.8
+PASS: Stair headroom S2 at 0.9
+PASS: Continuous stair collision support S2 at 0.9
+PASS: Stair headroom S3 at 0.1
+PASS: Continuous stair collision support S3 at 0.1
+PASS: Stair headroom S3 at 0.2
+PASS: Continuous stair collision support S3 at 0.2
+PASS: Stair headroom S3 at 0.3
+PASS: Continuous stair collision support S3 at 0.3
+PASS: Stair headroom S3 at 0.4
+PASS: Continuous stair collision support S3 at 0.4
+PASS: Stair headroom S3 at 0.5
+PASS: Continuous stair collision support S3 at 0.5
+PASS: Stair headroom S3 at 0.6
+PASS: Continuous stair collision support S3 at 0.6
+PASS: Stair headroom S3 at 0.7
+PASS: Continuous stair collision support S3 at 0.7
+PASS: Stair headroom S3 at 0.8
+PASS: Continuous stair collision support S3 at 0.8
+PASS: Stair headroom S3 at 0.9
+PASS: Continuous stair collision support S3 at 0.9
+PASS: FBX visual replacement fits uniformly inside the selected module
+PASS: FBX replacement preserves original collision
+PASS: FBX visual replacement can be undone
