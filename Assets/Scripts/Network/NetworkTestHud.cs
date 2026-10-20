@@ -57,10 +57,26 @@ namespace Marco.Network
         private void DrawRoles()
         {
             foreach (var player in NetworkPlayer.All)
-                if (player.IsOwner) GUILayout.Label($"내 역할: {player.Role}", statusStyle);
+                if (player.IsOwner) GUILayout.Label($"내 역할: {player.Role} · {StatusLabel(player.Status)}", statusStyle);
             foreach (var player in NetworkPlayer.All)
-                GUILayout.Label($"P{player.PlayerId}: {player.Role}{(player.IsOwner ? " (나)" : "")}");
+                GUILayout.Label($"P{player.PlayerId}: {player.Role} · {StatusLabel(player.Status)}{(player.IsOwner ? " (나)" : "")}");
         }
+
+        private static string StatusLabel(PlayerStatus status) => status switch
+        {
+            PlayerStatus.Escaped => "탈출",
+            PlayerStatus.Tagged => "태그됨",
+            PlayerStatus.Spectating => "관전 (다음 판부터)",
+            _ => "생존",
+        };
+
+        private static string ResultLabel(RoundResult result) => result switch
+        {
+            RoundResult.RunnersWin => "도망자 승",
+            RoundResult.SeekersWin => "술래 승",
+            RoundResult.Void => "무효",
+            _ => "진행 중",
+        };
 
         private void DrawRound()
         {
@@ -80,17 +96,33 @@ namespace Marco.Network
                 return;
             }
 
-            GUILayout.Label(round.Mode == RoundMode.Full
-                ? $"라운드 진행 중 · 남은 시간 {round.RemainingSeconds:0}초"
-                : "밸브 전용 모드 (Runner 2명 미만)");
-            if (round.Result != RoundResult.InProgress) GUILayout.Label($"라운드 종료: {round.Result}");
+            if (round.Result != RoundResult.InProgress)
+                GUILayout.Label($"라운드 종료: {ResultLabel(round.Result)}", statusStyle);
+            else
+                GUILayout.Label(round.Mode == RoundMode.Full
+                    ? $"라운드 진행 중 · 남은 시간 {round.RemainingSeconds:0}초"
+                    : "밸브 전용 모드 (Runner 2명 미만, 결과 없음)");
+            // ValvesOnly never decides a result, so the host can restart it at any time.
+            if (connector.IsHost && (round.Result != RoundResult.InProgress || round.Mode == RoundMode.ValvesOnly) &&
+                GUILayout.Button("다시 시작", GUILayout.Height(32)))
+                round.RestartRound();
+
             GUILayout.Label(round.GateOpen ? "게이트: 열림" : "게이트: 닫힘", statusStyle);
+            if (round.InLastSurvivorPhase)
+            {
+                GUILayout.Label($"최후 생존자 페이즈 · {round.LastSurvivorRemainingSeconds:0}초", statusStyle);
+                GUILayout.Label(round.TryGetActiveDrainHatch(out var drain)
+                    ? $"배수구 {drain}: {round.DrainHatchProgress:P0}"
+                    : "배수구 없음 (게이트 열림)");
+            }
             for (var id = ValveId.A; id <= ValveId.E; id++)
             {
                 round.TryGetValveState(id, out var state);
                 GUILayout.Label(state.Active ? $"밸브 {id}: {state.Status} {state.Progress:P0}" : $"밸브 {id}: 비활성");
             }
-            GUILayout.Label("E 홀드: 가까운 밸브 작업 (Runner만)");
+            GUILayout.Label("E 홀드: 밸브·배수구 작업 (Runner)");
+            GUILayout.Label("E: 게이트 열린 뒤 탈출구에서 탈출 (Runner)");
+            GUILayout.Label("좌클릭: 근처 Runner 태그 (Seeker)");
         }
     }
 }

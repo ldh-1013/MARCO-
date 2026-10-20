@@ -3,6 +3,7 @@ using FishNet.Managing;
 using FishNet.Object;
 using Marco.Core.WinCondition;
 using Marco.Network.Player;
+using Marco.Network.Round;
 using UnityEngine;
 
 namespace Marco.Network.Roles
@@ -32,6 +33,9 @@ namespace Marco.Network.Roles
         {
             if (!nob.TryGetComponent(out NetworkPlayer player)) return;
             player.SetRole(IsHostConnection(nob.OwnerId) ? PlayerRole.Seeker : PlayerRole.Runner);
+            // RoundState fixed its Runner count at start, so late joiners wait for the next round.
+            var round = NetworkRound.Instance;
+            if (round != null && round.Mode != RoundMode.NotStarted) player.SetStatus(PlayerStatus.Spectating);
         }
 
         // Compare ids rather than connection objects: host server/client sides may hold separate instances.

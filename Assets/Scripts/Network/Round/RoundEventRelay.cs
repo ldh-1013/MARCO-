@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Marco.Network.Round
 {
     // Server-side IRoundEventSink. Valve status/progress reach clients through NetworkRound's
-    // per-tick snapshot, so here only the gate latch and the result are written to SyncVars.
-    // Last-survivor / drain hatch UI comes in stage 5; for now they are logged.
+    // per-tick snapshot, so here only the latched events (gate, result, last survivor phase,
+    // active drain hatch) are written to SyncVars.
     public sealed class RoundEventRelay : IRoundEventSink
     {
         private readonly NetworkRound owner;
@@ -29,9 +29,16 @@ namespace Marco.Network.Round
             owner.SetResult(result);
         }
 
-        public void OnLastSurvivorPhaseEntered() => Debug.Log("[MARCO] Last survivor phase entered");
+        public void OnLastSurvivorPhaseEntered()
+        {
+            Debug.Log("[MARCO] Last survivor phase entered");
+            owner.MarkLastSurvivorPhase();
+        }
 
-        public void OnDrainHatchActivated(DrainHatchId drainHatchId) =>
+        public void OnDrainHatchActivated(DrainHatchId drainHatchId)
+        {
             Debug.Log($"[MARCO] Drain hatch activated: {drainHatchId}");
+            owner.MarkDrainHatchActivated(drainHatchId);
+        }
     }
 }

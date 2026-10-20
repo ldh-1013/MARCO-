@@ -4,6 +4,7 @@ using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using Marco.Network.Escape;
 using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Round;
@@ -64,6 +65,10 @@ namespace Marco.Network.Editor
             manager.AddComponent<NetworkPlayerRoster>();
 
             for (var id = ValveId.A; id <= ValveId.E; id++) CreateValve(id);
+            CreateExit(ExitId.MainGate, new Vector3(0, 1.5f, -14), new Vector3(3, 3, 0.5f));
+            CreateExit(ExitId.StaffDoor, new Vector3(14, 1.5f, 0), new Vector3(0.5f, 3, 2));
+            CreateDrainHatch(DrainHatchId.First, new Vector3(-14, 0.05f, -8));
+            CreateDrainHatch(DrainHatchId.Second, new Vector3(-14, 0.05f, 8));
             var round = new GameObject("Round");
             var roundObject = round.AddComponent<NetworkObject>();
             round.AddComponent<NetworkRound>();
@@ -100,13 +105,45 @@ namespace Marco.Network.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        // Tall cube without a collider so players can walk into it to escape.
+        private static void CreateExit(ExitId id, Vector3 position, Vector3 size)
+        {
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = $"Exit {id}";
+            Object.DestroyImmediate(body.GetComponent<BoxCollider>());
+            body.transform.position = position;
+            body.transform.localScale = size;
+
+            var view = body.AddComponent<ExitView>();
+            var serialized = new SerializedObject(view);
+            serialized.FindProperty("id").enumValueIndex = (int)id;
+            serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // Flat square on the floor.
+        private static void CreateDrainHatch(DrainHatchId id, Vector3 position)
+        {
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = $"DrainHatch {id}";
+            Object.DestroyImmediate(body.GetComponent<BoxCollider>());
+            body.transform.position = position;
+            body.transform.localScale = new Vector3(1.5f, 0.1f, 1.5f);
+
+            var view = body.AddComponent<DrainHatchView>();
+            var serialized = new SerializedObject(view);
+            serialized.FindProperty("id").enumValueIndex = (int)id;
+            serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         // Adds components introduced after the prefab was first made, keeping existing file ids.
         private static void EnsurePlayerPrefabComponents()
         {
             var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
-            if (root.GetComponent<ValveInteractor>() == null)
+            if (root.GetComponent<PlayerInteractor>() == null)
             {
-                root.AddComponent<ValveInteractor>();
+                root.AddComponent<PlayerInteractor>();
                 PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
             }
             PrefabUtility.UnloadPrefabContents(root);
@@ -125,7 +162,7 @@ namespace Marco.Network.Editor
             root.AddComponent<NetworkTransform>();
             var movement = root.AddComponent<PlayerMovement>();
             var player = root.AddComponent<NetworkPlayer>();
-            root.AddComponent<ValveInteractor>();
+            root.AddComponent<PlayerInteractor>();
 
             var pivot = new GameObject("CameraPivot").transform;
             pivot.SetParent(root.transform, false);

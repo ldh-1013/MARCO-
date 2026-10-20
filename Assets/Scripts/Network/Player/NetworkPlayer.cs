@@ -6,8 +6,12 @@ using UnityEngine;
 
 namespace Marco.Network.Player
 {
+    // Spectating: joined after the round started; takes part from the next round.
+    public enum PlayerStatus : byte { Alive, Escaped, Tagged, Spectating }
+
     // Turns the camera/input on only for the local owner's capsule and swaps out the scene camera.
-    // Also carries the server-assigned PlayerRole, synced to every client and shown as capsule color.
+    // Also carries the server-assigned PlayerRole and round status, synced to every client:
+    // role sets the capsule color, a tagged Runner turns gray and an escaped one is hidden.
     public sealed class NetworkPlayer : NetworkBehaviour
     {
         private static readonly List<NetworkPlayer> spawned = new();
@@ -21,20 +25,38 @@ namespace Marco.Network.Player
         [SerializeField] private Color echoColor = new(0.6f, 0.6f, 0.6f);
 
         private readonly SyncVar<PlayerRole> role = new();
+        private readonly SyncVar<PlayerStatus> status = new();
         private Renderer body;
         private Camera sceneCamera;
 
         public int PlayerId => OwnerId;
         public PlayerRole Role => role.Value;
+        public PlayerStatus Status => status.Value;
+
+        public static bool TryGet(int playerId, out NetworkPlayer result)
+        {
+            foreach (var player in spawned)
+            {
+                if (player.PlayerId != playerId) continue;
+                result = player;
+                return true;
+            }
+            result = null;
+            return false;
+        }
 
         private void Awake()
         {
             body = GetComponent<Renderer>();
-            role.OnChange += (_, next, _) => ApplyColor(next);
+            role.OnChange += (_, _, _) => ApplyLook();
+            status.OnChange += (_, _, _) => ApplyLook();
         }
 
         [Server]
         public void SetRole(PlayerRole value) => role.Value = value;
+
+        [Server]
+        public void SetStatus(PlayerStatus value) => status.Value = value;
 
         public override void OnStartNetwork()
         {
@@ -51,8 +73,8 @@ namespace Marco.Network.Player
         public override void OnStartClient()
         {
             base.OnStartClient();
-            // OnChange does not fire when the synced value equals the default (Runner).
-            ApplyColor(role.Value);
+            // OnChange does not fire when the synced value equals the default (Runner / Alive).
+            ApplyLook();
             ownerCamera.SetActive(IsOwner);
             if (!IsOwner) return;
 
@@ -70,9 +92,10 @@ namespace Marco.Network.Player
             Cursor.lockState = CursorLockMode.None;
         }
 
-        private void ApplyColor(PlayerRole value)
+        private void ApplyLook()
         {
-            body.material.color = value switch
+            body.enabled = status.Value != PlayerStatus.Escaped;
+            body.material.color = status.Value == PlayerStatus.Tagged ? echoColor : role.Value switch
             {
                 PlayerRole.Seeker => seekerColor,
                 PlayerRole.Echo => echoColor,
