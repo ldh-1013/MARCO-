@@ -4,6 +4,7 @@
 /[Oo]bj/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
+/steam_appid.txt
 
 # Local build output and diagnostic captures.
 /[Bb]uild/

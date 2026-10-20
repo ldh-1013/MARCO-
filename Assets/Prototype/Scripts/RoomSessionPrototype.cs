@@ -3,7 +3,14 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
+using FishNet.Connection;
+using FishNet.Managing;
+using FishNet.Managing.Object;
+using FishNet.Transporting;
+using FishySteamworksTransport = FishySteamworks.FishySteamworks;
+using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -23,6 +30,20 @@ namespace Marco.Prototype
         private string joinInput = "";
         private string status = "";
         private string advertisedIp = "";
+        private string _fishNetStatus = "Steam 릴레이 연결 대기 중";
+        private bool _steamReady;
+        private bool _steamInLobby;
+        private bool _steamLobbyReady;
+        private bool _steamCreateLobbyPending;
+        private CSteamID _steamLobbyId;
+        private Callback<GameLobbyJoinRequested_t> _steamLobbyJoinRequested;
+        private CallResult<LobbyCreated_t> _steamLobbyCreated;
+        private CallResult<LobbyEnter_t> _steamLobbyEntered;
+        private bool _fishNetConnecting;
+        private bool _fishNetHostStartPending;
+        private NetworkManager _fishNetNetworkManager;
+        private DefaultPrefabObjects _fishNetPrefabObjects;
+        private FishySteamworksTransport _fishNetSteamTransport;
         private TcpListener listener;
         private Task<TcpClient> acceptTask;
         private Task<TcpClient> connectTask;
@@ -36,6 +57,7 @@ namespace Marco.Prototype
         private Vector2 rosterScroll;
         private int nextId = 1;
         private bool showJoinInput;
+        private bool showCreateRoomOptions;
         private bool showSettings;
         private static RoomSessionPrototype instance;
         private bool gameStarted;
@@ -102,6 +124,298 @@ namespace Marco.Prototype
             advertisedIp = "127.0.0.1";
             foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
                 if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) { advertisedIp = ip.ToString(); break; }
+            InitializeSteamRelay();
+        }
+
+        private void InitializeSteamRelay()
+        {
+            string appIdPath = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "steam_appid.txt");
+#if UNITY_EDITOR
+            // Spacewar (480) is only a local development App ID. Replace it with the game's App ID before release.
+            if (!File.Exists(appIdPath)) File.WriteAllText(appIdPath, "480");
+#endif
+            try
+            {
+                ESteamAPIInitResult initResult = SteamAPI.InitEx(out string steamError);
+                _steamReady = initResult == ESteamAPIInitResult.k_ESteamAPIInitResult_OK;
+                if (!_steamReady)
+                {
+                    string appId = File.Exists(appIdPath) ? File.ReadAllText(appIdPath).Trim() : "없음";
+                    string reason = string.IsNullOrWhiteSpace(steamError) ? "상세 원인 없음" : steamError.Trim();
+                    _fishNetStatus = "Steam API 초기화 실패 (" + initResult + "): " + reason;
+                    Debug.LogError("[Steam] API init failed. Result=" + initResult + ", AppId=" + appId + ", SteamRunning=" + System.Diagnostics.Process.GetProcessesByName("steam").Length + ", Details=" + reason);
+                    return;
+                }
+            }
+            catch (Exception e)
+            {
+                _fishNetStatus = "Steam API 초기화 예외: " + e.Message;
+                Debug.LogException(e);
+                return;
+            }
+
+            _steamLobbyJoinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnSteamLobbyJoinRequested);
+            _steamLobbyCreated = CallResult<LobbyCreated_t>.Create(OnSteamLobbyCreated);
+            _steamLobbyEntered = CallResult<LobbyEnter_t>.Create(OnSteamLobbyEntered);
+            InitializeFishNetConnection();
+            uint currentAppId = SteamUtils.GetAppID().m_AppId;
+            _fishNetStatus = currentAppId == 480
+                ? "App ID 480 (Spacewar) 테스트 중 · 실제 게임 초대에는 게임 App ID가 필요합니다."
+                : "Steam 릴레이 준비됨 · App ID " + currentAppId + " · SteamID " + SteamUser.GetSteamID().m_SteamID;
+            TryJoinSteamLobbyFromLaunchArguments();
+        }
+
+        private void TryJoinSteamLobbyFromLaunchArguments()
+        {
+            string[] arguments = Environment.GetCommandLineArgs();
+            for (int i = 0; i + 1 < arguments.Length; i++)
+            {
+                if (arguments[i] != "+connect_lobby" || !ulong.TryParse(arguments[i + 1], out ulong lobbyId)) continue;
+                _fishNetStatus = "Steam 초대 로비에 참가 중…";
+                _steamLobbyEntered.Set(SteamMatchmaking.JoinLobby(new CSteamID(lobbyId)));
+                return;
+            }
+        }
+
+        private void InitializeFishNetConnection()
+        {
+            var networkObject = new GameObject("FishNet NetworkManager");
+            networkObject.SetActive(false);
+            DontDestroyOnLoad(networkObject);
+            _fishNetSteamTransport = networkObject.AddComponent<FishySteamworksTransport>();
+            FieldInfo peerToPeerField = typeof(FishySteamworksTransport).GetField("_peerToPeer", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (peerToPeerField == null)
+            {
+                Destroy(networkObject);
+                _fishNetStatus = "FishySteamworks P2P 설정 필드를 찾을 수 없습니다.";
+                return;
+            }
+            peerToPeerField.SetValue(_fishNetSteamTransport, true);
+            _fishNetSteamTransport.SetPort(7770);
+
+            _fishNetNetworkManager = networkObject.AddComponent<NetworkManager>();
+            _fishNetPrefabObjects = ScriptableObject.CreateInstance<DefaultPrefabObjects>();
+            _fishNetNetworkManager.SpawnablePrefabs = _fishNetPrefabObjects;
+            networkObject.SetActive(true);
+            _fishNetNetworkManager.ClientManager.OnAuthenticated += OnFishNetClientAuthenticated;
+            _fishNetNetworkManager.ClientManager.OnClientConnectionState += OnFishNetClientConnectionState;
+            _fishNetNetworkManager.ServerManager.OnServerConnectionState += OnFishNetServerConnectionState;
+            _fishNetNetworkManager.ServerManager.OnRemoteConnectionState += OnFishNetRemoteConnectionState;
+        }
+
+        private void OnFishNetClientAuthenticated()
+        {
+            _fishNetConnecting = false;
+            _fishNetStatus = "Steam 릴레이로 호스트에 연결됨";
+        }
+
+        private void OnFishNetClientConnectionState(ClientConnectionStateArgs args)
+        {
+            if (args.ConnectionState == LocalConnectionState.Stopped && !_fishNetNetworkManager.IsHostStarted)
+            {
+                _fishNetConnecting = false;
+                _fishNetStatus = "Steam 호스트와 연결이 끊겼습니다.";
+            }
+            else if (args.ConnectionState == LocalConnectionState.Starting)
+            {
+                _fishNetConnecting = true;
+                _fishNetStatus = "Steam 릴레이로 호스트에 연결 중…";
+            }
+        }
+
+        private void OnFishNetRemoteConnectionState(NetworkConnection connection, RemoteConnectionStateArgs args)
+        {
+            if (args.ConnectionState == RemoteConnectionState.Started)
+                _fishNetStatus = "FishNet 참가자 연결됨";
+            else if (args.ConnectionState == RemoteConnectionState.Stopped)
+                _fishNetStatus = "FishNet 참가자 연결 종료";
+        }
+
+        private void OnFishNetServerConnectionState(ServerConnectionStateArgs args)
+        {
+            if (args.ConnectionState == LocalConnectionState.Started && _fishNetHostStartPending)
+            {
+                _fishNetHostStartPending = false;
+                if (!_fishNetNetworkManager.ClientManager.StartConnection())
+                {
+                    _fishNetConnecting = false;
+                    _fishNetStatus = "FishNet 호스트의 로컬 클라이언트 시작에 실패했습니다.";
+                    return;
+                }
+                if (_steamInLobby && SteamMatchmaking.SetLobbyJoinable(_steamLobbyId, true))
+                    _steamLobbyReady = true;
+                else
+                {
+                    _fishNetStatus = "FishNet 서버는 시작됐지만 Steam 로비를 초대 가능 상태로 열지 못했습니다.";
+                    return;
+                }
+                _fishNetStatus = "Steam 로비 생성됨 · 친구를 초대하세요.";
+            }
+            else if (args.ConnectionState == LocalConnectionState.Stopped && _fishNetConnecting)
+            {
+                _fishNetHostStartPending = false;
+                _fishNetConnecting = false;
+                _fishNetStatus = "FishNet Steam 호스트 시작에 실패했습니다.";
+            }
+        }
+
+        private void CreateSteamLobby()
+        {
+            if (!_steamReady || _fishNetNetworkManager == null)
+            {
+                _fishNetStatus = "Steam 준비가 안 됐습니다. Steam 실행 상태를 확인하세요.";
+                return;
+            }
+            if (_steamInLobby || _steamCreateLobbyPending || _fishNetConnecting) return;
+
+            _steamCreateLobbyPending = true;
+            _fishNetStatus = "Steam 친구 전용 로비 생성 중…";
+            _steamLobbyCreated.Set(SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, 16));
+        }
+
+        private void OnSteamLobbyCreated(LobbyCreated_t result, bool ioFailure)
+        {
+            _steamCreateLobbyPending = false;
+            if (ioFailure || result.m_eResult != EResult.k_EResultOK)
+            {
+                _fishNetStatus = "Steam 로비 생성 실패: " + result.m_eResult;
+                return;
+            }
+
+            _steamLobbyId = new CSteamID(result.m_ulSteamIDLobby);
+            _steamInLobby = true;
+            SteamMatchmaking.SetLobbyData(_steamLobbyId, "name", CleanName(playerName) + "의 방");
+            SteamMatchmaking.SetLobbyData(_steamLobbyId, "host", SteamUser.GetSteamID().m_SteamID.ToString());
+            _steamLobbyReady = false;
+            SteamMatchmaking.SetLobbyJoinable(_steamLobbyId, false);
+            _fishNetStatus = "Steam 로비 생성됨 · FishNet 서버 시작 중…";
+            StartFishNetRelayHost();
+        }
+
+        private void OnSteamLobbyJoinRequested(GameLobbyJoinRequested_t request)
+        {
+            if (!_steamReady || _fishNetNetworkManager == null) return;
+            _fishNetStatus = "Steam 초대를 수락했습니다. 로비에 참가 중…";
+            _steamLobbyEntered.Set(SteamMatchmaking.JoinLobby(request.m_steamIDLobby));
+        }
+
+        private void OnSteamLobbyEntered(LobbyEnter_t result, bool ioFailure)
+        {
+            if (ioFailure || result.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
+            {
+                _fishNetStatus = "Steam 로비 참가에 실패했습니다.";
+                return;
+            }
+
+            _steamLobbyId = new CSteamID(result.m_ulSteamIDLobby);
+            _steamInLobby = true;
+            _steamLobbyReady = false;
+            CSteamID lobbyOwner = SteamMatchmaking.GetLobbyOwner(_steamLobbyId);
+            if (lobbyOwner == SteamUser.GetSteamID())
+            {
+                if (!_fishNetNetworkManager.IsServerStarted) StartFishNetRelayHost();
+                return;
+            }
+
+            _fishNetSteamTransport.SetClientAddress(lobbyOwner.m_SteamID.ToString());
+            _fishNetConnecting = true;
+            _fishNetStatus = "Steam 릴레이로 호스트에 연결 중…";
+            if (!_fishNetNetworkManager.ClientManager.StartConnection())
+            {
+                _fishNetConnecting = false;
+                _fishNetStatus = "FishNet 클라이언트 시작 요청이 거부됐습니다.";
+            }
+        }
+
+        private void StartFishNetRelayHost()
+        {
+            if (_fishNetNetworkManager == null || !_steamReady) return;
+            _fishNetConnecting = true;
+            _fishNetHostStartPending = true;
+            _fishNetStatus = "Steam 릴레이 호스트 시작 중…";
+            if (!_fishNetNetworkManager.ServerManager.StartConnection())
+            {
+                _fishNetHostStartPending = false;
+                _fishNetConnecting = false;
+                _fishNetStatus = "FishNet Steam 호스트 시작 요청이 거부됐습니다.";
+            }
+        }
+
+        private void InviteSteamFriends()
+        {
+            if (!_steamReady || !_steamLobbyReady || !_steamInLobby
+                || SteamMatchmaking.GetLobbyOwner(_steamLobbyId) != SteamUser.GetSteamID())
+            {
+                _fishNetStatus = "호스트 FishNet 서버가 준비된 뒤에 초대할 수 있습니다.";
+                return;
+            }
+            SteamFriends.ActivateGameOverlayInviteDialog(_steamLobbyId);
+        }
+
+        private void StopFishNetConnection()
+        {
+            if (_fishNetNetworkManager != null)
+            {
+                _fishNetNetworkManager.ClientManager.StopConnection();
+                _fishNetNetworkManager.ServerManager.StopConnection(true);
+            }
+            if (_steamInLobby && _steamReady) SteamMatchmaking.LeaveLobby(_steamLobbyId);
+            _steamInLobby = false;
+            _steamLobbyReady = false;
+            _steamLobbyId = CSteamID.Nil;
+            _fishNetHostStartPending = false;
+            _fishNetConnecting = false;
+            _fishNetStatus = "Steam 릴레이 연결을 종료했습니다.";
+        }
+
+        private void DrawFishNetConnectionPanel(Rect panel)
+        {
+            GUI.enabled = true;
+            GUI.Box(panel, "Steam 릴레이 · FishNet 테스트");
+            float x = panel.x + 20;
+            float width = panel.width - 40;
+            float y = panel.y + 35;
+            GUI.Label(new Rect(x, y, width, 26), _steamReady
+                ? "내 SteamID: " + SteamUser.GetSteamID().m_SteamID
+                : "Steam 연결이 필요합니다.");
+
+            bool fishNetRunning = _fishNetConnecting || (_fishNetNetworkManager != null
+                && (_fishNetNetworkManager.IsServerStarted || _fishNetNetworkManager.IsClientStarted));
+            GUI.enabled = !fishNetRunning && !_steamInLobby;
+            if (GUI.Button(new Rect(x, y + 34, width, 38), "Steam 릴레이로 호스트 만들기")) CreateSteamLobby();
+            GUI.enabled = _steamLobbyReady && _steamInLobby
+                && SteamMatchmaking.GetLobbyOwner(_steamLobbyId) == SteamUser.GetSteamID();
+            if (GUI.Button(new Rect(x, y + 78, width, 34), "Steam 친구 초대")) InviteSteamFriends();
+            GUI.enabled = fishNetRunning || _steamInLobby;
+            if (GUI.Button(new Rect(x, y + 118, width, 30), "Steam 연결 종료")) StopFishNetConnection();
+            GUI.enabled = true;
+            var statusStyle = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 15 };
+            GUI.Label(new Rect(x, y + 154, width, panel.height - 170), _fishNetStatus, statusStyle);
+        }
+
+        private void DrawCreateRoomOptions(bool canConnect)
+        {
+            GUI.enabled = true;
+            Color previousColor = GUI.color;
+            GUI.color = new Color(0, 0, 0, 0.78f);
+            GUI.DrawTexture(new Rect(0, 0, 1000, 700), Texture2D.whiteTexture);
+            GUI.color = previousColor;
+            GUI.Box(new Rect(140, 48, 720, 604), "Create room");
+            GUI.Label(new Rect(190, 84, 620, 32), "연결 방식을 선택하세요.",
+                new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.MiddleCenter });
+
+            GUI.enabled = canConnect && !_steamInLobby;
+            if (GUI.Button(new Rect(190, 124, 620, 48), "LAN 방 만들기"))
+            {
+                showCreateRoomOptions = false;
+                CreateRoom();
+            }
+
+            GUI.enabled = true;
+            DrawFishNetConnectionPanel(new Rect(190, 188, 620, 348));
+            if (GUI.Button(new Rect(190, 558, 620, 44), _steamInLobby ? "닫기" : "취소"))
+                showCreateRoomOptions = false;
+            GUI.enabled = true;
         }
 
         public static string EncodeAddress(string endpoint) => "MARCO-" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(endpoint)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -155,6 +469,7 @@ namespace Marco.Prototype
         {
             try
             {
+                if (_steamReady) SteamAPI.RunCallbacks();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
                 if (Input.GetKeyDown(KeyCode.F10)) RequestDevelopmentRoleSwitch();
 #endif
@@ -448,6 +763,7 @@ namespace Marco.Prototype
             }
             connectTask = null; joined = false; members = 0; address = "";
             showJoinInput = false;
+            showCreateRoomOptions = false;
             showSettings = false;
             roster.Clear();
             nextId = 1;
@@ -462,6 +778,9 @@ namespace Marco.Prototype
         private void OnDestroy()
         {
             if (instance != this) return;
+            StopFishNetConnection();
+            if (_steamReady) SteamAPI.Shutdown();
+            _steamReady = false;
             Leave(); instance = null;
         }
 
@@ -541,7 +860,6 @@ namespace Marco.Prototype
                 style.onNormal, style.onHover, style.onActive, style.onFocused })
             {
                 state.background = null;
-                state.scaledBackgrounds = null;
                 state.textColor = Color.white;
             }
             style.hover.textColor = new Color(0.65f, 0.85f, 1f);
@@ -552,7 +870,7 @@ namespace Marco.Prototype
         private void DrawEntryMenu(float scale, float offsetX)
         {
             bool canConnect = connectTask == null && server == null;
-            GUI.enabled = canConnect && !showJoinInput && !showSettings;
+            GUI.enabled = canConnect && !showJoinInput && !showCreateRoomOptions && !showSettings;
             var label = new GUIStyle(GUI.skin.label) { fontSize = 22 };
             var input = new GUIStyle(GUI.skin.textField) { fontSize = 24, alignment = TextAnchor.MiddleLeft };
             // Keep the nickname field inside the reference canvas.
@@ -566,7 +884,7 @@ namespace Marco.Prototype
             float menuX = (Mathf.Clamp(menuPosition.x, 0, 100) - offsetX) / Mathf.Max(0.001f, scale);
             float menuY = Mathf.Clamp(menuPosition.y, 20, 380);
             var menu = TextButtonStyle(menuFontSize);
-            if (GUI.Button(new Rect(menuX, menuY, 330, 65), "Create room", menu)) CreateRoom();
+            if (GUI.Button(new Rect(menuX, menuY, 330, 65), "Create room", menu)) showCreateRoomOptions = true;
             if (GUI.Button(new Rect(menuX, menuY + 80, 330, 65), "Join", menu)) showJoinInput = true;
             if (GUI.Button(new Rect(menuX, menuY + 160, 330, 65), "setting", menu)) showSettings = true;
             if (showJoinInput)
@@ -586,6 +904,7 @@ namespace Marco.Prototype
                 if (GUI.Button(new Rect(310, 410, 150, 40), "접속", action)) JoinRoom();
                 if (GUI.Button(new Rect(510, 410, 150, 40), "취소", action)) showJoinInput = false;
             }
+            if (showCreateRoomOptions) DrawCreateRoomOptions(canConnect);
             if (showSettings)
             {
                 GUI.enabled = true;
