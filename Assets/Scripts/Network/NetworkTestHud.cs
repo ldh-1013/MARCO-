@@ -152,7 +152,7 @@ namespace Marco.Network
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
-            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 근처 도망자 태그 (술래)", help);
+            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
         }
 
@@ -185,11 +185,20 @@ namespace Marco.Network
                     _ => MutedColor,
                 };
                 GUI.Label(new Rect(inner.x + 30, y, inner.width - 30, 34),
-                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsOwner ? "  (나)" : "")}", style);
+                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsOwner ? "  (나)" + OwnerDetail(player) : "")}", style);
                 y += RowHeight;
             }
 
             if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
+        }
+
+        // Debug text only the owner sees (기획서 20.1 P0): the Seeker's swing cooldown.
+        private static string OwnerDetail(NetworkPlayer player)
+        {
+            if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
+                interactor.SwingCooldownRemaining > 0)
+                return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
+            return "";
         }
 
         // Center (slightly high, clear of the cheat panel at the bottom): the decided result, large.

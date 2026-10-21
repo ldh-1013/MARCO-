@@ -11,9 +11,13 @@ using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Valves;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Marco.Network.Round
 {
+    // Rejected: not the Seeker, no round, or still cooling down (no swing is played).
+    public enum SwingResult : byte { Rejected, Missed, Hit }
+
     // ValvesOnly: fewer than 2 Runners (RoundState only supports 2~5), so only board.Tick runs.
     // Escape and tagging still work there, but no result is ever decided.
     public enum RoundMode : byte { NotStarted, ValvesOnly, Full }
@@ -35,8 +39,16 @@ namespace Marco.Network.Round
         public static NetworkRound Instance { get; private set; }
 
         [SerializeField] private float interactRange = 2f;
-        [SerializeField] private float tagRange = 2f;
-        [SerializeField] private float tagCooldownSeconds = 1f;
+        [Header("Tag (기획서 3.1-2 · 부록 A [태그 판정])")]
+        // The Seeker's client only requests a tag when a Runner is this close (3D distance).
+        [SerializeField] private float tagRadius = 1.2f;
+        // Server re-check limit: latency allowance (sprint 7.5 m/s × 100 ms RTT), not the tag radius.
+        [FormerlySerializedAs("tagRange")]
+        [SerializeField] private float tagServerMaxDistance = 2f;
+        // Half of the horizontal cone in front of the Seeker.
+        [SerializeField] private float tagHalfAngle = 45f;
+        [SerializeField] private float tagHitCooldown = 2.5f;
+        [SerializeField] private float tagMissCooldown = 1.5f;
         // Design value is 90 s; lower it in the inspector to test the phase timeout quickly.
         [SerializeField] private float lastSurvivorPhaseSeconds = 90f;
         // GamePoints marker the Seeker is moved to when a round starts.
@@ -63,6 +75,9 @@ namespace Marco.Network.Round
         private DrainHatchInteractionService drains;
 
         public float InteractRange => interactRange;
+        public float TagRadius => tagRadius;
+        public float TagHitCooldown => tagHitCooldown;
+        public float TagMissCooldown => tagMissCooldown;
         public RoundMode Mode => mode.Value;
         public bool GateOpen => gateOpen.Value;
         public RoundResult Result => result.Value;
@@ -304,19 +319,21 @@ namespace Marco.Network.Round
             return true;
         }
 
-        // The client only says "I swung"; the server picks the nearest alive Runner in range.
+        // The Seeker's client judged the swing with TagRadius (targetInReach); the server re-picks the
+        // target from its own state, allowing up to tagServerMaxDistance for latency (기획서 3.1-2).
         [Server]
-        public bool TryTag(int seekerId, Vector3 seekerPosition)
+        public SwingResult TrySwing(int seekerId, Transform seeker, bool targetInReach)
         {
-            if (valves == null || roster.GetRole(seekerId) != PlayerRole.Seeker) return false;
-            if (nextTagTimes.TryGetValue(seekerId, out float next) && Time.time < next) return false;
-            nextTagTimes[seekerId] = Time.time + tagCooldownSeconds;
+            if (valves == null || roster.GetRole(seekerId) != PlayerRole.Seeker) return SwingResult.Rejected;
+            if (nextTagTimes.TryGetValue(seekerId, out float next) && Time.time < next) return SwingResult.Rejected;
 
-            if (!TryFindTagTarget(seekerPosition, out var target)) return false;
-            if (!ApplyTag(target)) return false;
+            NetworkPlayer target = null;
+            bool hit = targetInReach && TryFindTagTarget(seeker, tagServerMaxDistance, out target) && ApplyTag(target);
+            nextTagTimes[seekerId] = Time.time + (hit ? tagHitCooldown : tagMissCooldown);
+            if (!hit) return SwingResult.Missed;
 
             Debug.Log($"[MARCO] P{seekerId} tagged P{target.PlayerId}");
-            return true;
+            return SwingResult.Hit;
         }
 
         private bool ApplyTag(NetworkPlayer target)
@@ -328,16 +345,22 @@ namespace Marco.Network.Round
             return true;
         }
 
-        private bool TryFindTagTarget(Vector3 seekerPosition, out NetworkPlayer target)
+        // Nearest alive Runner within range (3D distance) and the horizontal ±tagHalfAngle cone, with
+        // no wall in between. The Seeker's client calls it with TagRadius, the server with its limit.
+        public bool TryFindTagTarget(Transform seeker, float range, out NetworkPlayer target)
         {
             target = null;
-            float best = tagRange * tagRange;
+            float best = range * range;
+            var forward = Vector3.ProjectOnPlane(seeker.forward, Vector3.up);
             foreach (var player in NetworkPlayer.All)
             {
                 if (player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) continue;
-                var offset = player.transform.position - seekerPosition;
-                offset.y = 0;
-                if (offset.sqrMagnitude > best) continue;
+                var offset = player.transform.position - seeker.position;
+                if (offset.sqrMagnitude > best || Vector3.Angle(forward, Vector3.ProjectOnPlane(offset, Vector3.up)) > tagHalfAngle) continue;
+                // A wall (or another player) between them blocks the swing; the line starts inside
+                // the Seeker's own CharacterController, which a linecast does not report.
+                if (Physics.Linecast(seeker.position, player.transform.position, out var blocker, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                    && !blocker.transform.IsChildOf(player.transform)) continue;
                 best = offset.sqrMagnitude;
                 target = player;
             }
