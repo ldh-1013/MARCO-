@@ -22,7 +22,13 @@ namespace Marco.Prototype
         private bool succeeded, hasPose;
         private PlayerPoseState latest;
 
-        public void Configure(int playerId, bool local) { PlayerId = playerId; IsLocal = local; }
+        public void Configure(int playerId, bool local)
+        {
+            PlayerId = playerId;
+            IsLocal = local;
+            var voiceChat = GetComponent<ProximityVoiceChat>();
+            if (voiceChat != null) voiceChat.Configure(playerId, local);
+        }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public void InheritDevelopmentStream(PlayerPoseReplicator previous)
         {

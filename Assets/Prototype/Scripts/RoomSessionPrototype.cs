@@ -22,6 +22,8 @@ namespace Marco.Prototype
     public sealed class RoomSessionPrototype : MonoBehaviour
     {
         [SerializeField] private int port = 7777;
+        [Header("Proximity voice")]
+        [SerializeField, Min(0.5f)] private float proximityVoiceRadius = 5f;
         [Header("FishNet player connection")]
         [SerializeField] private NetworkObject fishNetPlayerPrefab;
         [Header("Registered character names (all participants use the host's selection)")]
@@ -72,6 +74,7 @@ namespace Marco.Prototype
         private readonly HashSet<int> activePlayers = new HashSet<int>();
         public static RoomSessionPrototype Instance => instance;
         public event Action<PlayerPoseState> PoseReceived;
+        public event Action<int, byte[]> VoiceFrameReceived;
         public event Action<int> PlayerLeft;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public event Action DevelopmentRolesChanged;
@@ -139,6 +142,13 @@ namespace Marco.Prototype
             {
                 if (outgoing.Count >= 128) throw new IOException("Peer outgoing queue overflow");
                 outgoing.Enqueue(message);
+            }
+            public bool TrySendVoice(string message)
+            {
+                // Prefer fresh speech over letting delayed audio build up behind pose packets.
+                if (outgoing.Count >= 32) return false;
+                outgoing.Enqueue(message);
+                return true;
             }
             public void PumpWrites()
             {
@@ -572,12 +582,20 @@ namespace Marco.Prototype
                     else if (gameStarted && peer.Name != null && incoming != null)
                     {
                         // Identity comes from the accepted socket, never from an untrusted payload.
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-                        if (incoming == RoomLaunchProtocol.DevelopmentRoleRequest) SwitchDevelopmentRole(peer.Id);
+                        if (ProximityVoiceProtocol.TryDecode(incoming, out int voicePlayerId, out _, out var voiceFrame)
+                            && voicePlayerId == peer.Id)
+                        {
+                            RelayVoiceFrame(peer, incoming, voicePlayerId, voiceFrame);
+                        }
                         else
+                        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                            if (incoming == RoomLaunchProtocol.DevelopmentRoleRequest) SwitchDevelopmentRole(peer.Id);
+                            else
 #endif
-                        if (PlayerPoseProtocol.TryParse(incoming, out var pose) && pose.PlayerId == peer.Id && AcceptPose(pose))
-                            foreach (var other in peers) if (other != peer && other.Name != null) other.Send(PlayerPoseProtocol.Encode(pose));
+                            if (PlayerPoseProtocol.TryParse(incoming, out var pose) && pose.PlayerId == peer.Id && AcceptPose(pose))
+                                foreach (var other in peers) if (other != peer && other.Name != null) other.Send(PlayerPoseProtocol.Encode(pose));
+                        }
                         peer.Read = peer.Reader.ReadLineAsync();
                     }
                     else DropPeer(i);
@@ -607,7 +625,13 @@ namespace Marco.Prototype
                     }
                     if (gameStarted)
                     {
-                        if (PlayerPoseProtocol.TryParse(line, out var pose) && pose.PlayerId != MatchLaunchContext.LocalPlayerId) AcceptPose(pose);
+                        if (ProximityVoiceProtocol.TryDecode(line, out int voicePlayerId, out _, out var voiceFrame))
+                        {
+                            if (voicePlayerId != MatchLaunchContext.LocalPlayerId
+                                && IsWithinVoiceRange(voicePlayerId, MatchLaunchContext.LocalPlayerId))
+                                VoiceFrameReceived?.Invoke(voicePlayerId, voiceFrame);
+                        }
+                        else if (PlayerPoseProtocol.TryParse(line, out var pose) && pose.PlayerId != MatchLaunchContext.LocalPlayerId) AcceptPose(pose);
                         else if (line.StartsWith("MARCO/3 LEFT ") && int.TryParse(line.Substring(13), out int departed))
                         {
                             if (departed != MatchLaunchContext.LocalPlayerId && activePlayers.Remove(departed))
@@ -760,6 +784,7 @@ namespace Marco.Prototype
             if (!gameStarted || pose.PlayerId != MatchLaunchContext.LocalPlayerId) return;
             string message = PlayerPoseProtocol.Encode(pose);
             if (!PlayerPoseProtocol.TryParse(message, out _)) return;
+            AcceptPose(pose);
             try
             {
                 if (IsHost)
@@ -767,6 +792,45 @@ namespace Marco.Prototype
                 else server?.Send(message);
             }
             catch (Exception e) { ReturnToLobby("동작 전송 실패: " + e.GetBaseException().Message); }
+        }
+
+        public float ProximityVoiceRadius => Mathf.Max(0.5f, proximityVoiceRadius);
+
+        public void PublishVoiceFrame(int playerId, uint sequence, byte[] pcm16)
+        {
+            if (!gameStarted || playerId != MatchLaunchContext.LocalPlayerId) return;
+            string message = ProximityVoiceProtocol.Encode(playerId, sequence, pcm16);
+            if (message == null) return;
+
+            try
+            {
+                if (IsHost)
+                {
+                    foreach (var peer in peers)
+                        if (peer.Name != null && IsWithinVoiceRange(playerId, peer.Id)) peer.TrySendVoice(message);
+                }
+                else server?.TrySendVoice(message);
+            }
+            catch (Exception e) { ReturnToLobby("음성 전송 실패: " + e.GetBaseException().Message); }
+        }
+
+        private void RelayVoiceFrame(Peer sender, string message, int playerId, byte[] pcm16)
+        {
+            // The local host is player 0; other recipients are routed below.
+            if (IsWithinVoiceRange(playerId, 0)) VoiceFrameReceived?.Invoke(playerId, pcm16);
+
+            foreach (var peer in peers)
+                if (peer != sender && peer.Name != null && IsWithinVoiceRange(playerId, peer.Id)) peer.TrySendVoice(message);
+        }
+
+        private bool IsWithinVoiceRange(int speakerId, int listenerId)
+        {
+            if (!latestPoses.TryGetValue(speakerId, out var speaker) || !latestPoses.TryGetValue(listenerId, out var listener))
+                return false;
+            float dx = speaker.X - listener.X;
+            float dz = speaker.Z - listener.Z;
+            float radius = ProximityVoiceRadius;
+            return dx * dx + dz * dz <= radius * radius;
         }
         private void DropPeer(int index)
         {
