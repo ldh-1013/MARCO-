@@ -8,7 +8,7 @@ namespace Marco.Network.Map
     // only, so the map scene's own GamePoints never clash.
     public sealed class GamePoints : MonoBehaviour
     {
-        // Markers sit on the floor; a CharacterController (height 2, center 0) stands 1 m above it,
+        // Markers sit on the floor; a CharacterController (height 1.8, center -0.1) stands 1 m above it,
         // plus a little so it never starts inside the floor collider.
         public const float PlayerStandHeight = 1.05f;
 

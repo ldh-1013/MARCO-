@@ -224,10 +224,11 @@ namespace Marco.Network.Round
             };
         }
 
+        private void OnServerTick() => Step((float)TimeManager.TickDelta);
+
         // §0 tick order: board first, then round.
-        private void OnServerTick()
+        private void Step(float dt)
         {
-            float dt = (float)TimeManager.TickDelta;
             board.Tick(dt);
             round?.Tick(dt);
 
@@ -288,11 +289,18 @@ namespace Marco.Network.Round
         {
             if (valves == null || !TryGetAliveRunner(playerId, out var player)) return false;
             if (!ExitView.AnyInRange(playerPosition, interactRange)) return false;
-            if (round != null ? !round.NotifyRunnerEscaped(playerId) : !gate.IsOpen) return false;
+            if (!ApplyEscape(player)) return false;
 
-            RemoveFromWork(playerId);
-            player.SetStatus(PlayerStatus.Escaped);
             Debug.Log($"[MARCO] P{playerId} escaped");
+            return true;
+        }
+
+        private bool ApplyEscape(NetworkPlayer player)
+        {
+            if (round != null ? !round.NotifyRunnerEscaped(player.PlayerId) : !gate.IsOpen) return false;
+
+            RemoveFromWork(player.PlayerId);
+            player.SetStatus(PlayerStatus.Escaped);
             return true;
         }
 
@@ -305,11 +313,18 @@ namespace Marco.Network.Round
             nextTagTimes[seekerId] = Time.time + tagCooldownSeconds;
 
             if (!TryFindTagTarget(seekerPosition, out var target)) return false;
+            if (!ApplyTag(target)) return false;
+
+            Debug.Log($"[MARCO] P{seekerId} tagged P{target.PlayerId}");
+            return true;
+        }
+
+        private bool ApplyTag(NetworkPlayer target)
+        {
             if (round != null && !round.NotifyRunnerTagged(target.PlayerId)) return false;
 
             RemoveFromWork(target.PlayerId);
             target.SetStatus(PlayerStatus.Tagged);
-            Debug.Log($"[MARCO] P{seekerId} tagged P{target.PlayerId}");
             return true;
         }
 
@@ -350,6 +365,101 @@ namespace Marco.Network.Round
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;
             if (round != null && !spectating) round.NotifyPlayerLeft(conn.ClientId);
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // Dev cheats for RoundCheats (Host only). They skip range, cooldown and waiting, but every
+        // outcome still goes through the Core objects, so the result is whatever Core decides.
+        private const int CheatWorkerId = -1;
+        // Long enough for any valve state (Closed / Rotating / Reflowing) to finish turning open.
+        private const float CheatValveSeconds = 1000f;
+
+        private bool CheatReady
+        {
+            get
+            {
+                if (valves != null && result.Value == RoundResult.InProgress) return true;
+                Debug.Log("[MARCO][Cheat] 진행 중인 라운드가 없음");
+                return false;
+            }
+        }
+
+        // Master key: a cheat worker turns each unopened active valve; Valve opens it and
+        // ValveInteractionService re-evaluates the gate on each status change.
+        [Server]
+        internal void CheatOpenActiveValves()
+        {
+            if (!CheatReady) return;
+            foreach (var valve in board.Valves.Values)
+            {
+                if (valve.Status == ValveStatus.Open) continue;
+                valve.BeginWork(CheatWorkerId);
+                valve.Tick(CheatValveSeconds);
+                valve.EndWork(CheatWorkerId);
+            }
+            Debug.Log($"[MARCO][Cheat] 밸브 개방 {valves.OpenValveCount}개, 게이트 {(gate.IsOpen ? "열림" : "닫힘")}");
+        }
+
+        [Server]
+        internal void CheatTagRunner()
+        {
+            if (!CheatReady) return;
+            if (!TryGetFirstAliveRunner(out var target)) return;
+            Debug.Log(ApplyTag(target) ? $"[MARCO][Cheat] P{target.PlayerId} 태그" : "[MARCO][Cheat] 태그 거부됨");
+        }
+
+        [Server]
+        internal void CheatEscapeRunner()
+        {
+            if (!CheatReady) return;
+            if (!TryGetFirstAliveRunner(out var player)) return;
+            Debug.Log(ApplyEscape(player) ? $"[MARCO][Cheat] P{player.PlayerId} 탈출" : "[MARCO][Cheat] 탈출 거부됨 (게이트 닫힘 → F1 먼저)");
+        }
+
+        // One server step with a large dt: valves, round time and the last-survivor timer all advance.
+        [Server]
+        internal void CheatFastForward(float seconds)
+        {
+            if (!CheatReady) return;
+            Step(seconds);
+            Debug.Log($"[MARCO][Cheat] {seconds}초 빨리감기");
+        }
+
+        // Core enters the phase by itself once exactly one Runner is undecided, so tag down to one.
+        [Server]
+        internal void CheatEnterLastSurvivorPhase()
+        {
+            if (!CheatReady) return;
+            if (round == null)
+            {
+                Debug.Log("[MARCO][Cheat] 밸브 전용 모드(도망자 1명)에는 최후 생존자 페이즈가 없음");
+                return;
+            }
+            if (round.LastSurvivorPhase.HasEntered)
+            {
+                Debug.Log("[MARCO][Cheat] 이미 최후 생존자 페이즈");
+                return;
+            }
+
+            int alive = 0;
+            foreach (var player in NetworkPlayer.All)
+                if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive) alive++;
+            while (alive > 1 && TryGetFirstAliveRunner(out var target) && ApplyTag(target)) alive--;
+            Debug.Log("[MARCO][Cheat] 도망자 1명만 남김 → 다음 틱에 최후 생존자 페이즈");
+        }
+
+        private static bool TryGetFirstAliveRunner(out NetworkPlayer runner)
+        {
+            foreach (var player in NetworkPlayer.All)
+            {
+                if (player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) continue;
+                runner = player;
+                return true;
+            }
+            runner = null;
+            Debug.Log("[MARCO][Cheat] 살아있는 도망자가 없음");
+            return false;
+        }
+#endif
 
         [Server]
         internal void MarkGateOpened() => gateOpen.Value = true;

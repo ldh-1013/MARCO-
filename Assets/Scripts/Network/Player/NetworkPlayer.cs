@@ -48,7 +48,8 @@ namespace Marco.Network.Player
 
         private void Awake()
         {
-            body = GetComponent<Renderer>();
+            // The capsule mesh is a child so it can be shaped to the CharacterController.
+            body = GetComponentInChildren<Renderer>();
             role.OnChange += (_, _, _) => ApplyLook();
             status.OnChange += (_, _, _) => ApplyLook();
         }
