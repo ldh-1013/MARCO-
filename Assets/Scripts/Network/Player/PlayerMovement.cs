@@ -35,8 +35,9 @@ namespace Marco.Network.Player
             if (Input.GetKeyDown(KeyCode.Escape))
                 Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
             // Clicking the HUD must not relock: locking recenters the cursor, so the IMGUI button
-            // never sees its mouse-up and the click is lost.
-            if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0) && !NetworkTestHud.IsPointerOver)
+            // never sees its mouse-up and the click is lost. An open cheat panel keeps it free too.
+            if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0) &&
+                !TestHudSkin.IsPointerOver && !TestHudSkin.HoldsCursor)
                 Cursor.lockState = CursorLockMode.Locked;
 
             if (Cursor.lockState == CursorLockMode.Locked)
