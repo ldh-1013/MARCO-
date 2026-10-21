@@ -5,9 +5,9 @@ using UnityEngine;
 
 namespace Marco.Network
 {
-    // Temporary IMGUI HUD for the LAN test scenes. Offline: Host / IP Join panel. Connected: round
-    // timer and gate (top center), valves (left), players (right), result (center).
-    // The host also gets round start/restart here; RoundCheats (Tab, dev builds only) repeats them with the cheats.
+    // Temporary IMGUI HUD for the test scenes once the round has started: round timer and gate
+    // (top center), valves (left), players (right), result (center). Before that, LobbyMenu covers
+    // the screen. The host also gets restart here; RoundCheats (Tab, dev builds only) repeats it with the cheats.
     [RequireComponent(typeof(LanConnector))]
     public sealed class NetworkTestHud : MonoBehaviour
     {
@@ -20,61 +20,30 @@ namespace Marco.Network
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
         private static readonly Color ReflowColor = new(1f, 0.55f, 0.1f);
 
-        [SerializeField] private string joinAddress = "127.0.0.1";
-
         private LanConnector connector;
 
         private void Awake() => connector = GetComponent<LanConnector>();
 
         private void OnGUI()
         {
-            TestHudSkin.Begin();
-            if (connector.Status != LanConnectionStatus.Connected)
-            {
-                DrawConnectPanel();
-                return;
-            }
-
-            DrawPlayers();
+            if (connector.Status != LanConnectionStatus.Connected) return;
             var round = NetworkRound.Instance;
-            if (round == null) return;
+            if (round == null || round.Mode == RoundMode.NotStarted) return;
+
+            TestHudSkin.Begin();
+            DrawPlayers();
             DrawRoundStatus(round);
-            if (round.Mode == RoundMode.NotStarted) return;
             DrawValves(round);
             DrawResult(round);
-        }
-
-        private void DrawConnectPanel()
-        {
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 330);
-            TestHudSkin.Panel(rect);
-            GUILayout.BeginArea(Inset(rect));
-            if (connector.Status == LanConnectionStatus.Connecting)
-            {
-                GUILayout.Label("연결 중…", TestHudSkin.Text(32, FontStyle.Bold));
-                if (GUILayout.Button("취소", TestHudSkin.Button(24), GUILayout.Height(52))) connector.Leave();
-            }
-            else
-            {
-                GUILayout.Label(connector.Status == LanConnectionStatus.Failed ? "연결 실패 — IP를 확인하세요" : "오프라인",
-                    TestHudSkin.Text(28, FontStyle.Bold));
-                if (GUILayout.Button("Host", TestHudSkin.Button(24), GUILayout.Height(52))) connector.Host();
-                GUILayout.Space(12);
-                GUILayout.Label("Host IP", TestHudSkin.Text(22));
-                joinAddress = GUILayout.TextField(joinAddress, new GUIStyle(GUI.skin.textField) { fontSize = 24 }, GUILayout.Height(40));
-                if (GUILayout.Button("Join", TestHudSkin.Button(24), GUILayout.Height(52))) connector.Join(joinAddress);
-            }
-            GUILayout.EndArea();
         }
 
         // Top center: time, gate, last-survivor phase, and the host's start/restart button.
         private void DrawRoundStatus(NetworkRound round)
         {
             const float width = 640, buttonHeight = 52;
-            bool lastSurvivor = round.Mode != RoundMode.NotStarted && round.InLastSurvivorPhase;
+            bool lastSurvivor = round.InLastSurvivorPhase;
             // ValvesOnly never decides a result, so the host can restart it at any time.
-            bool hostButton = connector.IsHost && (round.Mode == RoundMode.NotStarted ||
-                                                   round.Result != RoundResult.InProgress || round.Mode == RoundMode.ValvesOnly);
+            bool hostButton = connector.IsHost && (round.Result != RoundResult.InProgress || round.Mode == RoundMode.ValvesOnly);
             float height = (lastSurvivor ? 220 : 130) + (hostButton ? buttonHeight + 12 : 0);
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Margin, width, height);
             TestHudSkin.Panel(rect);
@@ -82,15 +51,6 @@ namespace Marco.Network
             var center = TestHudSkin.Text(40, FontStyle.Bold, TextAnchor.MiddleCenter);
 
             if (hostButton) DrawHostButton(round, new Rect(inner.x, inner.yMax - buttonHeight, inner.width, buttonHeight));
-
-            if (round.Mode == RoundMode.NotStarted)
-            {
-                GUI.Label(new Rect(inner.x, inner.y, inner.width, 52), "라운드 대기 중", center);
-                GUI.Label(new Rect(inner.x, inner.y + 56, inner.width, 36),
-                    connector.IsHost ? "인원이 모이면 라운드를 시작하세요" : "Host가 라운드를 시작하길 기다리는 중",
-                    TestHudSkin.Text(24, FontStyle.Normal, TextAnchor.MiddleCenter));
-                return;
-            }
 
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 52), round.Mode == RoundMode.Full
                 ? $"남은 시간  {FormatTime(round.RemainingSeconds)}"
@@ -117,15 +77,7 @@ namespace Marco.Network
         private static void DrawHostButton(NetworkRound round, Rect rect)
         {
             var style = new GUIStyle(TestHudSkin.Button(24)) { alignment = TextAnchor.MiddleCenter };
-            if (round.Mode != RoundMode.NotStarted)
-            {
-                if (GUI.Button(rect, "↻  다시 시작", style)) round.RestartRound();
-                return;
-            }
-            if (!GUI.Button(rect, "▶  라운드 시작", style)) return;
-            // [Server] on StartRound silently skips the call unless the scene object is spawned on the server.
-            Debug.Log($"[MARCO][HUD] 라운드 시작 클릭 (IsSpawned {round.IsSpawned}, IsServerInitialized {round.IsServerInitialized})");
-            round.StartRound();
+            if (GUI.Button(rect, "↻  다시 시작", style)) round.RestartRound();
         }
 
         // Left: valve A~E progress bars, then the controls reminder.
@@ -152,7 +104,7 @@ namespace Marco.Network
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
-            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 근처 도망자 태그 (술래)", help);
+            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
         }
 
@@ -185,11 +137,23 @@ namespace Marco.Network
                     _ => MutedColor,
                 };
                 GUI.Label(new Rect(inner.x + 30, y, inner.width - 30, 34),
-                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsOwner ? "  (나)" : "")}", style);
+                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsOwner ? "  (나)" + OwnerDetail(player) : "")}", style);
                 y += RowHeight;
             }
 
             if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
+        }
+
+        // Debug text only the owner sees (기획서 20.1 P0): a Runner's own lives, the Seeker's swing cooldown.
+        private static string OwnerDetail(NetworkPlayer player)
+        {
+            var round = NetworkRound.Instance;
+            if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && round != null)
+                return $" · 목숨 {(player.HealthHalves < 0 ? round.FullHalves : player.HealthHalves) / 2f:F1}";
+            if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
+                interactor.SwingCooldownRemaining > 0)
+                return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
+            return "";
         }
 
         // Center (slightly high, clear of the cheat panel at the bottom): the decided result, large.
@@ -241,7 +205,7 @@ namespace Marco.Network
         private static string StatusLabel(PlayerStatus status) => status switch
         {
             PlayerStatus.Escaped => "탈출",
-            PlayerStatus.Tagged => "태그됨",
+            PlayerStatus.Tagged => "메아리",
             PlayerStatus.Spectating => "관전 (다음 판부터)",
             _ => "생존",
         };

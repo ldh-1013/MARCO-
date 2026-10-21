@@ -793,6 +793,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveView
   id: 1
   handle: {fileID: 870076269}
+  handleAxis: {x: 0, y: 1, z: 0}
   body: {fileID: 805810765}
 --- !u!23 &805810765
 MeshRenderer:
@@ -1012,6 +1013,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveView
   id: 0
   handle: {fileID: 161308587}
+  handleAxis: {x: 0, y: 1, z: 0}
   body: {fileID: 1061148862}
 --- !u!23 &1061148862
 MeshRenderer:
@@ -1141,6 +1143,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveView
   id: 2
   handle: {fileID: 200784998}
+  handleAxis: {x: 0, y: 1, z: 0}
   body: {fileID: 1113183959}
 --- !u!23 &1113183959
 MeshRenderer:
@@ -1472,6 +1475,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveView
   id: 4
   handle: {fileID: 172516847}
+  handleAxis: {x: 0, y: 1, z: 0}
   body: {fileID: 1167363350}
 --- !u!23 &1167363350
 MeshRenderer:
@@ -1706,8 +1710,14 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 1361697818}
   _networkObjectCache: {fileID: 0}
   interactRange: 2
-  tagRange: 2
-  tagCooldownSeconds: 1
+  tagRadius: 1.2
+  tagServerMaxDistance: 2
+  tagHalfAngle: 45
+  tagHitCooldown: 2.5
+  tagMissCooldown: 1.5
+  startLives: 2
+  woundedLives: 1
+  recoveringSpeedPenalty: 0.15
   lastSurvivorPhaseSeconds: 90
   seekerSpawnPoint: SpawnPoint_4
 --- !u!114 &1361697818
@@ -1828,6 +1838,12 @@ GameObject:
   - component: {fileID: 1525350368}
   - component: {fileID: 1525350367}
   - component: {fileID: 1525350366}
+  - component: {fileID: 1525350378}
+  - component: {fileID: 1525350377}
+  - component: {fileID: 1525350376}
+  - component: {fileID: 1525350375}
+  - component: {fileID: 1525350374}
+  - component: {fileID: 1525350373}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -1890,7 +1906,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7867e1f85b58ea64cad12addf3a2c14b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.NetworkTestHud
-  joinAddress: 127.0.0.1
 --- !u!114 &1525350370
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1903,6 +1918,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d20670e162ea714f911341c169c06d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.LanConnector
+  connectTimeout: 8
 --- !u!114 &1525350371
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1937,6 +1953,108 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1525350373
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a1c208084f90ac4b8a44e1009b69696, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.LobbyMenu
+  menuPosition: {x: 8, y: 330}
+  nicknamePosition: {x: 350, y: 140}
+  menuFontSize: 40
+--- !u!114 &1525350374
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bcda1f73f01ae5040a09f07e23bdf3d5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.SteamLobby
+--- !u!114 &1525350375
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 34e4a322dca349547989b14021da4e23, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.Transporting.TransportManager
+  Transport: {fileID: 1525350376}
+  _maximumClientPacketSize: 20480
+  _intermediateLayer: {fileID: 0}
+  _latencySimulator:
+    _enabled: 0
+    _simulateHost: 1
+    _latency: 0
+    _outOfOrder: 0
+    _packetLoss: 0
+--- !u!114 &1525350376
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 314b449d3505bd24487ba69b61c2fda5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Transporting.Multipass.Multipass
+  GlobalServerActions: 0
+  _transports:
+  - {fileID: 1525350378}
+  - {fileID: 1525350377}
+--- !u!114 &1525350377
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28b19962fe839804180bd02ce1a545f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishySteamworks::FishySteamworks.FishySteamworks
+  _serverBindAddress: 
+  _port: 7770
+  _maximumClients: 16
+  _peerToPeer: 1
+  _clientAddress: 
+--- !u!114 &1525350378
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525350365}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f48f002b825cbd45a19bd96d90f9edb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Transporting.Tugboat.Tugboat
+  _stopSocketsOnThread: 0
+  _dontRoute: 0
+  _reuseAddress: 0
+  _ipv4BindAddress: 
+  _enableIpv6: 1
+  _ipv6BindAddress: 
+  _port: 7770
+  _maximumClients: 16
+  _clientAddress: localhost
 --- !u!1 &1529261422
 GameObject:
   m_ObjectHideFlags: 0
@@ -2076,6 +2194,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Valves.ValveView
   id: 3
   handle: {fileID: 600052629}
+  handleAxis: {x: 0, y: 1, z: 0}
   body: {fileID: 1684792342}
 --- !u!23 &1684792342
 MeshRenderer:

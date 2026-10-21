@@ -12,7 +12,7 @@ namespace Marco.Network.Editor
 {
     // Menu helper for the network round on the real pool map (IndoorPool_v1_2). The scene holds only
     // network objects plus the GamePoints marker prefab; MapSceneLoader adds the map at runtime, so
-    // the map scene itself is never copied or edited. Like NetworkTest, not added to EditorBuildSettings.
+    // the map scene itself is never copied or edited. It is the first scene in EditorBuildSettings (game entry with LobbyMenu).
     public static class NetworkMapSceneTools
     {
         public const string ScenePath = "Assets/Scenes/Network/NetworkPool_v1_2.unity";
