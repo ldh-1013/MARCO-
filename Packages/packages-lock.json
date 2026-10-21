@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.adrenak.rnnoise4unity": {
+      "version": "1.0.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://registry.npmjs.org"
+    },
     "com.firstgeargames.fishnet": {
       "version": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#4.7.3",
       "depth": 0,

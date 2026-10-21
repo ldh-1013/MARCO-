@@ -209,6 +209,9 @@ namespace Marco.Prototype
             if (hunter != null) hunter.SetLocalPlayer(local);
             var ghost = player.GetComponent<SurvivorGhostPrototype>();
             if (ghost != null) ghost.SetLocalPlayer(local);
+            var voiceChat = player.GetComponent<ProximityVoiceChat>();
+            if (voiceChat == null) voiceChat = player.AddComponent<ProximityVoiceChat>();
+            voiceChat.enabled = true;
             var visual = player.GetComponent<CharacterVisualPrototype>();
             if (visual != null) visual.SetFirstPerson(local);
             // Disable the entire other camera object: no second microphone, mask or listener.

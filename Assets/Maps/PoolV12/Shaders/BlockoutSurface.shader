@@ -14,12 +14,23 @@ Shader "PoolV12/BlockoutSurface"
             struct Input { float4 vertex:POSITION; float3 normal:NORMAL; };
             struct Output { float4 vertex:SV_POSITION; float3 world:TEXCOORD0; float3 normal:TEXCOORD1; };
             float4 _BaseColor; float _UseCut, _PoolV12CutHeight, _WallBase;
+            float _MarcoMinusEnabled, _MarcoLightRadius, _MarcoLightIntensity, _MarcoFalloffPower;
+            float4 _MarcoPlayerPosition, _MarcoLightColor;
             Output vert(Input v) { Output o; o.vertex=UnityObjectToClipPos(v.vertex); o.world=mul(unity_ObjectToWorld,v.vertex).xyz; o.normal=UnityObjectToWorldNormal(v.normal); return o; }
-            fixed4 frag(Output i):SV_Target
+            float4 frag(Output i):SV_Target
             {
                 if (_UseCut > .5 && _PoolV12CutHeight > .01) clip(_WallBase + _PoolV12CutHeight - i.world.y);
                 float shade=.64+.36*saturate(dot(normalize(i.normal),normalize(float3(-.4,.8,-.3))));
-                return float4(_BaseColor.rgb*shade,1);
+                float3 baseColor = _BaseColor.rgb * shade;
+                if (_MarcoMinusEnabled > .5)
+                {
+                    float distanceToPlayer = distance(i.world, _MarcoPlayerPosition.xyz);
+                    float atten = _MarcoLightRadius > .001
+                        ? pow(saturate(1.0 - distanceToPlayer / _MarcoLightRadius), max(.01, _MarcoFalloffPower))
+                        : 0.0;
+                    return float4(baseColor * _MarcoLightColor.rgb * _MarcoLightIntensity * atten, 1);
+                }
+                return float4(baseColor, 1);
             }
             ENDCG
         }

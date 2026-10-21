@@ -10,7 +10,13 @@ namespace Marco.Prototype
         [SerializeField] private float ghostSpeed = 6f;
         [SerializeField, Min(1)] private float sprintMultiplier = 1.6f;
         [SerializeField] private Camera playerCamera;
+        [SerializeField, Min(0.05f)] private float walkingRingInterval = 0.45f;
+        [SerializeField, Min(0.05f)] private float runningRingInterval = 0.3f;
+        [SerializeField, Min(0.05f)] private float walkingRingRadius = 1f;
+        [SerializeField, Min(0.05f)] private float walkingRingLifetime = 0.8f;
         private CharacterController controller;
+        private WalkingFootRings footRings;
+        private float nextFootRingTime;
         private float pitch;
         public bool IsRunning { get; private set; }
         public float LookPitch => pitch;
@@ -18,6 +24,9 @@ namespace Marco.Prototype
         private void Start()
         {
             controller = GetComponent<CharacterController>();
+            footRings = GetComponent<WalkingFootRings>();
+            if (footRings == null) footRings = gameObject.AddComponent<WalkingFootRings>();
+            footRings.Configure(walkingRingRadius, walkingRingLifetime, 8);
             if (playerCamera == null) playerCamera = GetComponentInChildren<Camera>();
             if (playerCamera == null) { Debug.LogError("Player camera is missing.", this); enabled = false; return; }
             pitch = playerCamera.transform.localEulerAngles.x;
@@ -49,6 +58,21 @@ namespace Marco.Prototype
             {
                 IsRunning = movement.sqrMagnitude > 0 && Input.GetKey(KeyCode.LeftShift);
                 controller.SimpleMove(movement * moveSpeed * multiplier * (IsRunning ? sprintMultiplier : 1));
+                bool walkingOnGround = controller.isGrounded && movement.sqrMagnitude > 0.01f;
+                if (walkingOnGround)
+                {
+                    nextFootRingTime -= Time.deltaTime;
+                    if (nextFootRingTime <= 0f)
+                    {
+                        float groundY = controller.bounds.min.y + 0.025f;
+                        footRings.SpawnRing(new Vector3(transform.position.x, groundY, transform.position.z));
+                        nextFootRingTime = IsRunning ? runningRingInterval : walkingRingInterval;
+                    }
+                }
+                else
+                {
+                    nextFootRingTime = 0f;
+                }
             }
         }
     }

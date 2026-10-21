@@ -14000,6 +14000,50 @@ MonoBehaviour:
     \uD38C\uD504)\",\"floorMaterial\":\"\uCF58\uD06C\uB9AC\uD2B8\",\"landmark\":\"\uC5EC\uACFC\uAE30
     3\uAE30 + \uBC30\uAD00 \uD5E4\uB354(\uB3D9\uBCBD) \xB7 \uC21C\uD658 \uD38C\uD504
     \uC5F4 \xB7 \uBC38\uB7F0\uC2A4 \uD0F1\uD06C \xB7 \uBB38 \uC606 \uC804\uAE30 \uC81C\uC5B4\uBC18\",\"floor\":1,\"ceiling\":5.0,\"area\":297.0,\"rects\":[{\"x0\":53.0,\"z0\":27.0,\"x1\":64.0,\"z1\":54.0}]}"
+--- !u!114 &565692581
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2142036622}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
 --- !u!1 &570139674
 GameObject:
   m_ObjectHideFlags: 0
@@ -51559,6 +51603,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81111111111111111111111111111111, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  brightnessMode: 0
+  worldLightColor: {r: 1, g: 1, b: 1, a: 1}
+  silenceFloorDb: -60
+  shoutCeilDb: -5
+  levelCurvePower: 1.7
+  radiusMin: 2
+  radiusMax: 40
+  intensityMin: 0.15
+  intensityMax: 2.5
+  falloffPower: 1.7
+  brightenTimeConstant: 0.2
+  darkenTimeConstant: 0.3
+  litMaterialLightMultiplier: 4
+  litMaterialLightCastsShadows: 0
   silenceDb: -50
   fullVisionDb: -15
   maximumRadius: 0.85
@@ -51795,6 +51853,7 @@ GameObject:
   - component: {fileID: 2142036625}
   - component: {fileID: 2142036626}
   - component: {fileID: 2142036627}
+  - component: {fileID: 565692581}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -51888,6 +51947,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81111111111111111111111111111111, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  brightnessMode: 0
+  worldLightColor: {r: 1, g: 1, b: 1, a: 1}
+  silenceFloorDb: -60
+  shoutCeilDb: -5
+  levelCurvePower: 1.7
+  radiusMin: 2
+  radiusMax: 40
+  intensityMin: 0.15
+  intensityMax: 2.5
+  falloffPower: 1.7
+  brightenTimeConstant: 0.2
+  darkenTimeConstant: 0.3
+  litMaterialLightMultiplier: 4
+  litMaterialLightCastsShadows: 0
   silenceDb: -50
   fullVisionDb: -15
   maximumRadius: 0.85
