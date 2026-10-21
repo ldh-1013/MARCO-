@@ -4,6 +4,7 @@ using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using Marco.Network.Character;
 using Marco.Network.Escape;
 using Marco.Network.Player;
 using Marco.Network.Roles;
@@ -25,6 +26,8 @@ namespace Marco.Network.Editor
         public const string ScenePath = "Assets/Scenes/Network/NetworkTest.unity";
         public const string PlayerPrefabPath = "Assets/Prefabs/Network/NetworkPlayer.prefab";
         public const string PlaceholderMaterialPath = "Assets/Materials/Network/NetworkPlaceholder.mat";
+        private const string SeekerCharacterPath = "Assets/Prefabs/Network/Characters/Demon.asset";
+        private const string RunnerCharacterPath = "Assets/Prefabs/Network/Characters/UnityChan.asset";
         private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
@@ -156,6 +159,9 @@ namespace Marco.Network.Editor
             return body;
         }
 
+        [MenuItem("MARCO/Network/Update Player Prefab")]
+        public static void UpdatePlayerPrefab() => LoadOrCreatePlayerPrefab();
+
         // Adds components / settings introduced after the prefab was first made, keeping existing file ids.
         private static void EnsurePlayerPrefabComponents()
         {
@@ -166,8 +172,13 @@ namespace Marco.Network.Editor
                 root.AddComponent<PlayerInteractor>();
                 changed = true;
             }
+            if (root.GetComponent<CharacterBody>() == null)
+            {
+                AddCharacter(root);
+                changed = true;
+            }
             var material = LoadOrCreatePlaceholderMaterial();
-            var body = root.GetComponent<Renderer>();
+            var body = root.GetComponentInChildren<Renderer>();
             if (body.sharedMaterial != material)
             {
                 body.sharedMaterial = material;
@@ -232,6 +243,7 @@ namespace Marco.Network.Editor
 
             SetReference(movement, "cameraPivot", pivot);
             SetReference(player, "ownerCamera", camera);
+            AddCharacter(root);
 
             Directory.CreateDirectory(Path.GetDirectoryName(PlayerPrefabPath));
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath).GetComponent<NetworkObject>();
@@ -246,6 +258,16 @@ namespace Marco.Network.Editor
             }
             Debug.Log($"[MARCO] Network player prefab saved: {PlayerPrefabPath}");
             return prefab;
+        }
+
+        // Role models (Seeker = Demon, Runner = UnityChan); first-person view stays off until NetworkPlayer enables it for the owner.
+        private static void AddCharacter(GameObject root)
+        {
+            var character = root.AddComponent<CharacterBody>();
+            SetReference(character, "seekerAsset", AssetDatabase.LoadAssetAtPath<CharacterAsset>(SeekerCharacterPath));
+            SetReference(character, "runnerAsset", AssetDatabase.LoadAssetAtPath<CharacterAsset>(RunnerCharacterPath));
+            root.AddComponent<CharacterMotion>();
+            root.AddComponent<FirstPersonBody>().enabled = false;
         }
 
         internal static void SetReference(Object target, string field, Object value)

@@ -3,6 +3,7 @@ using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Marco.Core.WinCondition;
+using Marco.Network.Character;
 using UnityEngine;
 
 namespace Marco.Network.Player
@@ -12,7 +13,8 @@ namespace Marco.Network.Player
 
     // Turns the camera/input on only for the local owner's capsule and swaps out the scene camera.
     // Also carries the server-assigned PlayerRole and round status, synced to every client:
-    // role sets the capsule color, a tagged Runner turns gray and an escaped one is hidden.
+    // role picks the character model (or the capsule color when none is registered),
+    // a tagged Runner's capsule turns gray and an escaped one is hidden.
     public sealed class NetworkPlayer : NetworkBehaviour
     {
         private static readonly List<NetworkPlayer> spawned = new();
@@ -28,6 +30,7 @@ namespace Marco.Network.Player
         private readonly SyncVar<PlayerRole> role = new();
         private readonly SyncVar<PlayerStatus> status = new();
         private Renderer body;
+        private CharacterBody character;
         private Camera sceneCamera;
 
         public int PlayerId => OwnerId;
@@ -50,6 +53,7 @@ namespace Marco.Network.Player
         {
             // The capsule mesh is a child so it can be shaped to the CharacterController.
             body = GetComponentInChildren<Renderer>();
+            character = GetComponent<CharacterBody>();
             role.OnChange += (_, _, _) => ApplyLook();
             status.OnChange += (_, _, _) => ApplyLook();
         }
@@ -86,6 +90,7 @@ namespace Marco.Network.Player
             // OnChange does not fire when the synced value equals the default (Runner / Alive).
             ApplyLook();
             ownerCamera.SetActive(IsOwner);
+            if (TryGetComponent(out FirstPersonBody firstPerson)) firstPerson.enabled = IsOwner;
             if (!IsOwner) return;
 
             sceneCamera = Camera.main;
@@ -104,7 +109,10 @@ namespace Marco.Network.Player
 
         private void ApplyLook()
         {
-            body.enabled = status.Value != PlayerStatus.Escaped;
+            bool visible = status.Value != PlayerStatus.Escaped;
+            // A registered model replaces the capsule; the capsule stays as the fallback.
+            bool modelShown = character != null && character.Show(role.Value, visible);
+            body.enabled = visible && !modelShown;
             body.material.color = status.Value == PlayerStatus.Tagged ? echoColor : role.Value switch
             {
                 PlayerRole.Seeker => seekerColor,
