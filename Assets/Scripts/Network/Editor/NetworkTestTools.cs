@@ -3,9 +3,13 @@ using FishNet.Component.Spawning;
 using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Managing.Transporting;
 using FishNet.Object;
+using FishNet.Transporting.Multipass;
+using FishNet.Transporting.Tugboat;
 using Marco.Network.Character;
 using Marco.Network.Escape;
+using Marco.Network.Lobby;
 using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Round;
@@ -17,6 +21,7 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using FishySteamworksTransport = FishySteamworks.FishySteamworks;
 
 namespace Marco.Network.Editor
 {
@@ -35,6 +40,8 @@ namespace Marco.Network.Editor
         private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
+        // Prototype room limit: 16 including the host.
+        private const int MaxPlayers = 16;
 
         private static readonly Vector3[] SpawnPositions =
             { new(-2, 1, -2), new(2, 1, -2), new(-2, 1, 2), new(2, 1, 2) };
@@ -78,13 +85,13 @@ namespace Marco.Network.Editor
             return playerPrefab;
         }
 
-        // LAN connect + HUD + spawning + roles; callers fill spawner.Spawns.
+        // Lobby (LAN + Steam) + HUD + spawning + roles; callers fill spawner.Spawns.
         internal static PlayerSpawner CreateNetworkManager(NetworkObject playerPrefab)
         {
             var manager = new GameObject("NetworkManager");
             // FishNet only auto-fills this on later inspector validation; builds log an error when it stays null.
             manager.AddComponent<NetworkManager>().SpawnablePrefabs = FindDefaultPrefabObjects();
-            manager.AddComponent<LanConnector>();
+            AddSession(manager);
             manager.AddComponent<NetworkTestHud>();
 
             var spawner = manager.AddComponent<PlayerSpawner>();
@@ -92,6 +99,58 @@ namespace Marco.Network.Editor
             manager.AddComponent<RoleAssigner>();
             manager.AddComponent<NetworkPlayerRoster>();
             return spawner;
+        }
+
+        [MenuItem("MARCO/Network/Update Scene Lobby")]
+        public static void UpdateSceneLobby()
+        {
+            foreach (string path in new[] { ScenePath, NetworkMapSceneTools.ScenePath })
+            {
+                if (!File.Exists(path)) continue;
+                var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                var manager = Object.FindAnyObjectByType<NetworkManager>();
+                if (manager == null || manager.GetComponent<LobbyMenu>() != null) continue;
+                AddSession(manager.gameObject);
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+                Debug.Log($"[MARCO] Lobby added: {path}");
+            }
+        }
+
+        // LAN (Tugboat) and Steam (FishySteamworks P2P) under one Multipass. GlobalServerActions is off so
+        // LanConnector starts only the chosen transport's server, as the prototype kept the two apart.
+        private static void AddSession(GameObject manager)
+        {
+            var tugboat = manager.AddComponent<Tugboat>();
+            var steam = manager.AddComponent<FishySteamworksTransport>();
+            var multipass = manager.AddComponent<Multipass>();
+            multipass.GlobalServerActions = false;
+            var serialized = new SerializedObject(multipass);
+            var transports = serialized.FindProperty("_transports");
+            transports.arraySize = 2;
+            transports.GetArrayElementAtIndex(0).objectReferenceValue = tugboat;
+            transports.GetArrayElementAtIndex(1).objectReferenceValue = steam;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            SetInt(tugboat, "_maximumClients", MaxPlayers);
+            SetInt(steam, "_maximumClients", MaxPlayers);
+            var steamSettings = new SerializedObject(steam);
+            steamSettings.FindProperty("_peerToPeer").boolValue = true;
+            steamSettings.ApplyModifiedPropertiesWithoutUndo();
+            var transportManager = manager.GetComponent<TransportManager>();
+            if (transportManager == null) transportManager = manager.AddComponent<TransportManager>();
+            transportManager.Transport = multipass;
+            EditorUtility.SetDirty(transportManager);
+
+            if (manager.GetComponent<LanConnector>() == null) manager.AddComponent<LanConnector>();
+            manager.AddComponent<SteamLobby>();
+            manager.AddComponent<LobbyMenu>();
+        }
+
+        private static void SetInt(Object target, string field, int value)
+        {
+            var serialized = new SerializedObject(target);
+            serialized.FindProperty(field).intValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // Adds the Round scene object and saves the scene at path.

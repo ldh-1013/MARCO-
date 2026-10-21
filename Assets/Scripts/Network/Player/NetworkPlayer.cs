@@ -33,6 +33,9 @@ namespace Marco.Network.Player
 
         private readonly SyncVar<PlayerRole> role = new();
         private readonly SyncVar<PlayerStatus> status = new();
+        // Lobby (ported from RoomSessionPrototype): nickname and whether this is the room's host.
+        private readonly SyncVar<string> nickname = new();
+        private readonly SyncVar<bool> roomHost = new();
         private Renderer body;
         private CharacterBody character;
         private CharacterController controller;
@@ -42,6 +45,8 @@ namespace Marco.Network.Player
         public PlayerRole Role => role.Value;
         public PlayerStatus Status => status.Value;
         public bool IsEcho => status.Value == PlayerStatus.Tagged;
+        public string Nickname => nickname.Value;
+        public bool IsRoomHost => roomHost.Value;
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
 
@@ -75,6 +80,18 @@ namespace Marco.Network.Player
             else foreach (var player in spawned) player.ApplyLook();
         }
 
+        [ServerRpc]
+        public void SetNicknameServer(string value) => nickname.Value = CleanNickname(value);
+
+        // Prototype rules: no control characters or angle brackets, trimmed, at most 20 characters.
+        public static string CleanNickname(string value)
+        {
+            var cleaned = new System.Text.StringBuilder();
+            foreach (char c in value ?? "") if (!char.IsControl(c) && c != '<' && c != '>') cleaned.Append(c);
+            string result = cleaned.ToString().Trim();
+            return result.Length == 0 ? "Player" : result.Substring(0, System.Math.Min(20, result.Length));
+        }
+
         [Server]
         public void SetRole(PlayerRole value) => role.Value = value;
 
@@ -99,6 +116,12 @@ namespace Marco.Network.Player
         {
             base.OnStartNetwork();
             spawned.Add(this);
+        }
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            roomHost.Value = Owner.IsLocalClient;
         }
 
         public override void OnStopNetwork()

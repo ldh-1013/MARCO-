@@ -4,7 +4,9 @@
     "references": [
         "FishNet.Runtime",
         "Marco.Core.WinCondition",
-        "Adrenak.RNNoise4Unity.Runtime"
+        "Adrenak.RNNoise4Unity.Runtime",
+        "FishySteamworks",
+        "com.rlabrecque.steamworks.net"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
