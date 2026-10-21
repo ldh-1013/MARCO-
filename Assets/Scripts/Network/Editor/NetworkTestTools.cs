@@ -11,6 +11,7 @@ using Marco.Network.Roles;
 using Marco.Network.Round;
 using Marco.Network.Valves;
 using Marco.Network.Vision;
+using Marco.Network.Voice;
 using Marco.Core.WinCondition;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -180,6 +181,11 @@ namespace Marco.Network.Editor
                 AddCharacter(root);
                 changed = true;
             }
+            if (root.GetComponent<PlayerVoice>() == null)
+            {
+                root.AddComponent<PlayerVoice>();
+                changed = true;
+            }
             var playerCamera = root.GetComponentInChildren<Camera>(true).gameObject;
             if (playerCamera.GetComponent<MicrophoneVisionController>() == null)
             {
@@ -254,6 +260,7 @@ namespace Marco.Network.Editor
             SetReference(player, "ownerCamera", camera);
             AddCharacter(root);
             AddVision(camera);
+            root.AddComponent<PlayerVoice>();
 
             Directory.CreateDirectory(Path.GetDirectoryName(PlayerPrefabPath));
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath).GetComponent<NetworkObject>();

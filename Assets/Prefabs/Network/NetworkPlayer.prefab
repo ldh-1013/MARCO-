@@ -189,6 +189,7 @@ GameObject:
   - component: {fileID: 4319015804832630085}
   - component: {fileID: 6334129176910509045}
   - component: {fileID: 375446108229027121}
+  - component: {fileID: 707613457212331040}
   m_Layer: 0
   m_Name: NetworkPlayer
   m_TagString: Untagged
@@ -357,6 +358,7 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6639437800047803135}
   _networkObjectCache: {fileID: 0}
   moveSpeed: 4.5
+  echoSpeed: 6
   mouseSensitivity: 2.2
   cameraPivot: {fileID: 4776277353495038834}
 --- !u!114 &9137818437950055621
@@ -407,6 +409,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Character.CharacterBody
   seekerAsset: {fileID: 11400000, guid: 90d6ae4a7f752224db95f465c791fe37, type: 2}
   runnerAsset: {fileID: 11400000, guid: a1843cb9fa4ca55478b0444985269744, type: 2}
+  ghostTint: {r: 0.65, g: 0.25, b: 1, a: 0.3}
 --- !u!114 &6334129176910509045
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -432,6 +435,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6bd38aa55c4403f469aafc1d60e505f3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Character.FirstPersonBody
+--- !u!114 &707613457212331040
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1620065039340859134}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 377b274c1a2b6454c9acfcb8fcf44add, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Voice.PlayerVoice
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6639437800047803135}
+  _networkObjectCache: {fileID: 0}
+  routing:
+    whisperRadius: 4
+    talkRadius: 9
+    shoutRadius: 22
+    seekerHearingMultiplier: 1.2
+    wallAttenuation: 0.5
+    occluders:
+      serializedVersion: 2
+      m_Bits: 4294967295
+  mouthHeight: 0.6
 --- !u!1 &2484753038327001002
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 using System;
 using Adrenak.RNNoise4Unity;
+using Marco.Network.Voice;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -22,7 +23,8 @@ namespace Marco.Network.Vision
         [SerializeField] private bool useRnNoise = true;
         private Denoiser rnNoiseDenoiser;
         private bool rnNoiseUnavailableLogged;
-        public event Action<float[]> VoiceSamplesReady;
+        // Denoised 20 ms frame and its loudness grade, only while speech is detected (voice chat, step 5).
+        public event Action<float[], VoiceGrade> VoiceSamplesReady;
 
         [Header("Brightness implementation")]
         [SerializeField] private BrightnessMode brightnessMode = BrightnessMode.MarcoMinus;
@@ -245,7 +247,7 @@ namespace Marco.Network.Vision
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs > silenceDb ? 1 : 0;
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
             if (level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames)
-                VoiceSamplesReady?.Invoke(analysisBuffer);
+                VoiceSamplesReady?.Invoke(analysisBuffer, level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper);
             if (brightnessMode == BrightnessMode.MarcoMinus && level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames
                 && microphoneFootDots != null && Time.unscaledTime >= nextFootDotTime)
             {
