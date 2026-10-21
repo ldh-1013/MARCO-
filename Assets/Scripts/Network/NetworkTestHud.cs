@@ -192,9 +192,12 @@ namespace Marco.Network
             if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
         }
 
-        // Debug text only the owner sees (기획서 20.1 P0): the Seeker's swing cooldown.
+        // Debug text only the owner sees (기획서 20.1 P0): a Runner's own lives, the Seeker's swing cooldown.
         private static string OwnerDetail(NetworkPlayer player)
         {
+            var round = NetworkRound.Instance;
+            if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && round != null)
+                return $" · 목숨 {(player.HealthHalves < 0 ? round.FullHalves : player.HealthHalves) / 2f:F1}";
             if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
                 interactor.SwingCooldownRemaining > 0)
                 return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
@@ -250,7 +253,7 @@ namespace Marco.Network
         private static string StatusLabel(PlayerStatus status) => status switch
         {
             PlayerStatus.Escaped => "탈출",
-            PlayerStatus.Tagged => "태그됨",
+            PlayerStatus.Tagged => "메아리",
             PlayerStatus.Spectating => "관전 (다음 판부터)",
             _ => "생존",
         };

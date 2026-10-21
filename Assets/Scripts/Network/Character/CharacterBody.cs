@@ -8,14 +8,17 @@ namespace Marco.Network.Character
 {
     // Builds the role's registered character model under the player, replacing the capsule.
     // Ported from Prototype CharacterVisualPrototype; rebuilt whenever the role changes,
-    // because the Seeker is only drawn at round start.
+    // because the Seeker is only drawn at round start. An Echo gets the same model with see-through
+    // ghost materials (Prototype SurvivorGhostPrototype).
     public sealed class CharacterBody : MonoBehaviour
     {
         [SerializeField] private CharacterAsset seekerAsset;
         [SerializeField] private CharacterAsset runnerAsset;
+        [SerializeField] private Color ghostTint = new(0.65f, 0.25f, 1f, 0.3f);
 
         private readonly List<Material> runtimeMaterials = new();
         private GameObject model;
+        private bool ghost;
 
         public CharacterAsset Definition { get; private set; }
         public Transform BodyRoot => model == null ? null : model.transform;
@@ -28,18 +31,19 @@ namespace Marco.Network.Character
             Definition == null ? null : Definition.Resolve(BodyRoot, BodyAnimator, bone);
 
         // Returns false when the role has no registered model, so the caller keeps the capsule.
-        public bool Show(PlayerRole role, bool visible)
+        public bool Show(PlayerRole role, bool visible, bool asGhost)
         {
             var wanted = role == PlayerRole.Seeker ? seekerAsset : runnerAsset;
-            if (wanted != Definition || (wanted != null && model == null)) Build(wanted);
+            if (wanted != Definition || asGhost != ghost || (wanted != null && model == null)) Build(wanted, asGhost);
             if (model != null) model.SetActive(visible);
             return model != null;
         }
 
-        private void Build(CharacterAsset asset)
+        private void Build(CharacterAsset asset, bool asGhost)
         {
             Clear();
             Definition = asset;
+            ghost = asGhost;
             if (asset != null && asset.visualPrefab != null)
             {
                 // Prepare an inactive anchor so the imported demo scripts never run.
@@ -79,7 +83,43 @@ namespace Marco.Network.Character
             foreach (var camera in visual.GetComponentsInChildren<Camera>(true)) camera.enabled = false;
             foreach (var listener in visual.GetComponentsInChildren<AudioListener>(true)) listener.enabled = false;
             foreach (var animator in visual.GetComponentsInChildren<Animator>(true)) animator.applyRootMotion = false;
-            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true)) MakeUnityChanMaterialsUrpCompatible(renderer);
+            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                MakeUnityChanMaterialsUrpCompatible(renderer);
+                if (ghost) MakeGhostMaterials(renderer);
+            }
+        }
+
+        // Translucent URP Lit copies that keep each material's texture, tinted with ghostTint.
+        private void MakeGhostMaterials(Renderer renderer)
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            var materials = renderer.sharedMaterials;
+            for (int i = 0; i < materials.Length; i++)
+            {
+                var source = materials[i];
+                if (source == null) continue;
+                var material = lit != null && lit.isSupported ? new Material(lit) : new Material(source);
+                material.name = source.name + " (ghost)";
+                Texture texture = source.HasProperty("_BaseMap") ? source.GetTexture("_BaseMap")
+                    : source.HasProperty("_MainTex") ? source.GetTexture("_MainTex") : null;
+                if (texture != null && material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", ghostTint);
+                material.SetFloat("_Surface", 1f);
+                material.SetFloat("_Blend", 0f);
+                material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+                material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+                material.SetFloat("_ZWrite", 0f);
+                material.SetFloat("_Cull", 0f);
+                material.renderQueue = (int)RenderQueue.Transparent;
+                material.SetOverrideTag("RenderType", "Transparent");
+                material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                material.DisableKeyword("_ALPHATEST_ON");
+                runtimeMaterials.Add(material);
+                materials[i] = material;
+            }
+            renderer.sharedMaterials = materials;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
         }
 
         // The UnityChan package ships Built-in Render Pipeline shaders with no URP pass.

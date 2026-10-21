@@ -154,7 +154,7 @@ namespace Marco.Network.Player
             swingPending = false;
             var round = NetworkRound.Instance;
             if (round == null || result == SwingResult.Rejected) return;
-            nextSwingTime = Time.time + (result == SwingResult.Hit ? round.TagHitCooldown : round.TagMissCooldown);
+            nextSwingTime = Time.time + (result == SwingResult.Missed ? round.TagMissCooldown : round.TagHitCooldown);
         }
     }
 }
