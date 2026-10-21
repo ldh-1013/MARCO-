@@ -198,12 +198,25 @@ namespace Marco.Network.Editor
 
         // Capsule body with a client-authoritative NetworkTransform; the camera child stays off
         // until NetworkPlayer turns it on for the owner.
+        // Sized for the map's narrowest 1 m doors (radius 0.35 / height 1.8, the map builder's
+        // clearance check). Feet stay 1 m below the pivot, so GamePoints.PlayerStandHeight holds.
         [MenuItem("MARCO/Network/Create Player Prefab")]
         public static NetworkObject CreatePlayerPrefab()
         {
-            var root = CreatePrimitive(PrimitiveType.Capsule, "NetworkPlayer");
-            Object.DestroyImmediate(root.GetComponent<CapsuleCollider>());
-            root.AddComponent<CharacterController>();
+            var root = new GameObject("NetworkPlayer");
+            var controller = root.AddComponent<CharacterController>();
+            controller.radius = 0.35f;
+            controller.height = 1.8f;
+            controller.skinWidth = 0.05f;
+            controller.center = new Vector3(0, -0.1f, 0);
+
+            // The unit capsule mesh is radius 0.5 / height 2, scaled to match the controller.
+            var body = CreatePrimitive(PrimitiveType.Capsule, "Body");
+            Object.DestroyImmediate(body.GetComponent<CapsuleCollider>());
+            body.transform.SetParent(root.transform, false);
+            body.transform.localPosition = controller.center;
+            body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
+
             root.AddComponent<NetworkObject>();
             root.AddComponent<NetworkTransform>();
             var movement = root.AddComponent<PlayerMovement>();
