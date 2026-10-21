@@ -3,7 +3,8 @@
     "rootNamespace": "Marco.Network",
     "references": [
         "FishNet.Runtime",
-        "Marco.Core.WinCondition"
+        "Marco.Core.WinCondition",
+        "Adrenak.RNNoise4Unity.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

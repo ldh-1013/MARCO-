@@ -11,6 +11,10 @@ GameObject:
   - component: {fileID: 6026189352295844180}
   - component: {fileID: 7716139842028343489}
   - component: {fileID: 2897132572761476482}
+  - component: {fileID: 3514641382814533362}
+  - component: {fileID: 1375817811037832679}
+  - component: {fileID: 8849338770207103172}
+  - component: {fileID: 7740206562990220203}
   m_Layer: 0
   m_Name: PlayerCamera
   m_TagString: Untagged
@@ -92,6 +96,81 @@ AudioListener:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 412158414049368070}
   m_Enabled: 1
+--- !u!114 &3514641382814533362
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 412158414049368070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 93b61cacd87f99148978ddfe8f2b621f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.MicrophoneVisionController
+  useRnNoise: 1
+  brightnessMode: 0
+  worldLightColor: {r: 1, g: 1, b: 1, a: 1}
+  silenceFloorDb: -60
+  shoutCeilDb: -5
+  levelCurvePower: 1.7
+  radiusMin: 2
+  radiusMax: 40
+  intensityMin: 0.15
+  intensityMax: 2.5
+  falloffPower: 1.7
+  brightenTimeConstant: 0.2
+  darkenTimeConstant: 0.3
+  showMicrophoneFootDots: 1
+  microphoneFootDotShader: {fileID: 4800000, guid: 36e3edb3afac4c54a114aa0ddf47be19, type: 3}
+  microphoneFootDotColor: {r: 0.72, g: 0.9, b: 1, a: 1}
+  microphoneFootDotRadius: 0.25
+  microphoneFootDotLifetime: 5
+  microphoneFootDotInterval: 2
+  silenceDb: -50
+  fullVisionDb: -15
+  maximumRadius: 0.85
+  closeSpeed: 2
+--- !u!114 &1375817811037832679
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 412158414049368070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c613e6ec7df161c41a5186995de63791, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.MicrophoneFootDots
+--- !u!114 &8849338770207103172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 412158414049368070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 318d9a36e5533c041a2f4e789903c337, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.WalkingFootRings
+  ringShader: {fileID: 4800000, guid: 8e9f42d08c3c4eb9b78a8f2f4d90c6a2, type: 3}
+  walkingRingInterval: 0.45
+  maxRadius: 1
+  lifetime: 0.8
+--- !u!114 &7740206562990220203
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 412158414049368070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b974adebb298c747b24c7dc6113ffac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.DevelopmentVisionCheat
 --- !u!1 &1620065039340859134
 GameObject:
   m_ObjectHideFlags: 0

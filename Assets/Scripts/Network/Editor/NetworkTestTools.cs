@@ -10,6 +10,7 @@ using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Round;
 using Marco.Network.Valves;
+using Marco.Network.Vision;
 using Marco.Core.WinCondition;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -28,6 +29,8 @@ namespace Marco.Network.Editor
         public const string PlaceholderMaterialPath = "Assets/Materials/Network/NetworkPlaceholder.mat";
         private const string SeekerCharacterPath = "Assets/Prefabs/Network/Characters/Demon.asset";
         private const string RunnerCharacterPath = "Assets/Prefabs/Network/Characters/UnityChan.asset";
+        private const string FootDotShaderPath = "Assets/Prototype/MicrophoneFootDot.shader";
+        private const string FootRingShaderPath = "Assets/Prototype/WalkingFootRing.shader";
         private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
@@ -177,6 +180,12 @@ namespace Marco.Network.Editor
                 AddCharacter(root);
                 changed = true;
             }
+            var playerCamera = root.GetComponentInChildren<Camera>(true).gameObject;
+            if (playerCamera.GetComponent<MicrophoneVisionController>() == null)
+            {
+                AddVision(playerCamera);
+                changed = true;
+            }
             var material = LoadOrCreatePlaceholderMaterial();
             var body = root.GetComponentInChildren<Renderer>();
             if (body.sharedMaterial != material)
@@ -244,6 +253,7 @@ namespace Marco.Network.Editor
             SetReference(movement, "cameraPivot", pivot);
             SetReference(player, "ownerCamera", camera);
             AddCharacter(root);
+            AddVision(camera);
 
             Directory.CreateDirectory(Path.GetDirectoryName(PlayerPrefabPath));
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath).GetComponent<NetworkObject>();
@@ -268,6 +278,18 @@ namespace Marco.Network.Editor
             SetReference(character, "runnerAsset", AssetDatabase.LoadAssetAtPath<CharacterAsset>(RunnerCharacterPath));
             root.AddComponent<CharacterMotion>();
             root.AddComponent<FirstPersonBody>().enabled = false;
+        }
+
+        // Microphone vision, foot dots, walking rings and the F8 cheat live on the camera, so they only
+        // run for the owner. The shaders still sit in Assets/Prototype (moved in the clean-up step).
+        private static void AddVision(GameObject camera)
+        {
+            var vision = camera.AddComponent<MicrophoneVisionController>();
+            SetReference(vision, "microphoneFootDotShader", AssetDatabase.LoadAssetAtPath<Shader>(FootDotShaderPath));
+            camera.AddComponent<MicrophoneFootDots>();
+            var rings = camera.AddComponent<WalkingFootRings>();
+            SetReference(rings, "ringShader", AssetDatabase.LoadAssetAtPath<Shader>(FootRingShaderPath));
+            camera.AddComponent<DevelopmentVisionCheat>();
         }
 
         internal static void SetReference(Object target, string field, Object value)
