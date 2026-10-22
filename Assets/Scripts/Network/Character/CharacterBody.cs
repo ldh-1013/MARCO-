@@ -16,6 +16,8 @@ namespace Marco.Network.Character
         [SerializeField] private CharacterAsset runnerAsset;
         [SerializeField] private Color ghostTint = new(0.65f, 0.25f, 1f, 0.3f);
 
+        private static Material marcoMinusCharacterTemplate;
+
         private readonly List<Material> runtimeMaterials = new();
         private GameObject model;
         private bool ghost;
@@ -85,7 +87,7 @@ namespace Marco.Network.Character
             foreach (var animator in visual.GetComponentsInChildren<Animator>(true)) animator.applyRootMotion = false;
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
-                MakeUnityChanMaterialsUrpCompatible(renderer);
+                MakeCharacterMaterialsMarcoMinusCompatible(renderer);
                 if (ghost) MakeGhostMaterials(renderer);
             }
         }
@@ -122,9 +124,10 @@ namespace Marco.Network.Character
             renderer.shadowCastingMode = ShadowCastingMode.Off;
         }
 
-        // The UnityChan package ships Built-in Render Pipeline shaders with no URP pass.
+        // UnityChan (Built-in, no URP pass) and URP Lit bodies would stay dark in MARCO-, since its
+        // lights are off. Swap in the MarcoMinusCharacter shader, which follows the microphone light.
         // Replace only this instance's materials; shared assets stay untouched.
-        private void MakeUnityChanMaterialsUrpCompatible(Renderer renderer)
+        private void MakeCharacterMaterialsMarcoMinusCompatible(Renderer renderer)
         {
             if (GraphicsSettings.currentRenderPipeline == null) return;
             var materials = renderer.sharedMaterials;
@@ -132,30 +135,52 @@ namespace Marco.Network.Character
             for (int i = 0; i < materials.Length; i++)
             {
                 var source = materials[i];
-                if (source == null || source.shader == null || !source.shader.name.StartsWith("UnityChan/")) continue;
-                var lit = Shader.Find("Universal Render Pipeline/Lit");
-                if (lit == null || !lit.isSupported) continue;
-                var replacement = new Material(lit) { name = source.name + " (URP runtime)" };
-                if (source.HasProperty("_MainTex"))
+                if (source == null || source.shader == null) continue;
+                string shaderName = source.shader.name;
+                bool unityChan = shaderName.StartsWith("UnityChan/");
+                bool urpLit = shaderName == "Universal Render Pipeline/Lit";
+                if (!unityChan && !urpLit) continue;
+
+                if (marcoMinusCharacterTemplate == null)
                 {
-                    replacement.SetTexture("_BaseMap", source.GetTexture("_MainTex"));
-                    replacement.SetTextureScale("_BaseMap", source.GetTextureScale("_MainTex"));
-                    replacement.SetTextureOffset("_BaseMap", source.GetTextureOffset("_MainTex"));
+                    marcoMinusCharacterTemplate = Resources.Load<Material>("CharacterAssets/MarcoMinusCharacter");
+                    if (marcoMinusCharacterTemplate == null || marcoMinusCharacterTemplate.shader == null)
+                    {
+                        Debug.LogError("Missing Resources/CharacterAssets/MarcoMinusCharacter; character body cannot follow MARCO- lighting.", this);
+                        return;
+                    }
                 }
-                if (source.HasProperty("_Color")) replacement.SetColor("_BaseColor", source.GetColor("_Color"));
-                bool transparent = source.shader.name.Contains("Transparent");
-                bool hair = source.shader.name.Contains("Hair");
+
+                var replacement = new Material(marcoMinusCharacterTemplate) { name = source.name + " (MARCO- runtime)" };
+                string textureProperty = source.HasProperty("_BaseMap") ? "_BaseMap" : source.HasProperty("_MainTex") ? "_MainTex" : null;
+                if (textureProperty != null)
+                {
+                    replacement.SetTexture("_BaseMap", source.GetTexture(textureProperty));
+                    replacement.SetTextureScale("_BaseMap", source.GetTextureScale(textureProperty));
+                    replacement.SetTextureOffset("_BaseMap", source.GetTextureOffset(textureProperty));
+                }
+                string colorProperty = source.HasProperty("_BaseColor") ? "_BaseColor" : source.HasProperty("_Color") ? "_Color" : null;
+                if (colorProperty != null) replacement.SetColor("_BaseColor", source.GetColor(colorProperty));
+
+                bool hair = shaderName.Contains("Hair");
+                bool transparent = shaderName.Contains("Transparent")
+                    || (source.HasProperty("_Surface") && source.GetFloat("_Surface") > 0.5f);
+                bool alphaClip = hair || (source.HasProperty("_AlphaClip") && source.GetFloat("_AlphaClip") > 0.5f);
+                float cutoff = source.HasProperty("_Cutoff") ? source.GetFloat("_Cutoff") : 0.25f;
+                float cull = source.HasProperty("_Cull") ? source.GetFloat("_Cull") : (hair || shaderName.Contains("Double-sided") ? 0f : 2f);
                 replacement.SetFloat("_Surface", transparent ? 1f : 0f);
-                replacement.SetFloat("_AlphaClip", hair ? 1f : 0f);
-                replacement.SetFloat("_Cutoff", 0.25f);
-                replacement.SetFloat("_Cull", source.shader.name.Contains("Double-sided") || hair ? 0f : 2f);
+                replacement.SetFloat("_AlphaClip", alphaClip ? 1f : 0f);
+                replacement.SetFloat("_Cutoff", cutoff);
+                replacement.SetFloat("_Cull", cull);
+                replacement.SetFloat("_SrcBlend", transparent ? (float)BlendMode.SrcAlpha : (float)BlendMode.One);
+                replacement.SetFloat("_DstBlend", transparent ? (float)BlendMode.OneMinusSrcAlpha : (float)BlendMode.Zero);
                 replacement.SetFloat("_ZWrite", transparent ? 0f : 1f);
-                replacement.renderQueue = transparent ? (int)RenderQueue.Transparent : hair ? (int)RenderQueue.AlphaTest : (int)RenderQueue.Geometry;
+                replacement.renderQueue = transparent ? (int)RenderQueue.Transparent : (hair ? (int)RenderQueue.AlphaTest : (int)RenderQueue.Geometry);
                 if (transparent) replacement.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
                 else replacement.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                if (hair) replacement.EnableKeyword("_ALPHATEST_ON");
+                if (alphaClip) replacement.EnableKeyword("_ALPHATEST_ON");
                 else replacement.DisableKeyword("_ALPHATEST_ON");
-                replacement.SetOverrideTag("RenderType", transparent ? "Transparent" : hair ? "TransparentCutout" : "Opaque");
+                replacement.SetOverrideTag("RenderType", transparent ? "Transparent" : alphaClip ? "TransparentCutout" : "Opaque");
                 runtimeMaterials.Add(replacement);
                 materials[i] = replacement;
                 changed = true;

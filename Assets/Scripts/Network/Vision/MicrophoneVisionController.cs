@@ -31,12 +31,12 @@ namespace Marco.Network.Vision
 
         [Header("MarcoMinus · world lighting")]
         [SerializeField] private Color worldLightColor = Color.white;
-        [SerializeField, Min(0f)] private float silenceFloorDb = -60f;
+        [SerializeField, Min(-120f)] private float silenceFloorDb = -60f;
         [SerializeField, Min(-59f)] private float shoutCeilDb = -5f;
-        [SerializeField, Min(0.01f)] private float levelCurvePower = 1.7f;
-        [SerializeField, Min(0.01f)] private float radiusMin = 2f;
-        [SerializeField, Min(0.01f)] private float radiusMax = 40f;
-        [SerializeField, Min(0f)] private float intensityMin = 0.15f;
+        [SerializeField, Min(0.01f)] private float levelCurvePower = 1.1f;
+        [SerializeField, Min(0.01f)] private float radiusMin = 3f;
+        [SerializeField, Min(0.01f)] private float radiusMax = 42f;
+        [SerializeField, Min(0f)] private float intensityMin = 0.25f;
         [SerializeField, Min(0f)] private float intensityMax = 2.5f;
         [SerializeField, Min(0.1f)] private float falloffPower = 1.7f;
         [SerializeField, Min(0.01f)] private float brightenTimeConstant = 0.2f;
@@ -52,6 +52,7 @@ namespace Marco.Network.Vision
         private float nextFrameTime;
         private int consecutiveVoiceFrames;
         private float revealUntil;
+        [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
         [SerializeField, Range(0.1f, 1f)] private float maximumRadius = 0.85f;
@@ -488,8 +489,8 @@ namespace Marco.Network.Vision
             worldRadius += (targetWorldRadius - worldRadius) * radiusBlend;
             worldIntensity += (targetWorldIntensity - worldIntensity) * intensityBlend;
 
-            if (targetWorldRadius <= 0f && worldRadius <= Mathf.Max(radiusMin, radiusMax) * 0.05f) worldRadius = 0f;
-            if (targetWorldIntensity <= 0f && worldIntensity <= Mathf.Max(intensityMin, intensityMax) * 0.05f) worldIntensity = 0f;
+            if (targetWorldRadius <= 0f && worldRadius <= 0.001f) worldRadius = 0f;
+            if (targetWorldIntensity <= 0f && worldIntensity <= 0.001f) worldIntensity = 0f;
         }
 
         private void PushWorldLighting()

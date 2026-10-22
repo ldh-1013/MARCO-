@@ -113,10 +113,10 @@ MonoBehaviour:
   worldLightColor: {r: 1, g: 1, b: 1, a: 1}
   silenceFloorDb: -60
   shoutCeilDb: -5
-  levelCurvePower: 1.7
-  radiusMin: 2
-  radiusMax: 40
-  intensityMin: 0.15
+  levelCurvePower: 1.1
+  radiusMin: 3
+  radiusMax: 42
+  intensityMin: 0.25
   intensityMax: 2.5
   falloffPower: 1.7
   brightenTimeConstant: 0.2
