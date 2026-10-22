@@ -33,6 +33,9 @@ namespace Marco.Network.Player
 
         private readonly SyncVar<PlayerRole> role = new();
         private readonly SyncVar<PlayerStatus> status = new();
+        private readonly SyncVar<bool> crouching = new();
+        private readonly SyncVar<bool> treatmentLocked = new();
+        private readonly SyncVar<bool> needsTreatment = new();
         // Lobby (ported from RoomSessionPrototype): nickname and whether this is the room's host.
         private readonly SyncVar<string> nickname = new();
         private readonly SyncVar<bool> roomHost = new();
@@ -44,11 +47,18 @@ namespace Marco.Network.Player
         public int PlayerId => OwnerId;
         public PlayerRole Role => role.Value;
         public PlayerStatus Status => status.Value;
+        public bool IsCrouching => crouching.Value;
+        public bool IsTreatmentLocked => treatmentLocked.Value;
+        public bool NeedsTreatment => needsTreatment.Value;
         public bool IsEcho => status.Value == PlayerStatus.Tagged;
         public string Nickname => nickname.Value;
         public bool IsRoomHost => roomHost.Value;
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
+        public int BandageCount { get; private set; }
+        public bool HasHealingAction { get; private set; }
+        public bool HealingActionIsBandage { get; private set; }
+        public float HealingActionProgress { get; private set; }
 
         public static bool TryGet(int playerId, out NetworkPlayer result)
         {
@@ -70,6 +80,7 @@ namespace Marco.Network.Player
             controller = GetComponent<CharacterController>();
             role.OnChange += (_, _, _) => ApplyLook();
             status.OnChange += (_, _, _) => OnStatusChanged();
+            crouching.OnChange += (_, _, _) => ApplyCrouchState();
         }
 
         // Whether Echoes are visible depends on the local player's own status, so a change to it
@@ -96,7 +107,29 @@ namespace Marco.Network.Player
         public void SetRole(PlayerRole value) => role.Value = value;
 
         [Server]
-        public void SetStatus(PlayerStatus value) => status.Value = value;
+        public void SetStatus(PlayerStatus value)
+        {
+            status.Value = value;
+            if (value != PlayerStatus.Alive)
+            {
+                crouching.Value = false;
+                treatmentLocked.Value = false;
+                needsTreatment.Value = false;
+            }
+        }
+
+        [Server]
+        public void SetCrouching(bool value)
+        {
+            if (Role != PlayerRole.Runner || Status != PlayerStatus.Alive) value = false;
+            crouching.Value = value;
+        }
+
+        [Server]
+        public void SetTreatmentLocked(bool value) => treatmentLocked.Value = value;
+
+        [Server]
+        public void SetNeedsTreatment(bool value) => needsTreatment.Value = value;
 
         // Movement is client-authoritative, so the server asks the owning client to move itself.
         [Server]
@@ -105,8 +138,26 @@ namespace Marco.Network.Player
         [Server]
         public void SendHealth(int halves) => HealthTarget(Owner, halves);
 
+        [Server]
+        public void SendBandageCount(int count) => BandageCountTarget(Owner, count);
+
+        [Server]
+        public void SendHealingProgress(bool active, bool isBandage, float progress) =>
+            HealingProgressTarget(Owner, active, isBandage, progress);
+
         [TargetRpc]
         private void HealthTarget(NetworkConnection conn, int halves) => HealthHalves = halves;
+
+        [TargetRpc]
+        private void BandageCountTarget(NetworkConnection conn, int count) => BandageCount = count;
+
+        [TargetRpc]
+        private void HealingProgressTarget(NetworkConnection conn, bool active, bool isBandage, float progress)
+        {
+            HasHealingAction = active;
+            HealingActionIsBandage = active && isBandage;
+            HealingActionProgress = active ? Mathf.Clamp01(progress) : 0f;
+        }
 
         [TargetRpc]
         private void TeleportTarget(NetworkConnection conn, Vector3 position) =>
@@ -136,6 +187,7 @@ namespace Marco.Network.Player
             base.OnStartClient();
             // OnChange does not fire when the synced value equals the default (Runner / Alive).
             ApplyLook();
+            ApplyCrouchState();
             ownerCamera.SetActive(IsOwner);
             if (TryGetComponent(out FirstPersonBody firstPerson)) firstPerson.enabled = IsOwner;
             if (!IsOwner) return;
@@ -145,6 +197,12 @@ namespace Marco.Network.Player
             sceneCamera = Camera.main;
             if (sceneCamera != null && sceneCamera.gameObject != ownerCamera) sceneCamera.gameObject.SetActive(false);
             Cursor.lockState = CursorLockMode.Locked;
+        }
+
+        private void ApplyCrouchState()
+        {
+            var movement = GetComponent<PlayerMovement>();
+            if (movement != null) movement.ApplyCrouchPresentation(crouching.Value);
         }
 
         public override void OnStopClient()

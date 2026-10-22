@@ -358,9 +358,14 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6639437800047803135}
   _networkObjectCache: {fileID: 0}
   moveSpeed: 4.5
+  sprintMultiplier: 1.6
+  jumpHeight: 1.25
+  gravity: 22
   echoSpeed: 6
   mouseSensitivity: 2.2
   cameraPivot: {fileID: 4776277353495038834}
+  crouchedHeight: 1.1
+  crouchCameraDrop: 0.35
 --- !u!114 &9137818437950055621
 MonoBehaviour:
   m_ObjectHideFlags: 0

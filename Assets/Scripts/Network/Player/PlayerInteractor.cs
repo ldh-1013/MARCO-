@@ -11,7 +11,7 @@ namespace Marco.Network.Player
 {
     // On the player prefab. The owner's input becomes ServerRpcs; the server re-checks range, role
     // and status (NetworkRound / WinCondition via IPlayerRoster). Clients decide nothing.
-    // E: exit in range → escape, else hold on the active drain hatch or the nearest valve.
+    // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel.
     // Left click: swing (Seeker); the server decides the tag and all clients play the attack.
     [RequireComponent(typeof(NetworkPlayer))]
     public sealed class PlayerInteractor : NetworkBehaviour
@@ -19,6 +19,8 @@ namespace Marco.Network.Player
         private NetworkPlayer player;
         private ValveId? workingValve;
         private DrainHatchId? workingDrain;
+        private bool workingTreatment;
+        private bool workingBandage;
         // Owner-side swing cooldown. It starts when the server's answer arrives, so it always ends
         // after the server's own cooldown and never sends a request the server would reject.
         private bool swingPending;
@@ -26,6 +28,18 @@ namespace Marco.Network.Player
 
         // Seeker only: seconds left on the swing cooldown, for the HUD.
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
+
+        public bool CanTreatNearbyRunner
+        {
+            get
+            {
+                var round = NetworkRound.Instance;
+                return IsOwner && player != null && player.Role == PlayerRole.Runner &&
+                    player.Status == PlayerStatus.Alive && !player.HasHealingAction && round != null &&
+                    (!round.HasBandageCapacity(player) || !round.TryFindBandagePickup(transform.position, round.InteractRange, out _)) &&
+                    round.TryFindInjuredRunner(player, round.InteractRange, out _);
+            }
+        }
 
         private void Awake() => player = GetComponent<NetworkPlayer>();
 
@@ -39,7 +53,27 @@ namespace Marco.Network.Player
             bool held = Input.GetKey(KeyCode.E) && locked;
             float range = round.InteractRange;
 
-            if (workingValve is ValveId valve)
+            if (workingBandage)
+            {
+                if (!Input.GetKey(KeyCode.G) || !locked)
+                {
+                    CancelHealingServer();
+                    workingBandage = false;
+                }
+            }
+            else if (locked && Input.GetKeyDown(KeyCode.G) && !workingTreatment &&
+                     workingValve == null && workingDrain == null && player.Role == PlayerRole.Runner &&
+                     player.Status == PlayerStatus.Alive)
+            {
+                BeginBandageServer();
+                workingBandage = true;
+            }
+
+            if (workingBandage)
+            {
+                // G must remain held for the entire six second bandage channel.
+            }
+            else if (workingValve is ValveId valve)
             {
                 // Releasing E or walking away both end the work.
                 if (!held || !ValveView.TryGet(valve, out var view) || !view.IsInRange(transform.position, range))
@@ -54,6 +88,14 @@ namespace Marco.Network.Player
                 {
                     EndDrainWorkServer(drain);
                     workingDrain = null;
+                }
+            }
+            else if (workingTreatment)
+            {
+                if (!held)
+                {
+                    CancelHealingServer();
+                    workingTreatment = false;
                 }
             }
             else if (Input.GetKeyDown(KeyCode.E) && held && player.Status == PlayerStatus.Alive)
@@ -76,7 +118,17 @@ namespace Marco.Network.Player
 
         private void BeginInteraction(NetworkRound round, float range)
         {
-            if (ExitView.AnyInRange(transform.position, range))
+            if (player.Role == PlayerRole.Runner && round.HasBandageCapacity(player) &&
+                round.TryFindBandagePickup(transform.position, range, out int pickupIndex))
+            {
+                PickupBandageServer(pickupIndex);
+            }
+            else if (player.Role == PlayerRole.Runner && round.TryFindInjuredRunner(player, range, out _))
+            {
+                BeginTreatmentServer();
+                workingTreatment = true;
+            }
+            else if (ExitView.AnyInRange(transform.position, range))
             {
                 EscapeServer();
             }
@@ -98,6 +150,8 @@ namespace Marco.Network.Player
             base.OnStopClient();
             workingValve = null;
             workingDrain = null;
+            workingTreatment = false;
+            workingBandage = false;
             swingPending = false;
         }
 
@@ -131,6 +185,19 @@ namespace Marco.Network.Player
 
         [ServerRpc]
         private void EscapeServer() => NetworkRound.Instance?.TryEscape(OwnerId, transform.position);
+
+        [ServerRpc]
+        private void PickupBandageServer(int pickupIndex) =>
+            NetworkRound.Instance?.TryPickupBandage(OwnerId, pickupIndex, transform.position);
+
+        [ServerRpc]
+        private void BeginBandageServer() => NetworkRound.Instance?.TryBeginBandage(OwnerId);
+
+        [ServerRpc]
+        private void BeginTreatmentServer() => NetworkRound.Instance?.TryBeginTreatment(OwnerId);
+
+        [ServerRpc]
+        private void CancelHealingServer() => NetworkRound.Instance?.CancelHealingAction(OwnerId);
 
         [ServerRpc]
         private void SwingServer(bool targetInReach)

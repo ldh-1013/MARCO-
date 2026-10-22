@@ -34,6 +34,8 @@ namespace Marco.Network
             DrawPlayers();
             DrawRoundStatus(round);
             DrawValves(round);
+            DrawRunnerHealth(round);
+            DrawHealingProgress();
             DrawResult(round);
         }
 
@@ -84,7 +86,7 @@ namespace Marco.Network
         private static void DrawValves(NetworkRound round)
         {
             const int count = ValveId.E - ValveId.A + 1;
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + count * RowHeight + 140);
+            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + count * RowHeight + 220);
             TestHudSkin.Panel(rect);
             var inner = Inset(rect);
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), "밸브", TestHudSkin.Text(30, FontStyle.Bold));
@@ -106,6 +108,86 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
             GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
+            GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
+            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
+            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 붕대 줍기 · G 홀드: 붕대 감기 (6초, +0.5)", help);
+        }
+
+        private static void DrawHealingProgress()
+        {
+            var player = NetworkPlayer.Local;
+            if (player == null) return;
+
+            if (!player.HasHealingAction)
+            {
+                if (player.TryGetComponent(out PlayerInteractor interactor) && interactor.CanTreatNearbyRunner)
+                {
+                    var prompt = new Rect(TestHudSkin.Width * 0.5f - 190, TestHudSkin.Height * 0.5f + 68, 380, 34);
+                    GUI.Label(prompt, "E 홀드로 치료 시작 · 9초", TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleCenter));
+                }
+                return;
+            }
+
+            const int segments = 80;
+            const float radius = 48f, dotSize = 7f;
+            var center = new Vector2(TestHudSkin.Width * 0.5f, TestHudSkin.Height * 0.5f);
+            int litSegments = Mathf.RoundToInt(player.HealingActionProgress * segments);
+            Color active = player.HealingActionIsBandage
+                ? new Color(1f, 0.75f, 0.2f, 0.96f)
+                : new Color(0.35f, 0.8f, 1f, 0.96f);
+            Color inactive = new Color(0f, 0f, 0f, 0.58f);
+
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = (i / (float)segments * Mathf.PI * 2f) - Mathf.PI * 0.5f;
+                var point = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                TestHudSkin.Fill(new Rect(point.x - dotSize * 0.5f, point.y - dotSize * 0.5f, dotSize, dotSize),
+                    i < litSegments ? active : inactive);
+            }
+
+            string label = player.HealingActionIsBandage ? "붕대 감는 중" : "동료 치료 중";
+            GUI.Label(new Rect(center.x - 78, center.y - 22, 156, 24), label,
+                TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
+            GUI.Label(new Rect(center.x - 50, center.y + 1, 100, 28),
+                $"{player.HealingActionProgress:P0}",
+                TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleCenter));
+        }
+
+        private static void DrawRunnerHealth(NetworkRound round)
+        {
+            var player = NetworkPlayer.Local;
+            if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
+
+            int totalHalves = Mathf.Max(1, round.FullHalves);
+            int currentHalves = player.HealthHalves < 0 ? totalHalves : Mathf.Clamp(player.HealthHalves, 0, totalHalves);
+            const float width = 330, height = 78;
+            var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
+            TestHudSkin.Panel(panel);
+
+            GUI.Label(new Rect(panel.x + 16, panel.y + 8, 140, 28), "생존자 체력",
+                TestHudSkin.Text(21, FontStyle.Bold));
+            GUI.Label(new Rect(panel.xMax - 150, panel.y + 8, 134, 28),
+                $"{currentHalves / 2f:F1} / {totalHalves / 2f:F1}",
+                TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleRight));
+
+            float barX = panel.x + 16, barY = panel.y + 44, barWidth = panel.width - 32;
+            const float barHeight = 18, gap = 5;
+            float segmentWidth = (barWidth - gap * (totalHalves - 1)) / totalHalves;
+            float healthRatio = currentHalves / (float)totalHalves;
+            Color fill = healthRatio > 0.5f
+                ? new Color(0.35f, 0.82f, 0.56f, 0.94f)
+                : healthRatio > 0.25f
+                    ? new Color(1f, 0.67f, 0.22f, 0.94f)
+                    : new Color(0.96f, 0.29f, 0.27f, 0.96f);
+
+            for (int i = 0; i < totalHalves; i++)
+            {
+                var segment = new Rect(barX + i * (segmentWidth + gap), barY, segmentWidth, barHeight);
+                TestHudSkin.Fill(segment, new Color(1f, 1f, 1f, 0.18f));
+                float amount = Mathf.Clamp01(currentHalves - i);
+                if (amount > 0f)
+                    TestHudSkin.Fill(new Rect(segment.x, segment.y, segment.width * amount, segment.height), fill);
+            }
         }
 
         // Right: every player with role and status, then the disconnect button.
@@ -129,7 +211,7 @@ namespace Marco.Network
                     _ => MutedColor,
                 };
                 TestHudSkin.Fill(new Rect(inner.x, y + 8, 18, 18), roleColor);
-                var style = new GUIStyle(TestHudSkin.Text(24, player.IsOwner ? FontStyle.Bold : FontStyle.Normal));
+                var style = new GUIStyle(TestHudSkin.Text(18, player.IsOwner ? FontStyle.Bold : FontStyle.Normal));
                 style.normal.textColor = player.Status switch
                 {
                     PlayerStatus.Alive => Color.white,
@@ -137,19 +219,19 @@ namespace Marco.Network
                     _ => MutedColor,
                 };
                 GUI.Label(new Rect(inner.x + 30, y, inner.width - 30, 34),
-                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsOwner ? "  (나)" + OwnerDetail(player) : "")}", style);
+                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsCrouching ? " · 웅크림" : "")}{(player.IsOwner ? "  (나)" + OwnerDetail(player) : "")}", style);
                 y += RowHeight;
             }
 
             if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
         }
 
-        // Debug text only the owner sees (기획서 20.1 P0): a Runner's own lives, the Seeker's swing cooldown.
+        // Debug text only the owner sees (기획서 20.1 P0): a Runner's bandage count, the Seeker's swing cooldown.
         private static string OwnerDetail(NetworkPlayer player)
         {
             var round = NetworkRound.Instance;
             if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && round != null)
-                return $" · 목숨 {(player.HealthHalves < 0 ? round.FullHalves : player.HealthHalves) / 2f:F1}";
+                return $" · 붕대 {player.BandageCount}";
             if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
                 interactor.SwingCooldownRemaining > 0)
                 return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
