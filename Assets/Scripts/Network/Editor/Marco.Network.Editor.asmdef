@@ -4,7 +4,8 @@
     "references": [
         "Marco.Network",
         "FishNet.Runtime",
-        "Marco.Core.WinCondition"
+        "Marco.Core.WinCondition",
+        "FishySteamworks"
     ],
     "includePlatforms": [
         "Editor"

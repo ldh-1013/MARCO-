@@ -187,8 +187,6 @@ namespace Marco.Prototype
                 float angle = i / 32f * Mathf.PI * 2;
                 GUI.DrawTexture(new Rect(x + Mathf.Sin(angle) * 18 - 1, y - Mathf.Cos(angle) * 18 - 1, 3, 3), Texture2D.whiteTexture);
             }
-            GUI.Label(new Rect(x - 130, y + 30, 280, 25), result);
-            GUI.Label(new Rect(x - 130, y + 55, 280, 25), "쿨다운 " + Mathf.Max(0, nextTagTime - Time.time).ToString("F1") + "초");
         }
         private void OnDestroy() { if (animationGraph.IsValid()) animationGraph.Destroy(); }
         private void OnDrawGizmosSelected() { Gizmos.color = Color.white; Gizmos.DrawWireSphere(transform.position, range); }
