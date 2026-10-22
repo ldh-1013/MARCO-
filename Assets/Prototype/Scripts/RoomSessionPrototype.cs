@@ -232,7 +232,17 @@ namespace Marco.Prototype
             peerToPeerField.SetValue(_fishNetSteamTransport, true);
             _fishNetSteamTransport.SetPort(7770);
 
+#if UNITY_EDITOR
+            // NetworkManager.Reset/OnValidate (editor only) logs "SpawnablePrefabs is null" the moment the component is
+            // added. SpawnablePrefabs is assigned right below, before the object is activated (and Awake validates it),
+            // so that single log is a false alarm. Silence only this AddComponent call.
+            bool previousLogEnabled = Debug.unityLogger.logEnabled;
+            Debug.unityLogger.logEnabled = false;
+            try { _fishNetNetworkManager = networkObject.AddComponent<NetworkManager>(); }
+            finally { Debug.unityLogger.logEnabled = previousLogEnabled; }
+#else
             _fishNetNetworkManager = networkObject.AddComponent<NetworkManager>();
+#endif
             _fishNetPrefabObjects = ScriptableObject.CreateInstance<DefaultPrefabObjects>();
             if (fishNetPlayerPrefab != null)
             {
