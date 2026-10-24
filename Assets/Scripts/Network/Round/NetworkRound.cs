@@ -864,8 +864,15 @@ namespace Marco.Network.Round
 
         private void CreateBandageMaterials()
         {
-            var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
-            if (shader == null) return;
+            // Bandages are created at runtime, so they cannot rely on a scene-assigned
+            // material. The unlit shader bypasses MARCO-'s world-space microphone falloff
+            // and leaves the pickups visible even when the microphone is silent.
+            var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+            if (shader == null)
+            {
+                Debug.LogError("No MARCO- world-space shader is available for bandage pickups.", this);
+                return;
+            }
             bandageWrapMaterial = CreateBandageMaterial(shader, new Color(0.94f, 0.89f, 0.72f));
             bandageMarkMaterial = CreateBandageMaterial(shader, new Color(0.75f, 0.08f, 0.06f));
         }
