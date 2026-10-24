@@ -21,6 +21,7 @@ namespace Marco.Network.Character
         private readonly List<Material> runtimeMaterials = new();
         private GameObject model;
         private bool ghost;
+        private bool seekerModel;
 
         public CharacterAsset Definition { get; private set; }
         public Transform BodyRoot => model == null ? null : model.transform;
@@ -36,16 +37,19 @@ namespace Marco.Network.Character
         public bool Show(PlayerRole role, bool visible, bool asGhost)
         {
             var wanted = role == PlayerRole.Seeker ? seekerAsset : runnerAsset;
-            if (wanted != Definition || asGhost != ghost || (wanted != null && model == null)) Build(wanted, asGhost);
+            bool isSeeker = role == PlayerRole.Seeker;
+            if (wanted != Definition || asGhost != ghost || isSeeker != seekerModel || (wanted != null && model == null))
+                Build(wanted, asGhost, isSeeker);
             if (model != null) model.SetActive(visible);
             return model != null;
         }
 
-        private void Build(CharacterAsset asset, bool asGhost)
+        private void Build(CharacterAsset asset, bool asGhost, bool isSeeker)
         {
             Clear();
             Definition = asset;
             ghost = asGhost;
+            seekerModel = isSeeker;
             if (asset != null && asset.visualPrefab != null)
             {
                 // Prepare an inactive anchor so the imported demo scripts never run.
@@ -58,12 +62,28 @@ namespace Marco.Network.Character
                 instance.transform.localPosition = Vector3.zero;
                 instance.transform.localRotation = Quaternion.identity;
                 instance.transform.localScale = Vector3.one;
+                if (isSeeker) HideSeekerBall(instance.transform);
                 Prepare(model.transform);
                 model.SetActive(true);
                 BodyAnimator = model.GetComponentInChildren<Animator>(true);
             }
             else if (asset != null) Debug.LogError($"Character asset {asset.name} has no visual prefab.", this);
             Rebuilt?.Invoke();
+        }
+
+        // The imported hunter model has a separate renderer/material for the hand-held ball.
+        // Hide only that accessory on the network hunter instance and keep the rest of the mesh.
+        private static void HideSeekerBall(Transform visual)
+        {
+            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    if (material == null || !material.name.Contains("Ball_mat")) continue;
+                    renderer.enabled = false;
+                    break;
+                }
+            }
         }
 
         private void Clear()

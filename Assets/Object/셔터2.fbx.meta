@@ -3,7 +3,13 @@ guid: 10fe2dd3894a7c14ea3b5e144bc2ee8f
 ModelImporter:
   serializedVersion: 24501
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+    UnityEngine:Material:
+    - first:
+        type: UnityEngine:Material
+        assembly: UnityEngine.CoreModule
+        name: rollershutter_window_01_graffiti
+      second: {fileID: 2100000, guid: 77ebc78e4741c5540bc512b6772997b8, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

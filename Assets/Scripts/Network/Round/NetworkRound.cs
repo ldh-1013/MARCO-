@@ -41,6 +41,21 @@ namespace Marco.Network.Round
         private const float BandageUseSeconds = 6f;
         private const float TeammateTreatmentSeconds = 9f;
         private const float HealingProgressSyncSeconds = 0.1f;
+        // Map coordinates (x, height, z) from docs/맵설계.md §9.1. The nine fixed pickups
+        // match the map diagram: AID 2, main pool hall 2, staff corridor 1, both changing rooms 1,
+        // lobby 1, and second-floor spectator lobby 1.
+        private static readonly Vector3[] BandageSpawnPoints =
+        {
+            new(2f, 0f, 21.5f),   // 구조 · 응급실 남쪽
+            new(2f, 0f, 29f),     // 구조 · 응급실 북쪽
+            new(1f, 0f, 52f),     // 메인 풀 홀 서측
+            new(29f, 0f, 60.5f),  // 메인 풀 홀 북측
+            new(49f, 0f, 44.5f),  // 직원 통로
+            new(16.5f, 0f, 16f),  // 남 탈의실
+            new(38.5f, 0f, 16f),  // 여 탈의실
+            new(37f, 0f, 6.5f),   // 로비
+            new(44f, 3.5f, 24f),  // 2층 관람 로비
+        };
 
         private sealed class HealingChannel
         {
@@ -822,7 +837,7 @@ namespace Marco.Network.Round
             if (round != null && !spectating) round.NotifyPlayerLeft(conn.ClientId);
         }
 
-        // One world pickup near each Runner spawn. Its small wrap-and-cross model is generated
+        // One world pickup at each marked map-design location. Its wrap-and-cross model is generated
         // locally; only this synchronized availability list and the server-owned inventory matter.
         private void ResetBandagePickups(bool available)
         {
@@ -833,11 +848,10 @@ namespace Marco.Network.Round
 
         private void ResolveBandagePositions()
         {
-            for (int i = 1; i <= 3; i++)
+            for (int i = 0; i < BandageSpawnPoints.Length; i++)
             {
                 if (resolvedBandageSpawns.Contains(i)) continue;
-                if (!GamePoints.TryGet($"SpawnPoint_{i}", out var spawn)) continue;
-                bandagePositions.Add(spawn.position + spawn.right * 1.25f + Vector3.up * 0.12f);
+                bandagePositions.Add(BandageSpawnPoints[i] + Vector3.up * 0.12f);
                 resolvedBandageSpawns.Add(i);
             }
         }
@@ -864,8 +878,15 @@ namespace Marco.Network.Round
 
         private void CreateBandageMaterials()
         {
-            var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
-            if (shader == null) return;
+            // Bandages are created at runtime, so they cannot rely on a scene-assigned
+            // material. The unlit shader bypasses MARCO-'s world-space microphone falloff
+            // and leaves the pickups visible even when the microphone is silent.
+            var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+            if (shader == null)
+            {
+                Debug.LogError("No MARCO- world-space shader is available for bandage pickups.", this);
+                return;
+            }
             bandageWrapMaterial = CreateBandageMaterial(shader, new Color(0.94f, 0.89f, 0.72f));
             bandageMarkMaterial = CreateBandageMaterial(shader, new Color(0.75f, 0.08f, 0.06f));
         }
@@ -986,6 +1007,55 @@ namespace Marco.Network.Round
                 if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive) alive++;
             while (alive > 1 && TryGetFirstAliveRunner(out var target) && ApplyTag(target)) alive--;
             Debug.Log("[MARCO][Cheat] 도망자 1명만 남김 → 다음 틱에 최후 생존자 페이즈");
+        }
+
+        // Toggle the host between Runner and Seeker. Swap with an alive player of the opposite
+        // role when one exists so multiplayer test rounds keep the same number of each role.
+        [Server]
+        internal void CheatToggleHostRole()
+        {
+            if (!CheatReady) return;
+
+            NetworkPlayer host = null;
+            foreach (var player in NetworkPlayer.All)
+            {
+                if (!player.IsRoomHost) continue;
+                host = player;
+                break;
+            }
+
+            if (host == null || host.Status != PlayerStatus.Alive ||
+                (host.Role != PlayerRole.Runner && host.Role != PlayerRole.Seeker))
+            {
+                Debug.Log("[MARCO][Cheat] 전환할 수 있는 생존 중인 호스트 플레이어가 없음");
+                return;
+            }
+
+            PlayerRole oldRole = host.Role;
+            PlayerRole newRole = oldRole == PlayerRole.Seeker ? PlayerRole.Runner : PlayerRole.Seeker;
+            NetworkPlayer partner = null;
+            foreach (var player in NetworkPlayer.All)
+            {
+                if (player == host || player.Status != PlayerStatus.Alive || player.Role != newRole) continue;
+                partner = player;
+                break;
+            }
+
+            CancelHealingFor(host.PlayerId);
+            host.SetCrouching(false);
+            host.SetTreatmentLocked(false);
+            host.SetRole(newRole);
+
+            if (partner != null)
+            {
+                CancelHealingFor(partner.PlayerId);
+                partner.SetCrouching(false);
+                partner.SetTreatmentLocked(false);
+                partner.SetRole(oldRole);
+            }
+
+            Debug.Log($"[MARCO][Cheat] Host P{host.PlayerId}: {oldRole} → {newRole}" +
+                      (partner != null ? $" · P{partner.PlayerId}: {newRole} → {oldRole}" : " · 역할 교환 대상 없음"));
         }
 
         private static bool TryGetFirstAliveRunner(out NetworkPlayer runner)
