@@ -5,7 +5,8 @@ using UnityEngine;
 namespace Marco.Network.Round
 {
     // Dev-only cheat panel (Tab) for checking round results without playing a full round. Host only:
-    // F1~F5 and the buttons call NetworkRound's server cheats, which still run every outcome through Core.
+    // F1~F5 and F9 plus the buttons call NetworkRound's server cheats. F9 swaps the host's role
+    // with an active player of the opposite role when possible.
     // The panel also owns round start/restart. Opening it frees the cursor; closing relocks it.
     // Created automatically so no scene has to carry it; compiled out of release builds.
     public sealed class RoundCheats : MonoBehaviour
@@ -20,6 +21,7 @@ namespace Marco.Network.Round
             (KeyCode.F3, "F3   도망자 1명 탈출"),
             (KeyCode.F4, $"F4   {FastForwardSeconds:0}초 빨리감기"),
             (KeyCode.F5, "F5   최후 생존자 페이즈 시작"),
+            (KeyCode.F9, "F9   내 역할 전환: 생존자 ↔ 헌터"),
         };
 
         private bool open;
@@ -74,6 +76,7 @@ namespace Marco.Network.Round
                 case KeyCode.F3: round.CheatEscapeRunner(); break;
                 case KeyCode.F4: round.CheatFastForward(FastForwardSeconds); break;
                 case KeyCode.F5: round.CheatEnterLastSurvivorPhase(); break;
+                case KeyCode.F9: round.CheatToggleHostRole(); break;
             }
         }
 

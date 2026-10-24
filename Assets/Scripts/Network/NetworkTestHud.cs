@@ -188,6 +188,31 @@ namespace Marco.Network
                 if (amount > 0f)
                     TestHudSkin.Fill(new Rect(segment.x, segment.y, segment.width * amount, segment.height), fill);
             }
+
+            var bandagePanel = new Rect(panel.xMax + 10, panel.y, height, height);
+            TestHudSkin.Panel(bandagePanel);
+            DrawBandageSlot(new Rect(bandagePanel.x + 7, bandagePanel.y + 7, 64, 64), player.BandageCount);
+        }
+
+        private static void DrawBandageSlot(Rect rect, int count)
+        {
+            TestHudSkin.Fill(rect, new Color(0f, 0f, 0f, 0.42f));
+            Color border = new(1f, 1f, 1f, 0.35f);
+            TestHudSkin.Fill(new Rect(rect.x, rect.y, rect.width, 2), border);
+            TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2), border);
+            TestHudSkin.Fill(new Rect(rect.x, rect.y, 2, rect.height), border);
+            TestHudSkin.Fill(new Rect(rect.xMax - 2, rect.y, 2, rect.height), border);
+
+            Color bandage = count > 0 ? new Color(0.91f, 0.84f, 0.67f, 1f) : new Color(0.62f, 0.59f, 0.52f, 0.55f);
+            var icon = new Rect(rect.x + 16, rect.y + 11, 32, 17);
+            TestHudSkin.Fill(new Rect(icon.x - 2, icon.y - 2, icon.width + 4, icon.height + 4), new Color(0f, 0f, 0f, 0.45f));
+            TestHudSkin.Fill(icon, bandage);
+            Color hole = new(0.48f, 0.43f, 0.34f, count > 0 ? 0.8f : 0.4f);
+            for (int i = 0; i < 3; i++)
+                TestHudSkin.Fill(new Rect(icon.x + 7 + i * 9, icon.y + 6, 3, 3), hole);
+
+            GUI.Label(new Rect(rect.x, rect.y + 31, rect.width, 27), count.ToString(),
+                TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         // Right: every player with role and status, then the disconnect button.
@@ -226,12 +251,9 @@ namespace Marco.Network
             if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
         }
 
-        // Debug text only the owner sees (기획서 20.1 P0): a Runner's bandage count, the Seeker's swing cooldown.
+        // Debug text only the owner sees: the Seeker's swing cooldown.
         private static string OwnerDetail(NetworkPlayer player)
         {
-            var round = NetworkRound.Instance;
-            if (player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && round != null)
-                return $" · 붕대 {player.BandageCount}";
             if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
                 interactor.SwingCooldownRemaining > 0)
                 return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
