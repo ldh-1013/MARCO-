@@ -19,10 +19,31 @@ namespace Marco.Network.Editor
         public const string GamePointsPrefabPath = "Assets/Prefabs/Network/PoolV12_GamePoints.prefab";
         private const ulong RoundSceneId = 0x4D4152434F000002; // "MARCO" + 2; differs from NetworkTest
         // The map's own visuals, used as-is (never edited); the map scene's copies are hidden at runtime.
-        private const string ValveVisualPath = "Assets/Maps/PoolV12/Generated/Prefabs/ValveHandle_Reusable.prefab";
+        private const string ValveVisualPath = "Assets/Object/파이프.fbx";
         private const string DrainVisualPath = "Assets/Maps/PoolV12/Generated/Prefabs/DrainCover_Reusable.prefab";
         // The map scene's Valve_* wheels are turned 90° about Y; the markers copy that so ours face the same way.
         private const float ValveMarkerYaw = 90f;
+
+        // Pipe model parts: the wheel ring (lies in its local XY plane), its cross spokes and hub spin;
+        // the stem under the wheel stays out of the collider so the wheel side stays open.
+        private const string WheelPart = "토러스.001";
+        private static readonly string[] WheelSpinParts = { WheelPart, "실린더.011", "실린더.012", "구체" };
+        private const string WheelStemPart = "실린더.010";
+        private const float LampAboveWheel = 0.3f;
+
+        // Pipe yaw (relative to the valve marker) and scale copied from the map scene's own pipes,
+        // which sit 0.4–7 m off the valve points; ours put the wheel center on the marker instead.
+        private static readonly (float yaw, float scale)[] ValvePipes =
+        {
+            (-90, 0.21299766f),  // A: 파이프 (4)
+            (0, 0.21299766f),    // B: 파이프 (2)
+            (0, 0.2721795f),     // C: 파이프
+            (-90, 0.21299766f),  // D: 파이프 (3)
+            (0, 0.21299766f),    // E: 파이프 (1)
+        };
+
+        // The map scene's own pipe roots, replaced by the valve pipes above.
+        private static readonly string[] MapPipeRoots = { "파이프", "파이프 (1)", "파이프 (2)", "파이프 (3)", "파이프 (4)" };
 
         private static readonly string[] RunnerSpawnPoints = { "SpawnPoint_1", "SpawnPoint_2", "SpawnPoint_3" };
 
@@ -97,28 +118,78 @@ namespace Marco.Network.Editor
             Anchor(CreateMapDrainHatch(DrainHatchId.Second), "Drain_2", Vector3.zero);
             hidden.Add("Drain_1");
             hidden.Add("Drain_2");
-            SetHiddenMapPoints(loader, hidden);
+            SetStrings(loader, "hiddenMapPoints", hidden);
+            SetStrings(loader, "hiddenMapRoots", MapPipeRoots);
 
             NetworkTestTools.SaveWithRound(scene, ScenePath, RoundSceneId);
             Debug.Log($"[MARCO] Network pool scene saved: {ScenePath}");
         }
 
-        // The map's wheel spins with progress; status color goes to a separate lamp above it,
-        // because the map's material is shared and has no color property ValveView could set.
+        // The pipe's wheel spins with progress; status color goes to a separate lamp above it,
+        // because the pipe's materials are shared and ValveView must not tint them.
+        // The root sits on the wheel center, so the marker and the server range check stay on the wheel.
         private static GameObject CreateMapValve(ValveId id)
         {
             var root = new GameObject($"Valve {id}");
-            var wheel = InstantiateVisual(ValveVisualPath, root.transform);
-            var lamp = CreateLamp(root.transform, new Vector3(0, 0.45f, 0), 0.15f);
+            var pipe = InstantiateVisual(ValveVisualPath, root.transform).transform;
+            var (yaw, scale) = ValvePipes[(int)id];
+            pipe.localRotation = Quaternion.Euler(0, yaw, 0);
+            pipe.localScale = Vector3.one * scale;
+            var wheel = FindPart(pipe, WheelPart);
+            pipe.localPosition = -wheel.position;  // root is still at the origin, unrotated
+
+            // An added child keeps the pipe a prefab instance; the wheel parts can't be reparented under it.
+            var pivot = new GameObject("WheelPivot").transform;
+            pivot.SetParent(pipe, false);
+            pivot.SetPositionAndRotation(wheel.position, wheel.rotation);
+            AddPipeCollider(pipe);
+            var lamp = CreateLamp(root.transform, new Vector3(0, LampAboveWheel, 0), 0.15f);
 
             var view = root.AddComponent<ValveView>();
             var serialized = new SerializedObject(view);
             serialized.FindProperty("id").enumValueIndex = (int)id;
-            serialized.FindProperty("handle").objectReferenceValue = wheel.transform;
-            serialized.FindProperty("handleAxis").vector3Value = Vector3.forward;  // the wheel lies in its local XY plane
+            serialized.FindProperty("pivot").objectReferenceValue = pivot;
+            serialized.FindProperty("spinAxis").vector3Value = Vector3.forward;  // the wheel lies in its local XY plane
+            var parts = serialized.FindProperty("spinParts");
+            parts.arraySize = WheelSpinParts.Length;
+            for (int i = 0; i < WheelSpinParts.Length; i++)
+                parts.GetArrayElementAtIndex(i).objectReferenceValue = FindPart(pipe, WheelSpinParts[i]);
             serialized.FindProperty("body").objectReferenceValue = lamp;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return root;
+        }
+
+        private static Transform FindPart(Transform pipe, string partName)
+        {
+            foreach (var part in pipe.GetComponentsInChildren<Transform>(true))
+                if (part.name == partName) return part;
+            throw new System.InvalidOperationException($"{ValveVisualPath} 에 '{partName}' 가 없습니다");
+        }
+
+        // One box around the pipe body, leaving out the wheel parts and the stem under them, so the box
+        // tops out below the wheel and players can walk right up to it (well inside the valve range).
+        private static void AddPipeCollider(Transform pipe)
+        {
+            var bounds = new Bounds();
+            bool any = false;
+            foreach (var filter in pipe.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var part = filter.transform.name;
+                if (part == WheelStemPart || System.Array.IndexOf(WheelSpinParts, part) >= 0) continue;
+                var mesh = filter.sharedMesh.bounds;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    var local = mesh.center + Vector3.Scale(mesh.extents,
+                        new Vector3((corner & 1) == 0 ? -1 : 1, (corner & 2) == 0 ? -1 : 1, (corner & 4) == 0 ? -1 : 1));
+                    var point = pipe.InverseTransformPoint(filter.transform.TransformPoint(local));
+                    if (any) bounds.Encapsulate(point);
+                    else bounds = new Bounds(point, Vector3.zero);
+                    any = true;
+                }
+            }
+            var box = pipe.gameObject.AddComponent<BoxCollider>();
+            box.center = bounds.center;
+            box.size = bounds.size;
         }
 
         private static GameObject CreateMapDrainHatch(DrainHatchId id)
@@ -153,10 +224,10 @@ namespace Marco.Network.Editor
             return lamp.GetComponent<Renderer>();
         }
 
-        private static void SetHiddenMapPoints(MapSceneLoader loader, List<string> names)
+        private static void SetStrings(MapSceneLoader loader, string propertyName, IReadOnlyList<string> names)
         {
             var serialized = new SerializedObject(loader);
-            var property = serialized.FindProperty("hiddenMapPoints");
+            var property = serialized.FindProperty(propertyName);
             property.arraySize = names.Count;
             for (int i = 0; i < names.Count; i++) property.GetArrayElementAtIndex(i).stringValue = names[i];
             serialized.ApplyModifiedPropertiesWithoutUndo();

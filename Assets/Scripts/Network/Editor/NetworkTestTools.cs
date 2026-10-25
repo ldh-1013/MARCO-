@@ -184,7 +184,10 @@ namespace Marco.Network.Editor
             var view = body.AddComponent<ValveView>();
             var serialized = new SerializedObject(view);
             serialized.FindProperty("id").enumValueIndex = (int)id;
-            serialized.FindProperty("handle").objectReferenceValue = handle.transform;
+            serialized.FindProperty("pivot").objectReferenceValue = body.transform;
+            var parts = serialized.FindProperty("spinParts");
+            parts.arraySize = 1;
+            parts.GetArrayElementAtIndex(0).objectReferenceValue = handle.transform;
             serialized.FindProperty("body").objectReferenceValue = body.GetComponent<Renderer>();
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return body;
