@@ -31,19 +31,18 @@ namespace Marco.Network.Editor
         private const string WheelStemPart = "실린더.010";
         private const float LampAboveWheel = 0.3f;
 
-        // Pipe yaw (relative to the valve marker) and scale copied from the map scene's own pipes,
-        // which sit 0.4–7 m off the valve points; ours put the wheel center on the marker instead.
-        private static readonly (float yaw, float scale)[] ValvePipes =
+        // The map scene's own pipe per valve (hidden at runtime, 0.4–7 m off the valve points), with the
+        // yaw (relative to the valve marker) and scale copied from it; its materials are copied while
+        // building, because the FBX has none. Ours put the wheel center on the marker instead.
+        private const string MapScenePath = "Assets/Scenes/Maps/IndoorPool_v1_2.unity";
+        private static readonly (string mapPipe, float yaw, float scale)[] ValvePipes =
         {
-            (-90, 0.21299766f),  // A: 파이프 (4)
-            (0, 0.21299766f),    // B: 파이프 (2)
-            (0, 0.2721795f),     // C: 파이프
-            (-90, 0.21299766f),  // D: 파이프 (3)
-            (0, 0.21299766f),    // E: 파이프 (1)
+            ("파이프 (4)", -90, 0.21299766f),  // A
+            ("파이프 (2)", 0, 0.21299766f),    // B
+            ("파이프", 0, 0.2721795f),         // C
+            ("파이프 (3)", -90, 0.21299766f),  // D
+            ("파이프 (1)", 0, 0.21299766f),    // E
         };
-
-        // The map scene's own pipe roots, replaced by the valve pipes above.
-        private static readonly string[] MapPipeRoots = { "파이프", "파이프 (1)", "파이프 (2)", "파이프 (3)", "파이프 (4)" };
 
         private static readonly string[] RunnerSpawnPoints = { "SpawnPoint_1", "SpawnPoint_2", "SpawnPoint_3" };
 
@@ -106,11 +105,17 @@ namespace Marco.Network.Editor
             }
 
             var hidden = new List<string>();
+            var hiddenRoots = new List<string>();
+            // Opened only to read the map pipes' materials; closed again unsaved.
+            var map = EditorSceneManager.OpenScene(MapScenePath, OpenSceneMode.Additive);
             for (var id = ValveId.A; id <= ValveId.E; id++)
             {
-                Anchor(CreateMapValve(id), $"Valve_{id}", Vector3.zero);
+                var mapPipe = ValvePipes[(int)id].mapPipe;
+                Anchor(CreateMapValve(id, FindMapRoot(map, mapPipe)), $"Valve_{id}", Vector3.zero);
                 hidden.Add($"Valve_{id}");
+                hiddenRoots.Add(mapPipe);
             }
+            EditorSceneManager.CloseScene(map, true);
             var exitSize = new Vector3(3, 3, 0.5f);  // both exits sit in walls running along X
             Anchor(NetworkTestTools.CreateExit(ExitId.StaffDoor, Vector3.zero, exitSize), "Exit_1", new Vector3(0, 1.5f, 0));
             Anchor(NetworkTestTools.CreateExit(ExitId.MainGate, Vector3.zero, exitSize), "Exit_2", new Vector3(0, 1.5f, 0));
@@ -119,7 +124,7 @@ namespace Marco.Network.Editor
             hidden.Add("Drain_1");
             hidden.Add("Drain_2");
             SetStrings(loader, "hiddenMapPoints", hidden);
-            SetStrings(loader, "hiddenMapRoots", MapPipeRoots);
+            SetStrings(loader, "hiddenMapRoots", hiddenRoots);
 
             NetworkTestTools.SaveWithRound(scene, ScenePath, RoundSceneId);
             Debug.Log($"[MARCO] Network pool scene saved: {ScenePath}");
@@ -128,11 +133,12 @@ namespace Marco.Network.Editor
         // The pipe's wheel spins with progress; status color goes to a separate lamp above it,
         // because the pipe's materials are shared and ValveView must not tint them.
         // The root sits on the wheel center, so the marker and the server range check stay on the wheel.
-        private static GameObject CreateMapValve(ValveId id)
+        private static GameObject CreateMapValve(ValveId id, Transform mapPipe)
         {
             var root = new GameObject($"Valve {id}");
             var pipe = InstantiateVisual(ValveVisualPath, root.transform).transform;
-            var (yaw, scale) = ValvePipes[(int)id];
+            CopyMaterials(mapPipe, pipe);
+            var (_, yaw, scale) = ValvePipes[(int)id];
             pipe.localRotation = Quaternion.Euler(0, yaw, 0);
             pipe.localScale = Vector3.one * scale;
             var wheel = FindPart(pipe, WheelPart);
@@ -157,6 +163,20 @@ namespace Marco.Network.Editor
             serialized.FindProperty("body").objectReferenceValue = lamp;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             return root;
+        }
+
+        private static Transform FindMapRoot(UnityEngine.SceneManagement.Scene map, string rootName)
+        {
+            foreach (var root in map.GetRootGameObjects())
+                if (root.name == rootName) return root.transform;
+            throw new System.InvalidOperationException($"{MapScenePath} 에 '{rootName}' 가 없습니다");
+        }
+
+        // Same FBX on both sides, so parts match by name.
+        private static void CopyMaterials(Transform from, Transform to)
+        {
+            foreach (var source in from.GetComponentsInChildren<Renderer>(true))
+                FindPart(to, source.name).GetComponent<Renderer>().sharedMaterials = source.sharedMaterials;
         }
 
         private static Transform FindPart(Transform pipe, string partName)
