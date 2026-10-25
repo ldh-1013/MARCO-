@@ -14,6 +14,8 @@ namespace Marco.Network.Map
         [SerializeField] private string mapScene = "IndoorPool_v1_2";
         // Names under the map's GamePoints to hide at runtime, e.g. Valve_A, Drain_1.
         [SerializeField] private string[] hiddenMapPoints = Array.Empty<string>();
+        // Map root objects to hide at runtime, e.g. the map's pipes that this scene places at the valves.
+        [SerializeField] private string[] hiddenMapRoots = Array.Empty<string>();
 
         private void Awake()
         {
@@ -48,6 +50,7 @@ namespace Marco.Network.Map
                 foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
                     if (behaviour.GetType().Name == "PoolV12Viewer") behaviour.enabled = false;
                 if (root.name == MapGamePointsRoot) HidePoints(root.transform);
+                if (Array.IndexOf(hiddenMapRoots, root.name) >= 0) root.SetActive(false);
             }
         }
 
