@@ -14,10 +14,8 @@ namespace Marco.Network.Vision
         private const int SampleRate = 48000;
         private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
         private const int RequiredConsecutiveFrames = 3;
-        private const float ClickerCameraFlashSeconds = 0.3f;
-        private const float ClickerScreenWashSeconds = 0.07f;
-        private const float ClickerBurstVisualSeconds = 0.22f;
-        private const int ClickerBurstTextureSize = 128;
+        private const float ClickerCameraFlashSeconds = 0.6f;
+        private const int ClickerRimTextureSize = 128;
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
@@ -57,9 +55,9 @@ namespace Marco.Network.Vision
         private int consecutiveVoiceFrames;
         private float revealUntil;
         private bool clickerFlashActive;
+        private float clickerFlashStartedAt = float.NegativeInfinity;
         private float clickerFlashUntil;
-        private float clickerBurstStartedAt = float.NegativeInfinity;
-        private Texture2D clickerBurstTexture;
+        private Texture2D clickerRimTexture;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -147,7 +145,7 @@ namespace Marco.Network.Vision
                 microphoneFootDots.Configure(microphoneFootDotShader, microphoneFootDotColor, microphoneFootDotRadius, microphoneFootDotLifetime, dotPoolSize);
             }
             if (worldLightingOwner == null) worldLightingOwner = this;
-            clickerBurstTexture = CreateClickerBurstTexture();
+            clickerRimTexture = CreateClickerRimTexture();
             if (worldLightingOwner == this)
             {
                 CaptureEnvironment();
@@ -214,15 +212,15 @@ namespace Marco.Network.Vision
             rnNoiseDenoiser?.Dispose();
             rnNoiseDenoiser = null;
             if (mask != null) Destroy(mask);
-            if (clickerBurstTexture != null) Destroy(clickerBurstTexture);
+            if (clickerRimTexture != null) Destroy(clickerRimTexture);
             RestoreEnvironment();
         }
 
         private void OnDisable()
         {
             clickerFlashActive = false;
+            clickerFlashStartedAt = float.NegativeInfinity;
             clickerFlashUntil = 0f;
-            clickerBurstStartedAt = float.NegativeInfinity;
             if (worldLightingOwner != this) return;
             RestoreEnvironment();
             worldLightingOwner = null;
@@ -347,22 +345,16 @@ namespace Marco.Network.Vision
             if (wasFullVision != isFullVision) ApplyFullVisionOverride(isFullVision);
         }
 
-        /// <summary>Briefly restores the whole scene, like a camera flash, without adding audio.</summary>
+        /// <summary>Briefly reveals the whole scene with a soft open-close flash, without adding audio.</summary>
         public void TriggerClickerCameraFlash()
         {
-            clickerBurstStartedAt = Time.unscaledTime;
-            if (clickerFlashActive)
-            {
-                clickerFlashUntil = Mathf.Max(clickerFlashUntil, Time.unscaledTime + ClickerCameraFlashSeconds);
-                return;
-            }
+            if (clickerFlashActive) return;
+            clickerFlashStartedAt = Time.unscaledTime;
+            clickerFlashUntil = clickerFlashStartedAt + ClickerCameraFlashSeconds;
 
             bool wasFullVision = IsFullVisionActive;
             clickerFlashActive = true;
             if (!wasFullVision) ApplyFullVisionOverride(true);
-            // RestoreEnvironment can take time the first time, so measure the 0.3 s after the
-            // restored scene is ready to render.
-            clickerFlashUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
         }
 
         private void ApplyFullVisionOverride(bool enabled)
@@ -384,79 +376,79 @@ namespace Marco.Network.Vision
         private void OnGUI()
         {
             GUI.depth = 100; // Darkness behind HUD (lower depths are drawn on top).
-            if (brightnessMode == BrightnessMode.MarcoPlus && !IsFullVisionActive)
+            if (clickerFlashActive)
             {
-                UpdateMask();
-                var old = GUI.color; GUI.color = Color.white;
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
-                GUI.color = old;
+                float progress = Mathf.Clamp01((Time.unscaledTime - clickerFlashStartedAt) / ClickerCameraFlashSeconds);
+                float envelope = GetClickerFlashEnvelope(progress);
+                float revealRadius = GetClickerRevealRadius(envelope);
+                if (!developmentFullVision) DrawDarknessMask(revealRadius);
+                DrawClickerRevealRim(revealRadius, envelope);
             }
-            DrawClickerBurst();
+            else if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+                DrawDarknessMask(radius);
+
             GUI.depth = 0;
             GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
         }
 
-        private void DrawClickerBurst()
+        private void DrawDarknessMask(float revealRadius)
         {
-            if (clickerBurstTexture == null) return;
-            float elapsed = Time.unscaledTime - clickerBurstStartedAt;
-            if (elapsed < 0f || elapsed >= ClickerBurstVisualSeconds) return;
+            UpdateMask(revealRadius);
+            Color previousColor = GUI.color;
+            GUI.color = Color.white;
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
+            GUI.color = previousColor;
+        }
 
-            float washProgress = Mathf.Clamp01(elapsed / ClickerScreenWashSeconds);
-            float washAlpha = 0.72f * (1f - washProgress) * (1f - washProgress);
-            if (washAlpha > 0.001f)
-            {
-                Color previousWashColor = GUI.color;
-                int previousWashDepth = GUI.depth;
-                GUI.depth = 50; // Brief exposure pop over the world and vision mask.
-                GUI.color = new Color(1f, 1f, 1f, washAlpha);
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
-                GUI.color = previousWashColor;
-                GUI.depth = previousWashDepth;
-            }
+        private float GetClickerRevealRadius(float envelope)
+        {
+            float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
+            float cornerRadius = Mathf.Sqrt(aspect * aspect * 0.25f + 0.25f);
+            return (cornerRadius + 0.06f) * envelope;
+        }
 
-            float progress = elapsed / ClickerBurstVisualSeconds;
-            float size = Mathf.Lerp(0.22f, 1.35f, progress) * Mathf.Max(Screen.width, Screen.height);
-            float alpha = 0.62f * (1f - progress) * (1f - progress);
-            Rect burstRect = new Rect((Screen.width - size) * 0.5f, (Screen.height - size) * 0.5f, size, size);
+        private void DrawClickerRevealRim(float revealRadius, float envelope)
+        {
+            if (clickerRimTexture == null || envelope <= 0.001f) return;
+            const float textureRingRadius = 0.9f;
+            float diameter = 2f * revealRadius * Screen.height / textureRingRadius;
+            Rect rimRect = new Rect((Screen.width - diameter) * 0.5f, (Screen.height - diameter) * 0.5f, diameter, diameter);
             Color previousColor = GUI.color;
             int previousDepth = GUI.depth;
-            GUI.depth = 50; // Over the vision mask, under HUD labels.
-            GUI.color = new Color(1f, 1f, 1f, alpha);
-            GUI.DrawTexture(burstRect, clickerBurstTexture, ScaleMode.StretchToFill, true);
+            GUI.depth = 50; // A faint rim follows the expanding edge, under HUD labels.
+            GUI.color = new Color(1f, 1f, 1f, 0.35f * envelope);
+            GUI.DrawTexture(rimRect, clickerRimTexture, ScaleMode.StretchToFill, true);
             GUI.color = previousColor;
             GUI.depth = previousDepth;
         }
 
-        private static Texture2D CreateClickerBurstTexture()
+        private static float GetClickerFlashEnvelope(float progress)
         {
-            var texture = new Texture2D(ClickerBurstTextureSize, ClickerBurstTextureSize, TextureFormat.RGBA32, false)
+            const float openEnd = 0.75f;
+            const float closeStart = 0.83f;
+            float opening = Mathf.SmoothStep(0f, 1f, progress / openEnd);
+            float closing = 1f - Mathf.SmoothStep(0f, 1f, (progress - closeStart) / (1f - closeStart));
+            return Mathf.Min(opening, closing);
+        }
+
+        private static Texture2D CreateClickerRimTexture()
+        {
+            var texture = new Texture2D(ClickerRimTextureSize, ClickerRimTextureSize, TextureFormat.RGBA32, false)
             {
-                name = "찰칵이 섬광 팝",
+                name = "찰칵이 시야 전개 테두리",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp
             };
-            var pixels = new Color32[ClickerBurstTextureSize * ClickerBurstTextureSize];
-            for (int y = 0; y < ClickerBurstTextureSize; y++)
-            for (int x = 0; x < ClickerBurstTextureSize; x++)
+            var pixels = new Color32[ClickerRimTextureSize * ClickerRimTextureSize];
+            for (int y = 0; y < ClickerRimTextureSize; y++)
+            for (int x = 0; x < ClickerRimTextureSize; x++)
             {
-                float dx = ((x + 0.5f) / ClickerBurstTextureSize) * 2f - 1f;
-                float dy = ((y + 0.5f) / ClickerBurstTextureSize) * 2f - 1f;
+                float dx = ((x + 0.5f) / ClickerRimTextureSize) * 2f - 1f;
+                float dy = ((y + 0.5f) / ClickerRimTextureSize) * 2f - 1f;
                 float radius = Mathf.Sqrt(dx * dx + dy * dy);
-                if (radius >= 1f)
-                {
-                    pixels[y * ClickerBurstTextureSize + x] = new Color32(255, 255, 255, 0);
-                    continue;
-                }
-
-                float angle = Mathf.Atan2(dy, dx);
-                float centerGlow = Mathf.Exp(-radius * radius * 18f) * 0.55f;
-                float rays = Mathf.Pow(Mathf.Max(0f, Mathf.Cos(angle * 12f)), 14f)
-                    * Mathf.SmoothStep(0f, 1f, radius / 0.3f)
-                    * (1f - Mathf.SmoothStep(0.38f, 0.95f, radius)) * 0.75f;
-                float ring = Mathf.Exp(-Mathf.Pow((radius - 0.48f) * 24f, 2f)) * 0.24f;
-                byte alpha = (byte)(Mathf.Clamp01(centerGlow + rays + ring) * 255f);
-                pixels[y * ClickerBurstTextureSize + x] = new Color32(255, 255, 255, alpha);
+                float ring = Mathf.Exp(-Mathf.Pow((radius - 0.9f) * 30f, 2f)) * 0.4f;
+                byte alpha = (byte)(Mathf.Clamp01(ring) * 255f);
+                pixels[y * ClickerRimTextureSize + x] = new Color32(255, 255, 255, alpha);
             }
 
             texture.SetPixels32(pixels);
@@ -616,21 +608,21 @@ namespace Marco.Network.Vision
 
         }
 
-        private void UpdateMask()
+        private void UpdateMask(float revealRadius)
         {
             float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
             if (mask == null) { mask = new Texture2D(256, 256, TextureFormat.RGBA32, false); mask.wrapMode = TextureWrapMode.Clamp; }
-            if (Mathf.Abs(drawnRadius - radius) < 0.002f && drawnAspect == aspect) return;
+            if (Mathf.Abs(drawnRadius - revealRadius) < 0.002f && drawnAspect == aspect) return;
             for (int y = 0; y < 256; y++) for (int x = 0; x < 256; x++)
             {
                 float dx = ((x + 0.5f) / 256f - 0.5f) * aspect;
                 float dy = (y + 0.5f) / 256f - 0.5f;
                 float distance = Mathf.Sqrt(dx * dx + dy * dy);
-                float alpha = radius <= 0.001f ? 1f : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(Mathf.Max(0, radius - 0.04f), radius, distance));
+                float alpha = revealRadius <= 0.001f ? 1f : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(Mathf.Max(0, revealRadius - 0.04f), revealRadius, distance));
                 maskPixels[y * 256 + x] = new Color32(0, 0, 0, (byte)(alpha * 255));
             }
             mask.SetPixels32(maskPixels); mask.Apply(false);
-            drawnRadius = radius; drawnAspect = aspect;
+            drawnRadius = revealRadius; drawnAspect = aspect;
         }
     }
 
