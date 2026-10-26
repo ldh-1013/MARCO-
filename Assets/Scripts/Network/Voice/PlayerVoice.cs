@@ -1,6 +1,7 @@
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Transporting;
+using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Vision;
 using UnityEngine;
@@ -37,14 +38,20 @@ namespace Marco.Network.Voice
             if (!IsOwner) return;
             // The microphone sits on the owner's camera, which only the owner activates.
             microphone = GetComponentInChildren<MicrophoneVisionController>(true);
-            if (microphone != null) microphone.VoiceSamplesReady += OnVoiceSamplesReady;
+            if (microphone != null)
+            {
+                microphone.VoiceSamplesReady += OnVoiceSamplesReady;
+            }
             else Debug.LogWarning("Local player has no microphone input for voice chat.", this);
         }
 
         public override void OnStopClient()
         {
             base.OnStopClient();
-            if (microphone != null) microphone.VoiceSamplesReady -= OnVoiceSamplesReady;
+            if (microphone != null)
+            {
+                microphone.VoiceSamplesReady -= OnVoiceSamplesReady;
+            }
             microphone = null;
         }
 
@@ -124,7 +131,8 @@ namespace Marco.Network.Voice
 
         private void OnDestroy()
         {
-            if (microphone != null) microphone.VoiceSamplesReady -= OnVoiceSamplesReady;
+            if (microphone != null)
+                microphone.VoiceSamplesReady -= OnVoiceSamplesReady;
             if (voiceSource != null) voiceSource.Stop();
             if (voiceClip != null) Destroy(voiceClip);
         }

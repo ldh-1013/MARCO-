@@ -56,6 +56,7 @@ namespace Marco.Network.Player
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
         public int BandageCount { get; private set; }
+        public int ClickerCount { get; private set; }
         public bool HasHealingAction { get; private set; }
         public bool HealingActionIsBandage { get; private set; }
         public float HealingActionProgress { get; private set; }
@@ -142,6 +143,9 @@ namespace Marco.Network.Player
         public void SendBandageCount(int count) => BandageCountTarget(Owner, count);
 
         [Server]
+        public void SendClickerCount(int count) => ClickerCountTarget(Owner, count);
+
+        [Server]
         public void SendHealingProgress(bool active, bool isBandage, float progress) =>
             HealingProgressTarget(Owner, active, isBandage, progress);
 
@@ -150,6 +154,9 @@ namespace Marco.Network.Player
 
         [TargetRpc]
         private void BandageCountTarget(NetworkConnection conn, int count) => BandageCount = count;
+
+        [TargetRpc]
+        private void ClickerCountTarget(NetworkConnection conn, int count) => ClickerCount = count;
 
         [TargetRpc]
         private void HealingProgressTarget(NetworkConnection conn, bool active, bool isBandage, float progress)

@@ -249,7 +249,8 @@ namespace Marco.Network.Editor
                 changed = true;
             }
             var playerCamera = root.GetComponentInChildren<Camera>(true).gameObject;
-            if (playerCamera.GetComponent<MicrophoneVisionController>() == null)
+            var vision = playerCamera.GetComponent<MicrophoneVisionController>();
+            if (vision == null)
             {
                 AddVision(playerCamera);
                 changed = true;

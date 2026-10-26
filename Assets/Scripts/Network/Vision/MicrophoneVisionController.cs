@@ -14,6 +14,10 @@ namespace Marco.Network.Vision
         private const int SampleRate = 48000;
         private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
         private const int RequiredConsecutiveFrames = 3;
+        private const float ClickerCameraFlashSeconds = 0.3f;
+        private const float ClickerScreenWashSeconds = 0.07f;
+        private const float ClickerBurstVisualSeconds = 0.22f;
+        private const int ClickerBurstTextureSize = 128;
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
@@ -52,6 +56,10 @@ namespace Marco.Network.Vision
         private float nextFrameTime;
         private int consecutiveVoiceFrames;
         private float revealUntil;
+        private bool clickerFlashActive;
+        private float clickerFlashUntil;
+        private float clickerBurstStartedAt = float.NegativeInfinity;
+        private Texture2D clickerBurstTexture;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -121,7 +129,8 @@ namespace Marco.Network.Vision
             public DefaultReflectionMode reflectionMode;
         }
 
-        public bool IsCenterVisible => developmentFullVision || radius > 0.01f;
+        private bool IsFullVisionActive => developmentFullVision || clickerFlashActive;
+        public bool IsCenterVisible => IsFullVisionActive || radius > 0.01f;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public bool DevelopmentFullVision => developmentFullVision;
 #endif
@@ -138,6 +147,7 @@ namespace Marco.Network.Vision
                 microphoneFootDots.Configure(microphoneFootDotShader, microphoneFootDotColor, microphoneFootDotRadius, microphoneFootDotLifetime, dotPoolSize);
             }
             if (worldLightingOwner == null) worldLightingOwner = this;
+            clickerBurstTexture = CreateClickerBurstTexture();
             if (worldLightingOwner == this)
             {
                 CaptureEnvironment();
@@ -159,6 +169,12 @@ namespace Marco.Network.Vision
 
         private void Update()
         {
+            if (clickerFlashActive && Time.unscaledTime >= clickerFlashUntil)
+            {
+                clickerFlashActive = false;
+                if (!developmentFullVision) ApplyFullVisionOverride(false);
+            }
+
             if (worldLightingOwner == null)
             {
                 worldLightingOwner = this;
@@ -198,11 +214,15 @@ namespace Marco.Network.Vision
             rnNoiseDenoiser?.Dispose();
             rnNoiseDenoiser = null;
             if (mask != null) Destroy(mask);
+            if (clickerBurstTexture != null) Destroy(clickerBurstTexture);
             RestoreEnvironment();
         }
 
         private void OnDisable()
         {
+            clickerFlashActive = false;
+            clickerFlashUntil = 0f;
+            clickerBurstStartedAt = float.NegativeInfinity;
             if (worldLightingOwner != this) return;
             RestoreEnvironment();
             worldLightingOwner = null;
@@ -247,8 +267,9 @@ namespace Marco.Network.Vision
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs > silenceDb ? 1 : 0;
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
-            if (level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames)
-                VoiceSamplesReady?.Invoke(analysisBuffer, level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper);
+            bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
+            VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;
+            if (recognizedVoice) VoiceSamplesReady?.Invoke(analysisBuffer, voiceGrade);
             if (brightnessMode == BrightnessMode.MarcoMinus && level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames
                 && microphoneFootDots != null && Time.unscaledTime >= nextFootDotTime)
             {
@@ -320,37 +341,127 @@ namespace Marco.Network.Vision
         public void SetDevelopmentFullVision(bool enabled)
         {
             if (developmentFullVision == enabled) return;
+            bool wasFullVision = IsFullVisionActive;
             developmentFullVision = enabled;
+            bool isFullVision = IsFullVisionActive;
+            if (wasFullVision != isFullVision) ApplyFullVisionOverride(isFullVision);
+        }
 
+        /// <summary>Briefly restores the whole scene, like a camera flash, without adding audio.</summary>
+        public void TriggerClickerCameraFlash()
+        {
+            clickerBurstStartedAt = Time.unscaledTime;
+            if (clickerFlashActive)
+            {
+                clickerFlashUntil = Mathf.Max(clickerFlashUntil, Time.unscaledTime + ClickerCameraFlashSeconds);
+                return;
+            }
+
+            bool wasFullVision = IsFullVisionActive;
+            clickerFlashActive = true;
+            if (!wasFullVision) ApplyFullVisionOverride(true);
+            // RestoreEnvironment can take time the first time, so measure the 0.3 s after the
+            // restored scene is ready to render.
+            clickerFlashUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
+        }
+
+        private void ApplyFullVisionOverride(bool enabled)
+        {
             if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus) return;
 
+            targetWorldRadius = worldRadius = 0f;
+            targetWorldIntensity = worldIntensity = 0f;
             if (enabled)
             {
-                targetWorldRadius = worldRadius = 0f;
-                targetWorldIntensity = worldIntensity = 0f;
                 RestoreEnvironment();
+                return;
             }
-            else
-            {
-                targetWorldRadius = worldRadius = 0f;
-                targetWorldIntensity = worldIntensity = 0f;
-                CaptureEnvironment();
-                ApplyBrightnessMode();
-            }
+
+            CaptureEnvironment();
+            ApplyBrightnessMode();
         }
 
         private void OnGUI()
         {
             GUI.depth = 100; // Darkness behind HUD (lower depths are drawn on top).
-            if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+            if (brightnessMode == BrightnessMode.MarcoPlus && !IsFullVisionActive)
             {
                 UpdateMask();
                 var old = GUI.color; GUI.color = Color.white;
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
                 GUI.color = old;
             }
+            DrawClickerBurst();
             GUI.depth = 0;
             GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
+        }
+
+        private void DrawClickerBurst()
+        {
+            if (clickerBurstTexture == null) return;
+            float elapsed = Time.unscaledTime - clickerBurstStartedAt;
+            if (elapsed < 0f || elapsed >= ClickerBurstVisualSeconds) return;
+
+            float washProgress = Mathf.Clamp01(elapsed / ClickerScreenWashSeconds);
+            float washAlpha = 0.72f * (1f - washProgress) * (1f - washProgress);
+            if (washAlpha > 0.001f)
+            {
+                Color previousWashColor = GUI.color;
+                int previousWashDepth = GUI.depth;
+                GUI.depth = 50; // Brief exposure pop over the world and vision mask.
+                GUI.color = new Color(1f, 1f, 1f, washAlpha);
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+                GUI.color = previousWashColor;
+                GUI.depth = previousWashDepth;
+            }
+
+            float progress = elapsed / ClickerBurstVisualSeconds;
+            float size = Mathf.Lerp(0.22f, 1.35f, progress) * Mathf.Max(Screen.width, Screen.height);
+            float alpha = 0.62f * (1f - progress) * (1f - progress);
+            Rect burstRect = new Rect((Screen.width - size) * 0.5f, (Screen.height - size) * 0.5f, size, size);
+            Color previousColor = GUI.color;
+            int previousDepth = GUI.depth;
+            GUI.depth = 50; // Over the vision mask, under HUD labels.
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            GUI.DrawTexture(burstRect, clickerBurstTexture, ScaleMode.StretchToFill, true);
+            GUI.color = previousColor;
+            GUI.depth = previousDepth;
+        }
+
+        private static Texture2D CreateClickerBurstTexture()
+        {
+            var texture = new Texture2D(ClickerBurstTextureSize, ClickerBurstTextureSize, TextureFormat.RGBA32, false)
+            {
+                name = "찰칵이 섬광 팝",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            var pixels = new Color32[ClickerBurstTextureSize * ClickerBurstTextureSize];
+            for (int y = 0; y < ClickerBurstTextureSize; y++)
+            for (int x = 0; x < ClickerBurstTextureSize; x++)
+            {
+                float dx = ((x + 0.5f) / ClickerBurstTextureSize) * 2f - 1f;
+                float dy = ((y + 0.5f) / ClickerBurstTextureSize) * 2f - 1f;
+                float radius = Mathf.Sqrt(dx * dx + dy * dy);
+                if (radius >= 1f)
+                {
+                    pixels[y * ClickerBurstTextureSize + x] = new Color32(255, 255, 255, 0);
+                    continue;
+                }
+
+                float angle = Mathf.Atan2(dy, dx);
+                float centerGlow = Mathf.Exp(-radius * radius * 18f) * 0.55f;
+                float rays = Mathf.Pow(Mathf.Max(0f, Mathf.Cos(angle * 12f)), 14f)
+                    * Mathf.SmoothStep(0f, 1f, radius / 0.3f)
+                    * (1f - Mathf.SmoothStep(0.38f, 0.95f, radius)) * 0.75f;
+                float ring = Mathf.Exp(-Mathf.Pow((radius - 0.48f) * 24f, 2f)) * 0.24f;
+                byte alpha = (byte)(Mathf.Clamp01(centerGlow + rays + ring) * 255f);
+                pixels[y * ClickerBurstTextureSize + x] = new Color32(255, 255, 255, alpha);
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            return texture;
         }
 
         private void CaptureEnvironment()
@@ -397,7 +508,7 @@ namespace Marco.Network.Vision
             appliedBrightnessMode = brightnessMode;
             brightnessModeInitialized = true;
 
-            if (brightnessMode == BrightnessMode.MarcoMinus && !developmentFullVision)
+            if (brightnessMode == BrightnessMode.MarcoMinus && !IsFullVisionActive)
             {
                 targetRadius = radius = 0f;
                 RenderSettings.ambientMode = AmbientMode.Flat;
@@ -495,7 +606,7 @@ namespace Marco.Network.Vision
 
         private void PushWorldLighting()
         {
-            if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus || developmentFullVision) return;
+            if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus || IsFullVisionActive) return;
             Vector3 position = visionCamera != null ? visionCamera.transform.position : transform.position;
             Shader.SetGlobalVector(PlayerPositionId, new Vector4(position.x, position.y, position.z, 1f));
             Shader.SetGlobalFloat(LightRadiusId, worldRadius);
