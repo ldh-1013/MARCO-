@@ -203,7 +203,7 @@ namespace Marco.Network
                 TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
             TestHudSkin.Panel(panel);
             GUI.Label(new Rect(panel.x + 8, panel.y + 3, panel.width - 16, 22),
-                "아이템 · 1/2 선택 · G 사용", TestHudSkin.Text(18, FontStyle.Bold));
+                "아이템 · 1/2 슬롯", TestHudSkin.Text(18, FontStyle.Bold));
 
             int selectedSlot = player.TryGetComponent(out PlayerInteractor interactor)
                 ? interactor.SelectedItemSlot
@@ -218,7 +218,7 @@ namespace Marco.Network
             DrawBandageSlot(new Rect(panel.x + 20, panel.y + 47, 64, 64), player.BandageCount, selectedSlot == 1);
             DrawClickerSlot(new Rect(panel.x + 120, panel.y + 47, 64, 64), player.ClickerCount, selectedSlot == 2);
             GUI.Label(new Rect(panel.x + 8, panel.y + 115, panel.width - 16, 20),
-                "찰칵은 즉시 · 붕대는 G 홀드", TestHudSkin.Text(15, FontStyle.Normal, TextAnchor.MiddleCenter));
+                "찰칵 Q/우클릭 · 붕대 G 홀드", TestHudSkin.Text(15, FontStyle.Normal, TextAnchor.MiddleCenter));
         }
 
         private static void DrawBandageSlot(Rect rect, int count, bool selected)

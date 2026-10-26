@@ -11,7 +11,7 @@ namespace Marco.Network.Player
 {
     // On the player prefab. The owner's input becomes ServerRpcs; the server re-checks range, role
     // and status (NetworkRound / WinCondition via IPlayerRoster). Clients decide nothing.
-    // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel.
+    // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel; Q/right-click uses Clicker.
     // Left click: swing (Seeker); the server decides the tag and all clients play the attack.
     [RequireComponent(typeof(NetworkPlayer))]
     public sealed class PlayerInteractor : NetworkBehaviour
@@ -115,8 +115,9 @@ namespace Marco.Network.Player
             }
 
             if (locked && Input.GetMouseButtonDown(0) && player.Role == PlayerRole.Seeker) Swing(round);
-            if (locked && selectedItemSlot == 2 && !workingBandage && player.Role == PlayerRole.Runner &&
-                player.Status == PlayerStatus.Alive && player.ClickerCount > 0 && Input.GetKeyDown(KeyCode.G))
+            bool useClickerPressed = Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Q);
+            if (locked && useClickerPressed && !workingBandage && player.Role == PlayerRole.Runner &&
+                player.Status == PlayerStatus.Alive && player.ClickerCount > 0)
                 UseClickerServer();
         }
 

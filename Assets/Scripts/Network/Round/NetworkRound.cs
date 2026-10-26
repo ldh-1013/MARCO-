@@ -44,6 +44,8 @@ namespace Marco.Network.Round
         private const float HealingProgressSyncSeconds = 0.1f;
         private const float ClickerRespawnSeconds = 120f;
         private const float ClickerVisibilityRadius = 6f;
+        private const float ClickerStunRadius = 16f;
+        private const float ClickerStunSeconds = 3f;
         private const float ClickerPickupRange = 1.5f;
         // One each in the four diagram regions: lobby, 2F lobby, dock, main pool hall.
         private static readonly Vector3[] ClickerSpawnPoints =
@@ -131,6 +133,8 @@ namespace Marco.Network.Round
         private readonly Dictionary<int, int> bandageCounts = new();
         private readonly Dictionary<int, bool> clickerHoldings = new();
         private readonly Dictionary<int, float> clickerRespawnTimes = new();
+        private readonly Dictionary<int, float> clickerStunUntil = new();
+        private readonly List<int> expiredClickerStunIds = new();
         private readonly List<Vector3> bandagePositions = new();
         private readonly HashSet<int> resolvedBandageSpawns = new();
         private readonly List<Transform> bandageViews = new();
@@ -211,6 +215,7 @@ namespace Marco.Network.Round
         {
             if (IsServerInitialized) TickHealingChannels();
             if (IsServerInitialized) TickClickerRespawns();
+            if (IsServerInitialized) TickClickerStuns();
             // The map's GamePoints can finish registering after the network scene object starts.
             // Retry on the server and make any late-resolved pickups available for this round.
             if (IsServerInitialized && mode.Value != RoundMode.NotStarted)
@@ -260,6 +265,7 @@ namespace Marco.Network.Round
         public override void OnStopServer()
         {
             CancelAllHealingActions();
+            ClearClickerStuns();
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             TimeManager.OnTick -= OnServerTick;
@@ -358,6 +364,7 @@ namespace Marco.Network.Round
         private void ResetRound()
         {
             CancelAllHealingActions();
+            ClearClickerStuns();
             TimeManager.OnTick -= OnServerTick;
             ClearCore();
             nextTagTimes.Clear();
@@ -605,7 +612,42 @@ namespace Marco.Network.Round
                     continue;
                 ClickerFlashTarget(listener.Owner);
             }
+
+            float stunRadiusSquared = ClickerStunRadius * ClickerStunRadius;
+            foreach (NetworkPlayer listener in NetworkPlayer.All)
+            {
+                if (listener == null || listener.Role != PlayerRole.Seeker || listener.Status != PlayerStatus.Alive ||
+                    (listener.transform.position - source.transform.position).sqrMagnitude > stunRadiusSquared)
+                    continue;
+
+                float stunUntil = Time.time + ClickerStunSeconds;
+                if (clickerStunUntil.TryGetValue(listener.PlayerId, out float existingUntil))
+                    stunUntil = Mathf.Max(stunUntil, existingUntil);
+                clickerStunUntil[listener.PlayerId] = stunUntil;
+                listener.SetStunned(true);
+            }
             return true;
+        }
+
+        private void TickClickerStuns()
+        {
+            expiredClickerStunIds.Clear();
+            foreach (KeyValuePair<int, float> stun in clickerStunUntil)
+            {
+                if (Time.time < stun.Value) continue;
+                if (NetworkPlayer.TryGet(stun.Key, out NetworkPlayer player)) player.SetStunned(false);
+                expiredClickerStunIds.Add(stun.Key);
+            }
+
+            foreach (int playerId in expiredClickerStunIds) clickerStunUntil.Remove(playerId);
+        }
+
+        private void ClearClickerStuns()
+        {
+            foreach (int playerId in clickerStunUntil.Keys)
+                if (NetworkPlayer.TryGet(playerId, out NetworkPlayer player)) player.SetStunned(false);
+            clickerStunUntil.Clear();
+            expiredClickerStunIds.Clear();
         }
 
         private static bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
@@ -978,6 +1020,7 @@ namespace Marco.Network.Round
             runnerHalves.Remove(conn.ClientId);
             bandageCounts.Remove(conn.ClientId);
             clickerHoldings.Remove(conn.ClientId);
+            clickerStunUntil.Remove(conn.ClientId);
             RemoveFromWork(conn.ClientId);
             // A spectator never entered RoundState's count; reporting them would count as a tag.
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;
