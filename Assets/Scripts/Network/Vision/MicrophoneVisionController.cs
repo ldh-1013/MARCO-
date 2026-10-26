@@ -14,8 +14,7 @@ namespace Marco.Network.Vision
         private const int SampleRate = 48000;
         private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
         private const int RequiredConsecutiveFrames = 3;
-        private const float ClickerCameraFlashSeconds = 0.6f;
-        private const int ClickerRimTextureSize = 128;
+        private const float ClickerCameraFlashSeconds = 0.5f;
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
@@ -57,7 +56,6 @@ namespace Marco.Network.Vision
         private bool clickerFlashActive;
         private float clickerFlashStartedAt = float.NegativeInfinity;
         private float clickerFlashUntil;
-        private Texture2D clickerRimTexture;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -127,8 +125,8 @@ namespace Marco.Network.Vision
             public DefaultReflectionMode reflectionMode;
         }
 
-        private bool IsFullVisionActive => developmentFullVision || clickerFlashActive;
-        public bool IsCenterVisible => IsFullVisionActive || radius > 0.01f;
+        private bool IsFullVisionActive => developmentFullVision;
+        public bool IsCenterVisible => IsFullVisionActive || clickerFlashActive || radius > 0.01f;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public bool DevelopmentFullVision => developmentFullVision;
 #endif
@@ -145,7 +143,6 @@ namespace Marco.Network.Vision
                 microphoneFootDots.Configure(microphoneFootDotShader, microphoneFootDotColor, microphoneFootDotRadius, microphoneFootDotLifetime, dotPoolSize);
             }
             if (worldLightingOwner == null) worldLightingOwner = this;
-            clickerRimTexture = CreateClickerRimTexture();
             if (worldLightingOwner == this)
             {
                 CaptureEnvironment();
@@ -170,7 +167,6 @@ namespace Marco.Network.Vision
             if (clickerFlashActive && Time.unscaledTime >= clickerFlashUntil)
             {
                 clickerFlashActive = false;
-                if (!developmentFullVision) ApplyFullVisionOverride(false);
             }
 
             if (worldLightingOwner == null)
@@ -201,7 +197,17 @@ namespace Marco.Network.Vision
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
-                SmoothWorldLighting(Time.unscaledDeltaTime);
+                if (clickerFlashActive && brightnessMode == BrightnessMode.MarcoMinus && !developmentFullVision)
+                {
+                    // Follow the microphone light's brighten and darken timing in one 0.5s pulse.
+                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
+                    worldRadius = Mathf.Lerp(targetWorldRadius, radiusMax, envelope);
+                    worldIntensity = Mathf.Lerp(targetWorldIntensity, intensityMax, envelope);
+                }
+                else
+                {
+                    SmoothWorldLighting(Time.unscaledDeltaTime);
+                }
                 PushWorldLighting();
             }
         }
@@ -212,7 +218,6 @@ namespace Marco.Network.Vision
             rnNoiseDenoiser?.Dispose();
             rnNoiseDenoiser = null;
             if (mask != null) Destroy(mask);
-            if (clickerRimTexture != null) Destroy(clickerRimTexture);
             RestoreEnvironment();
         }
 
@@ -345,16 +350,13 @@ namespace Marco.Network.Vision
             if (wasFullVision != isFullVision) ApplyFullVisionOverride(isFullVision);
         }
 
-        /// <summary>Briefly reveals the whole scene with a soft open-close flash, without adding audio.</summary>
+        /// <summary>Briefly applies the strongest existing speech-light level without adding audio.</summary>
         public void TriggerClickerCameraFlash()
         {
             if (clickerFlashActive) return;
+            clickerFlashActive = true;
             clickerFlashStartedAt = Time.unscaledTime;
             clickerFlashUntil = clickerFlashStartedAt + ClickerCameraFlashSeconds;
-
-            bool wasFullVision = IsFullVisionActive;
-            clickerFlashActive = true;
-            if (!wasFullVision) ApplyFullVisionOverride(true);
         }
 
         private void ApplyFullVisionOverride(bool enabled)
@@ -378,11 +380,12 @@ namespace Marco.Network.Vision
             GUI.depth = 100; // Darkness behind HUD (lower depths are drawn on top).
             if (clickerFlashActive)
             {
-                float progress = Mathf.Clamp01((Time.unscaledTime - clickerFlashStartedAt) / ClickerCameraFlashSeconds);
-                float envelope = GetClickerFlashEnvelope(progress);
-                float revealRadius = GetClickerRevealRadius(envelope);
-                if (!developmentFullVision) DrawDarknessMask(revealRadius);
-                DrawClickerRevealRim(revealRadius, envelope);
+                if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+                {
+                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
+                    float flashRadius = Mathf.Lerp(radius, GetFullScreenRevealRadius(), envelope);
+                    DrawDarknessMask(flashRadius);
+                }
             }
             else if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
                 DrawDarknessMask(radius);
@@ -400,60 +403,24 @@ namespace Marco.Network.Vision
             GUI.color = previousColor;
         }
 
-        private float GetClickerRevealRadius(float envelope)
+        private float GetFullScreenRevealRadius()
         {
             float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
             float cornerRadius = Mathf.Sqrt(aspect * aspect * 0.25f + 0.25f);
-            return (cornerRadius + 0.06f) * envelope;
+            return cornerRadius + 0.06f;
         }
 
-        private void DrawClickerRevealRim(float revealRadius, float envelope)
+        private float GetClickerFlashEnvelope(float elapsed)
         {
-            if (clickerRimTexture == null || envelope <= 0.001f) return;
-            const float textureRingRadius = 0.9f;
-            float diameter = 2f * revealRadius * Screen.height / textureRingRadius;
-            Rect rimRect = new Rect((Screen.width - diameter) * 0.5f, (Screen.height - diameter) * 0.5f, diameter, diameter);
-            Color previousColor = GUI.color;
-            int previousDepth = GUI.depth;
-            GUI.depth = 50; // A faint rim follows the expanding edge, under HUD labels.
-            GUI.color = new Color(1f, 1f, 1f, 0.35f * envelope);
-            GUI.DrawTexture(rimRect, clickerRimTexture, ScaleMode.StretchToFill, true);
-            GUI.color = previousColor;
-            GUI.depth = previousDepth;
-        }
+            float totalTransitionTime = Mathf.Max(0.001f, brightenTimeConstant + darkenTimeConstant);
+            float openingDuration = ClickerCameraFlashSeconds * brightenTimeConstant / totalTransitionTime;
+            float openingProgress = Mathf.Clamp01(elapsed / Mathf.Max(0.001f, openingDuration));
+            if (elapsed <= openingDuration)
+                return Mathf.SmoothStep(0f, 1f, openingProgress);
 
-        private static float GetClickerFlashEnvelope(float progress)
-        {
-            const float openEnd = 0.75f;
-            const float closeStart = 0.83f;
-            float opening = Mathf.SmoothStep(0f, 1f, progress / openEnd);
-            float closing = 1f - Mathf.SmoothStep(0f, 1f, (progress - closeStart) / (1f - closeStart));
-            return Mathf.Min(opening, closing);
-        }
-
-        private static Texture2D CreateClickerRimTexture()
-        {
-            var texture = new Texture2D(ClickerRimTextureSize, ClickerRimTextureSize, TextureFormat.RGBA32, false)
-            {
-                name = "찰칵이 시야 전개 테두리",
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            var pixels = new Color32[ClickerRimTextureSize * ClickerRimTextureSize];
-            for (int y = 0; y < ClickerRimTextureSize; y++)
-            for (int x = 0; x < ClickerRimTextureSize; x++)
-            {
-                float dx = ((x + 0.5f) / ClickerRimTextureSize) * 2f - 1f;
-                float dy = ((y + 0.5f) / ClickerRimTextureSize) * 2f - 1f;
-                float radius = Mathf.Sqrt(dx * dx + dy * dy);
-                float ring = Mathf.Exp(-Mathf.Pow((radius - 0.9f) * 30f, 2f)) * 0.4f;
-                byte alpha = (byte)(Mathf.Clamp01(ring) * 255f);
-                pixels[y * ClickerRimTextureSize + x] = new Color32(255, 255, 255, alpha);
-            }
-
-            texture.SetPixels32(pixels);
-            texture.Apply(false, true);
-            return texture;
+            float closingDuration = ClickerCameraFlashSeconds - openingDuration;
+            float closingProgress = Mathf.Clamp01((elapsed - openingDuration) / Mathf.Max(0.001f, closingDuration));
+            return 1f - Mathf.SmoothStep(0f, 1f, closingProgress);
         }
 
         private void CaptureEnvironment()
