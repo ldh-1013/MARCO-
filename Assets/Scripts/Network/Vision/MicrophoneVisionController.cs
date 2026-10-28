@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using Adrenak.RNNoise4Unity;
+using Marco.Network.Player;
 using Marco.Network.Voice;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -14,7 +16,11 @@ namespace Marco.Network.Vision
         private const int SampleRate = 48000;
         private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
         private const int RequiredConsecutiveFrames = 3;
-        private const float ClickerCameraFlashSeconds = 0.5f;
+        private const float ClickerCameraFlashSeconds = 0.6f;
+        private const float ClickerCameraFlashRadius = 6f;
+        private const float ClickerAfterglowSeconds = 12f;
+        private const float ClickerAfterglowPeakOpacity = 0.15f;
+        private static readonly int ClickerTerrainId = Shader.PropertyToID("_MarcoClickerTerrain");
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
@@ -56,6 +62,11 @@ namespace Marco.Network.Vision
         private bool clickerFlashActive;
         private float clickerFlashStartedAt = float.NegativeInfinity;
         private float clickerFlashUntil;
+        private Vector3 clickerFlashOrigin;
+        private TerrainAfterglow terrainAfterglow;
+        private readonly Dictionary<Renderer, bool> clickerHiddenRenderers = new();
+        private MaterialPropertyBlock clickerVisibilityProperties;
+        private float clickerVisibilityUntil;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -92,6 +103,12 @@ namespace Marco.Network.Vision
         private static readonly int LightIntensityId = Shader.PropertyToID("_MarcoLightIntensity");
         private static readonly int FalloffPowerId = Shader.PropertyToID("_MarcoFalloffPower");
         private static readonly int LightColorId = Shader.PropertyToID("_MarcoLightColor");
+        private static readonly int ClickerEnabledId = Shader.PropertyToID("_MarcoClickerEnabled");
+        private static readonly int ClickerPositionId = Shader.PropertyToID("_MarcoClickerPosition");
+        private static readonly int ClickerRadiusId = Shader.PropertyToID("_MarcoClickerRadius");
+        private static readonly int ClickerIntensityId = Shader.PropertyToID("_MarcoClickerIntensity");
+        private static readonly int ClickerFalloffPowerId = Shader.PropertyToID("_MarcoClickerFalloffPower");
+        private static readonly int ClickerColorId = Shader.PropertyToID("_MarcoClickerColor");
 
         private struct RendererLightingSnapshot
         {
@@ -135,6 +152,7 @@ namespace Marco.Network.Vision
         {
             developmentFullVision = false;
             visionCamera = GetComponent<Camera>() ?? GetComponentInChildren<Camera>(true);
+            terrainAfterglow = GetComponent<TerrainAfterglow>() ?? gameObject.AddComponent<TerrainAfterglow>();
             if (showMicrophoneFootDots)
             {
                 microphoneFootDots = GetComponent<MicrophoneFootDots>();
@@ -168,6 +186,7 @@ namespace Marco.Network.Vision
             {
                 clickerFlashActive = false;
             }
+            UpdateClickerVisibilitySuppression();
 
             if (worldLightingOwner == null)
             {
@@ -197,19 +216,10 @@ namespace Marco.Network.Vision
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
-                if (clickerFlashActive && brightnessMode == BrightnessMode.MarcoMinus && !developmentFullVision)
-                {
-                    // Follow the microphone light's brighten and darken timing in one 0.5s pulse.
-                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
-                    worldRadius = Mathf.Lerp(targetWorldRadius, radiusMax, envelope);
-                    worldIntensity = Mathf.Lerp(targetWorldIntensity, intensityMax, envelope);
-                }
-                else
-                {
-                    SmoothWorldLighting(Time.unscaledDeltaTime);
-                }
+                SmoothWorldLighting(Time.unscaledDeltaTime);
                 PushWorldLighting();
             }
+            UpdateClickerFlashShader();
         }
 
         private void OnDestroy()
@@ -218,6 +228,9 @@ namespace Marco.Network.Vision
             rnNoiseDenoiser?.Dispose();
             rnNoiseDenoiser = null;
             if (mask != null) Destroy(mask);
+            RestoreClickerVisibilitySuppression();
+            if (worldLightingOwner == this) SetClickerFlashShader(0f);
+            terrainAfterglow?.ClearAll();
             RestoreEnvironment();
         }
 
@@ -226,7 +239,10 @@ namespace Marco.Network.Vision
             clickerFlashActive = false;
             clickerFlashStartedAt = float.NegativeInfinity;
             clickerFlashUntil = 0f;
+            RestoreClickerVisibilitySuppression();
             if (worldLightingOwner != this) return;
+            SetClickerFlashShader(0f);
+            terrainAfterglow?.ClearAll();
             RestoreEnvironment();
             worldLightingOwner = null;
             brightnessModeInitialized = false;
@@ -350,13 +366,90 @@ namespace Marco.Network.Vision
             if (wasFullVision != isFullVision) ApplyFullVisionOverride(isFullVision);
         }
 
-        /// <summary>Briefly applies the strongest existing speech-light level without adding audio.</summary>
+        /// <summary>Briefly lights nearby terrain and leaves its outline, without generating sound.</summary>
         public void TriggerClickerCameraFlash()
         {
-            if (clickerFlashActive) return;
+            Vector3 origin = visionCamera != null ? visionCamera.transform.position : transform.position;
+            TriggerClickerCameraFlash(origin);
+        }
+
+        public void TriggerClickerCameraFlash(Vector3 origin)
+        {
             clickerFlashActive = true;
             clickerFlashStartedAt = Time.unscaledTime;
             clickerFlashUntil = clickerFlashStartedAt + ClickerCameraFlashSeconds;
+            clickerFlashOrigin = origin;
+            if (terrainAfterglow == null)
+                terrainAfterglow = GetComponent<TerrainAfterglow>() ?? gameObject.AddComponent<TerrainAfterglow>();
+            BeginClickerVisibilitySuppression(origin);
+            UpdateClickerFlashShader();
+            terrainAfterglow.CaptureFlash(origin, ClickerCameraFlashRadius, ClickerCameraFlashSeconds,
+                ClickerAfterglowSeconds, ClickerAfterglowPeakOpacity);
+        }
+
+        private void BeginClickerVisibilitySuppression(Vector3 origin)
+        {
+            RestoreClickerVisibilitySuppression();
+            clickerFlashOrigin = origin;
+            clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
+            UpdateClickerVisibilitySuppression();
+        }
+
+        private void UpdateClickerVisibilitySuppression()
+        {
+            if (Time.unscaledTime >= clickerVisibilityUntil)
+            {
+                RestoreClickerVisibilitySuppression();
+                return;
+            }
+
+            float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
+            if (clickerVisibilityProperties == null)
+                clickerVisibilityProperties = new MaterialPropertyBlock();
+            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            {
+                if (renderer == null || clickerHiddenRenderers.ContainsKey(renderer) ||
+                    renderer.bounds.SqrDistance(clickerFlashOrigin) > radiusSquared)
+                    continue;
+
+                renderer.GetPropertyBlock(clickerVisibilityProperties);
+                bool isTerrain = clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f;
+                if (isTerrain && renderer.GetComponentInParent<NetworkPlayer>(true) == null) continue;
+
+                clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
+                renderer.forceRenderingOff = true;
+            }
+        }
+
+        private void RestoreClickerVisibilitySuppression()
+        {
+            foreach (KeyValuePair<Renderer, bool> entry in clickerHiddenRenderers)
+                if (entry.Key != null) entry.Key.forceRenderingOff = entry.Value;
+            clickerHiddenRenderers.Clear();
+            clickerVisibilityUntil = 0f;
+        }
+
+        private void UpdateClickerFlashShader()
+        {
+            if (!clickerFlashActive)
+            {
+                SetClickerFlashShader(0f);
+                return;
+            }
+
+            float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
+            Shader.SetGlobalVector(ClickerPositionId, new Vector4(clickerFlashOrigin.x, clickerFlashOrigin.y, clickerFlashOrigin.z, 1f));
+            Shader.SetGlobalFloat(ClickerRadiusId, ClickerCameraFlashRadius);
+            Shader.SetGlobalFloat(ClickerIntensityId, intensityMax * envelope);
+            Shader.SetGlobalFloat(ClickerFalloffPowerId, 1f);
+            Shader.SetGlobalColor(ClickerColorId, worldLightColor);
+            Shader.SetGlobalFloat(ClickerEnabledId, envelope > 0.001f ? 1f : 0f);
+        }
+
+        private static void SetClickerFlashShader(float intensity)
+        {
+            Shader.SetGlobalFloat(ClickerEnabledId, 0f);
+            Shader.SetGlobalFloat(ClickerIntensityId, intensity);
         }
 
         private void ApplyFullVisionOverride(bool enabled)
@@ -378,16 +471,7 @@ namespace Marco.Network.Vision
         private void OnGUI()
         {
             GUI.depth = 100; // Darkness behind HUD (lower depths are drawn on top).
-            if (clickerFlashActive)
-            {
-                if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
-                {
-                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
-                    float flashRadius = Mathf.Lerp(radius, GetFullScreenRevealRadius(), envelope);
-                    DrawDarknessMask(flashRadius);
-                }
-            }
-            else if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+            if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
                 DrawDarknessMask(radius);
 
             GUI.depth = 0;
@@ -401,13 +485,6 @@ namespace Marco.Network.Vision
             GUI.color = Color.white;
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
             GUI.color = previousColor;
-        }
-
-        private float GetFullScreenRevealRadius()
-        {
-            float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
-            float cornerRadius = Mathf.Sqrt(aspect * aspect * 0.25f + 0.25f);
-            return cornerRadius + 0.06f;
         }
 
         private float GetClickerFlashEnvelope(float elapsed)
