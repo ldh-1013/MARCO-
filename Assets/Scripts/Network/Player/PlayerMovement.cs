@@ -128,7 +128,10 @@ namespace Marco.Network.Player
 
             float healthMultiplier = NetworkRound.Instance != null
                 ? NetworkRound.Instance.SpeedMultiplierFor(player.HealthHalves) : 1f;
-            float speed = moveSpeed * healthMultiplier * (IsSprinting ? sprintMultiplier : 1f);
+            // Sudden death +5% for the Seeker from 1:00 left, multiplied onto the rest (기획서 6.2-1).
+            float suddenDeathMultiplier = NetworkRound.Instance != null
+                ? NetworkRound.Instance.SeekerSpeedMultiplierFor(player.Role) : 1f;
+            float speed = moveSpeed * healthMultiplier * suddenDeathMultiplier * (IsSprinting ? sprintMultiplier : 1f);
             Vector3 velocity = input * speed + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
         }

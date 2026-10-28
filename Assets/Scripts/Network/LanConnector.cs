@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using FishNet.Managing;
 using FishNet.Transporting;
@@ -51,8 +52,50 @@ namespace Marco.Network
             multipass = networkManager.TransportManager.Transport as Multipass;
             networkManager.ClientManager.OnClientConnectionState += OnClientConnectionState;
             networkManager.ServerManager.OnServerConnectionState += OnServerConnectionState;
-            foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
-                if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) { AdvertisedIp = ip.ToString(); break; }
+            AdvertisedIp = FindLanIPv4() ?? AdvertisedIp;
+        }
+
+        // Not Dns.GetHostName(): with a Korean PC name it throws ExecutionEngineException
+        // ("String conversion error"). Prefers an adapter with a default gateway (the real LAN) over
+        // virtual ones (Hyper-V, VPN); any failure just leaves the 127.0.0.1 default.
+        private static string FindLanIPv4()
+        {
+            string fallback = null;
+            try
+            {
+                foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    try
+                    {
+                        if (adapter.OperationalStatus != OperationalStatus.Up ||
+                            adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                            adapter.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                        var properties = adapter.GetIPProperties();
+                        bool hasGateway = false;
+                        foreach (var gateway in properties.GatewayAddresses)
+                            if (gateway.Address.AddressFamily == AddressFamily.InterNetwork && !gateway.Address.Equals(IPAddress.Any))
+                                hasGateway = true;
+
+                        foreach (var address in properties.UnicastAddresses)
+                        {
+                            var ip = address.Address;
+                            if (ip.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(ip)) continue;
+                            if (hasGateway) return ip.ToString();
+                            fallback ??= ip.ToString();
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[MARCO] 네트워크 어댑터 조회 실패 ({adapter.Name}): {e.Message}");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[MARCO] IPv4 조회 실패, 127.0.0.1 사용: {e.Message}");
+            }
+            return fallback;
         }
 
         private void OnDestroy()
