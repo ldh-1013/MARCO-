@@ -20,6 +20,16 @@ namespace Marco.Network.Map
             return point != null;
         }
 
+#if UNITY_EDITOR
+        // Edit mode has no Awake, so look the root up directly. Play mode keeps using TryGet.
+        public static bool TryGetInEditor(string pointName, out Transform point)
+        {
+            var root = instance != null ? instance : FindAnyObjectByType<GamePoints>();
+            point = root != null ? root.Find(pointName) : null;
+            return point != null;
+        }
+#endif
+
         private void Awake() => instance = this;
 
         private void OnDestroy()

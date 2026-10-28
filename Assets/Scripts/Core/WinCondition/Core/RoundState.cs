@@ -35,6 +35,9 @@ namespace Marco.Core.WinCondition
         public float RemainingSeconds => _timeLimitSeconds - _elapsedSeconds > 0f ? _timeLimitSeconds - _elapsedSeconds : 0f;
         public LastSurvivorPhase LastSurvivorPhase => _lastSurvivorPhase;
 
+        // 종반 압박(6.2-1). 라운드 시계가 흐를 때마다 잔여 시간으로 갱신된다.
+        public SuddenDeath SuddenDeath { get; }
+
         public RoundState(
             WinConditionConfig config,
             IPlayerRoster playerRoster,
@@ -56,6 +59,7 @@ namespace Marco.Core.WinCondition
             _timeLimitSeconds = settings.TimeLimitSeconds;
 
             _lastSurvivorPhase = new LastSurvivorPhase(config);
+            SuddenDeath = new SuddenDeath(config);
             WireDrainHatch(_lastSurvivorPhase.GetDrainHatch(DrainHatchId.First));
             WireDrainHatch(_lastSurvivorPhase.GetDrainHatch(DrainHatchId.Second));
         }
@@ -177,6 +181,9 @@ namespace Marco.Core.WinCondition
             }
 
             _elapsedSeconds += dt;
+
+            // 시간 종료 판정보다 먼저: 큰 dt로 끝까지 넘어가도 지나간 종반 단계는 전부 알린다.
+            SuddenDeath.Update(RemainingSeconds);
 
             if (_elapsedSeconds >= _timeLimitSeconds)
             {

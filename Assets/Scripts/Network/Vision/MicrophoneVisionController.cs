@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Adrenak.RNNoise4Unity;
 using Marco.Network.Player;
 using Marco.Network.Voice;
 using UnityEngine;
@@ -14,8 +13,9 @@ namespace Marco.Network.Vision
     public sealed class MicrophoneVisionController : MonoBehaviour
     {
         private const int SampleRate = 48000;
-        private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
+        private const int FrameSamples = 960; // 20 ms at 48 kHz.
         private const int RequiredConsecutiveFrames = 3;
+        private const int VoiceHangoverFrames = 8; // Bridge brief level dips without transmitting indefinitely.
         private const float ClickerCameraFlashSeconds = 0.6f;
         private const float ClickerCameraFlashRadius = 6f;
         private const float ClickerAfterglowSeconds = 12f;
@@ -24,13 +24,8 @@ namespace Marco.Network.Vision
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
-        private readonly float[] denoisedBuffer = new float[FrameSamples];
         private float[] microphoneReadBuffer;
-        [Header("Microphone noise suppression")]
-        [SerializeField] private bool useRnNoise = true;
-        private Denoiser rnNoiseDenoiser;
-        private bool rnNoiseUnavailableLogged;
-        // Denoised 20 ms frame and its loudness grade, only while speech is detected (voice chat, step 5).
+        // Raw 20 ms microphone frame and its loudness grade, only while speech is detected (voice chat, step 5).
         public event Action<float[], VoiceGrade> VoiceSamplesReady;
 
         [Header("Brightness implementation")]
@@ -56,8 +51,10 @@ namespace Marco.Network.Vision
         [SerializeField, Min(0.02f)] private float microphoneFootDotRadius = 0.25f;
         [SerializeField, Min(0.1f)] private float microphoneFootDotLifetime = 5f;
         [SerializeField, Min(0.1f)] private float microphoneFootDotInterval = 2f;
-        private float nextFrameTime;
+        private int microphoneReadPosition;
         private int consecutiveVoiceFrames;
+        private int voiceHangoverFramesRemaining;
+        private VoiceGrade lastVoiceGrade = VoiceGrade.Whisper;
         private float revealUntil;
         private bool clickerFlashActive;
         private float clickerFlashStartedAt = float.NegativeInfinity;
@@ -174,7 +171,6 @@ namespace Marco.Network.Vision
             // Development full vision is opt-in through F8. Starting with it
             // enabled bypasses the dark state and makes silence look like light.
             if (Microphone.devices.Length == 0) { status = "마이크를 찾지 못했습니다 — F8 개발 시야로 화면을 확인할 수 있습니다."; return; }
-            if (useRnNoise) TryCreateDenoiser();
             microphoneDevice = Microphone.devices[0]; microphoneClip = Microphone.Start(microphoneDevice, true, 1, SampleRate);
             if (microphoneClip != null)
                 microphoneReadBuffer = new float[FrameSamples * Mathf.Max(1, microphoneClip.channels)];
@@ -200,12 +196,21 @@ namespace Marco.Network.Vision
                     ApplyBrightnessMode();
             }
 
-            if (microphoneClip != null && !Input.GetKey(KeyCode.LeftAlt) && Time.unscaledTime >= nextFrameTime) ProcessFrame();
+            if (microphoneClip != null)
+            {
+                if (!Input.GetKey(KeyCode.LeftAlt)) ProcessAvailableMicrophoneFrames();
+                else
+                {
+                    int mutePosition = Microphone.GetPosition(microphoneDevice);
+                    if (mutePosition >= 0) microphoneReadPosition = mutePosition;
+                }
+            }
             if (Input.GetKey(KeyCode.LeftAlt))
             {
                 targetRadius = radius = 0;
                 targetWorldRadius = targetWorldIntensity = 0f;
                 consecutiveVoiceFrames = 0;
+                voiceHangoverFramesRemaining = 0;
                 status = "마이크 강제 뮤트 (Left Alt)";
             }
             else
@@ -225,8 +230,6 @@ namespace Marco.Network.Vision
         private void OnDestroy()
         {
             if (!string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice)) Microphone.End(microphoneDevice);
-            rnNoiseDenoiser?.Dispose();
-            rnNoiseDenoiser = null;
             if (mask != null) Destroy(mask);
             RestoreClickerVisibilitySuppression();
             if (worldLightingOwner == this) SetClickerFlashShader(0f);
@@ -250,11 +253,7 @@ namespace Marco.Network.Vision
 
         private void ProcessFrame()
         {
-            nextFrameTime = Time.unscaledTime + 0.02f;
-            var position = Microphone.GetPosition(microphoneDevice); if (position < FrameSamples && Time.unscaledTime < 0.1f) return;
             int channels = Mathf.Max(1, microphoneClip.channels);
-            int readOffset = (position - FrameSamples + microphoneClip.samples) % microphoneClip.samples;
-            if (!microphoneClip.GetData(microphoneReadBuffer, readOffset)) return;
             for (int i = 0; i < FrameSamples; i++)
             {
                 float monoSample = 0f;
@@ -262,33 +261,23 @@ namespace Marco.Network.Vision
                     monoSample += microphoneReadBuffer[i * channels + channel];
                 sampleBuffer[i] = monoSample / channels;
             }
-            float[] analysisBuffer = sampleBuffer;
-            if (useRnNoise && rnNoiseDenoiser != null)
-            {
-                Array.Copy(sampleBuffer, denoisedBuffer, sampleBuffer.Length);
-                try
-                {
-                    int processedSamples = rnNoiseDenoiser.Denoise(denoisedBuffer.AsSpan());
-                    if (processedSamples == denoisedBuffer.Length) analysisBuffer = denoisedBuffer;
-                }
-                catch (Exception exception)
-                {
-                    rnNoiseDenoiser.Dispose();
-                    rnNoiseDenoiser = null;
-                    if (!rnNoiseUnavailableLogged)
-                    {
-                        Debug.LogWarning("RNNoise microphone suppression failed; using the raw microphone signal. " + exception.Message, this);
-                        rnNoiseUnavailableLogged = true;
-                    }
-                }
-            }
-            double squares = 0; for (var i = 0; i < analysisBuffer.Length; i++) squares += analysisBuffer[i] * analysisBuffer[i];
+            double squares = 0; for (var i = 0; i < sampleBuffer.Length; i++) squares += sampleBuffer[i] * sampleBuffer[i];
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs > silenceDb ? 1 : 0;
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
             bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
             VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;
-            if (recognizedVoice) VoiceSamplesReady?.Invoke(analysisBuffer, voiceGrade);
+            if (recognizedVoice)
+            {
+                lastVoiceGrade = voiceGrade;
+                voiceHangoverFramesRemaining = VoiceHangoverFrames;
+                VoiceSamplesReady?.Invoke(sampleBuffer, voiceGrade);
+            }
+            else if (voiceHangoverFramesRemaining > 0)
+            {
+                voiceHangoverFramesRemaining--;
+                VoiceSamplesReady?.Invoke(sampleBuffer, lastVoiceGrade);
+            }
             if (brightnessMode == BrightnessMode.MarcoMinus && level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames
                 && microphoneFootDots != null && Time.unscaledTime >= nextFootDotTime)
             {
@@ -317,20 +306,29 @@ namespace Marco.Network.Vision
             status = (level == 3 ? "고함" : level == 2 ? "대화" : "속삭임") + "  " + dbfs.ToString("F0") + " dBFS · 주변이 드러납니다";
         }
 
-        private void TryCreateDenoiser()
+        private void ProcessAvailableMicrophoneFrames()
         {
-            try
+            int position = Microphone.GetPosition(microphoneDevice);
+            if (position < 0 || microphoneClip == null) return;
+
+            int availableSamples = position >= microphoneReadPosition
+                ? position - microphoneReadPosition
+                : microphoneClip.samples - microphoneReadPosition + position;
+
+            // The 1-second microphone ring buffer was overwritten while the main thread stalled.
+            // Resume from the current position instead of replaying stale or discontinuous samples.
+            if (availableSamples > microphoneClip.samples - FrameSamples)
             {
-                rnNoiseDenoiser = new Denoiser();
+                microphoneReadPosition = position;
+                return;
             }
-            catch (Exception exception)
+
+            while (availableSamples >= FrameSamples)
             {
-                rnNoiseDenoiser = null;
-                if (!rnNoiseUnavailableLogged)
-                {
-                    Debug.LogWarning("RNNoise microphone suppression is unavailable on this platform; using the raw microphone signal. " + exception.Message, this);
-                    rnNoiseUnavailableLogged = true;
-                }
+                if (!microphoneClip.GetData(microphoneReadBuffer, microphoneReadPosition)) return;
+                microphoneReadPosition = (microphoneReadPosition + FrameSamples) % microphoneClip.samples;
+                availableSamples -= FrameSamples;
+                ProcessFrame();
             }
         }
 

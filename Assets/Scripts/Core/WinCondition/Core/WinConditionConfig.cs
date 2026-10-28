@@ -49,6 +49,21 @@ namespace Marco.Core.WinCondition
         // TODO(기획 확인): 30초 동안 균등 간격으로 3번 알리는 것으로 임시 처리. 정확한 타이밍 미정.
         public int ReflowRippleEventCount = 3;
 
+        // ── 종반 압박 (SuddenDeath, 기획서 6.2-1 · 부록 A [종반 압박]) ───────────────────────────────
+        // 모두 "라운드 잔여 시간" 기준이다. 제한시간이 바뀌어도 그대로 동작한다.
+
+        // 잔여 2분: 맵 전체 저역 드론 (연출만, 규칙 변화 없음)
+        public float SuddenDeathDroneRemainingSeconds = 120f;
+
+        // 잔여 1분: 술래 이동속도 +5% 추가. 1회 적용 후 라운드 끝까지 유지, 기존 속도에 곱한다(5.30 → 5.57 m/s)
+        public float SuddenDeathSeekerBoostRemainingSeconds = 60f;
+        public float SuddenDeathSeekerSpeedMultiplier = 1.05f;
+
+        // 잔여 30초: 양쪽 출구에서 고함급(22m) 파문, 5초 주기 6회 — 잔여 30 · 25 · 20 · 15 · 10 · 5초
+        public float SuddenDeathExitPulseRemainingSeconds = 30f;
+        public float SuddenDeathExitPulseIntervalSeconds = 5f;
+        public int SuddenDeathExitPulseCount = 6;
+
         // ── 최후 생존자 페이즈 (LastSurvivorPhase) ───────────────────────────────
         public float LastSurvivorPhaseDurationSeconds = 90f;
 

@@ -85987,7 +85987,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81111111111111111111111111111111, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  useRnNoise: 1
   brightnessMode: 0
   worldLightColor: {r: 1, g: 1, b: 1, a: 1}
   silenceFloorDb: -60
@@ -86339,7 +86338,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81111111111111111111111111111111, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  useRnNoise: 1
   brightnessMode: 0
   worldLightColor: {r: 1, g: 1, b: 1, a: 1}
   silenceFloorDb: -60

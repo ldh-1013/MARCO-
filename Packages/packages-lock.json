@@ -1,12 +1,5 @@
 {
   "dependencies": {
-    "com.adrenak.rnnoise4unity": {
-      "version": "1.0.0",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://registry.npmjs.org"
-    },
     "com.alven.fishnet.unitytransport": {
       "version": "https://github.com/ooonush/FishyUnityTransport.git?path=Assets/FishNet/Plugins/FishyUnityTransport#1.2.0",
       "depth": 0,
