@@ -132,6 +132,8 @@ namespace Marco.Network.Round
         private readonly SyncVar<float> drainHatchProgress = new();
         // Set once at 1:00 left and kept until the round is reset (기획서 6.2-1).
         private readonly SyncVar<bool> seekerSpeedBoosted = new();
+        // Fixed for the round from the connected player count at round start (기획서 6.2).
+        private readonly SyncVar<float> seekerPopulationSpeedMultiplier = new();
 
         private readonly Dictionary<int, float> nextTagTimes = new();
         private readonly Dictionary<int, HealingChannel> healingChannels = new();
@@ -172,9 +174,15 @@ namespace Marco.Network.Round
         public int FullHalves => Mathf.RoundToInt(startLives * 2);
         private int WoundedHalves => Mathf.RoundToInt(woundedLives * 2);
 
-        // Owner side: movement multiplier for the lives the server last sent (1.5 → −15%).
+        // Owner side: 1.5 lives or less applies the recovery movement penalty.
         public float SpeedMultiplierFor(int halves) =>
-            halves > WoundedHalves && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+            halves > 0 && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+
+        public WinConditionConfig MovementConfig => DefaultConfig;
+        public float SeekerChaseSpeed => DefaultConfig.SeekerBaseMoveSpeed *
+            (seekerPopulationSpeedMultiplier.Value > 0f
+                ? seekerPopulationSpeedMultiplier.Value
+                : DefaultConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count));
 
         // Owner side: sudden death +5% for the Seeker once the server has applied it (기획서 6.2-1, multiplied).
         public float SeekerSpeedMultiplierFor(PlayerRole role) =>
@@ -315,12 +323,15 @@ namespace Marco.Network.Round
             roster = NetworkManager.GetComponent<NetworkPlayerRoster>();
             // The Seeker is drawn once per round, before RoundState reads the Runner count.
             if (NetworkManager.TryGetComponent(out RoleAssigner roles)) roles.AssignRoles();
+            seekerSpeedBoosted.Value = false;
+            seekerPopulationSpeedMultiplier.Value = DefaultConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count);
             // Everyone connected now takes part, including last round's spectators.
             foreach (var player in NetworkPlayer.All)
             {
                 player.SetStatus(PlayerStatus.Alive);
                 player.SetCrouching(false);
                 player.SetTreatmentLocked(false);
+                if (player.TryGetComponent(out PlayerMovement movement)) movement.ResetSprintStamina();
             }
             MovePlayersToSpawn();
             foreach (var player in NetworkPlayer.All)
@@ -417,6 +428,7 @@ namespace Marco.Network.Round
             hasDrainHatch.Value = false;
             drainHatchProgress.Value = 0;
             seekerSpeedBoosted.Value = false;
+            seekerPopulationSpeedMultiplier.Value = 1f;
         }
 
         // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
@@ -677,16 +689,53 @@ namespace Marco.Network.Round
 
             clickerHoldings[playerId] = false;
             source.SendClickerCount(0);
+            ApplyClickerEffect(source);
+            return true;
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // F7 exercises the real clicker effect without consuming a pickup. A Seeker uses the
+        // nearest living Runner as the simulated source so the local Seeker view is testable.
+        [Server]
+        public bool TryClickerFlashTest(int requesterId)
+        {
+            if (valves == null || result.Value != RoundResult.InProgress ||
+                !NetworkPlayer.TryGet(requesterId, out NetworkPlayer requester) || requester.Status != PlayerStatus.Alive)
+                return false;
+
+            NetworkPlayer source = null;
+            if (!TryGetAliveRunner(requesterId, out source))
+            {
+                float nearest = float.MaxValue;
+                foreach (NetworkPlayer candidate in NetworkPlayer.All)
+                {
+                    if (candidate == null || candidate.Role != PlayerRole.Runner || candidate.Status != PlayerStatus.Alive) continue;
+                    float distance = (candidate.transform.position - requester.transform.position).sqrMagnitude;
+                    if (distance >= nearest) continue;
+                    nearest = distance;
+                    source = candidate;
+                }
+            }
+
+            if (source == null) return false;
+            ApplyClickerEffect(source);
+            return true;
+        }
+#endif
+
+        private void ApplyClickerEffect(NetworkPlayer source)
+        {
+            Vector3 flashOrigin = source.transform.position;
+            if (source.TryGetComponent(out CharacterController sourceController))
+                flashOrigin = sourceController.bounds.center;
             foreach (NetworkPlayer listener in NetworkPlayer.All)
             {
                 if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
-                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius ||
-                    !HasClearClickerPath(source, listener))
+                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius)
                     continue;
-                Vector3 flashOrigin = source.transform.position;
-                if (source.TryGetComponent(out CharacterController sourceController))
-                    flashOrigin = sourceController.bounds.center;
-                ClickerFlashTarget(listener.Owner, flashOrigin);
+                // Nearby players all receive the terrain flash; entity concealment is applied only
+                // on the Seeker's client and only to this source Runner plus nearby props.
+                ClickerFlashTarget(listener.Owner, flashOrigin, source.PlayerId);
             }
 
             float stunRadiusSquared = ClickerStunRadius * ClickerStunRadius;
@@ -702,7 +751,6 @@ namespace Marco.Network.Round
                 clickerStunUntil[listener.PlayerId] = stunUntil;
                 listener.SetStunned(true);
             }
-            return true;
         }
 
         private void TickClickerStuns()
@@ -746,7 +794,7 @@ namespace Marco.Network.Round
         }
 
         [TargetRpc]
-        private void ClickerFlashTarget(NetworkConnection conn, Vector3 flashOrigin)
+        private void ClickerFlashTarget(NetworkConnection conn, Vector3 flashOrigin, int sourcePlayerId)
         {
             NetworkPlayer localPlayer = NetworkPlayer.Local;
             Camera camera = localPlayer != null ? localPlayer.GetComponentInChildren<Camera>(true) : null;
@@ -757,7 +805,7 @@ namespace Marco.Network.Round
                 return;
             }
 
-            vision.TriggerClickerCameraFlash(flashOrigin);
+            vision.TriggerClickerCameraFlash(flashOrigin, sourcePlayerId);
         }
 
         [Server]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Voice;
 using UnityEngine;
@@ -64,6 +65,7 @@ namespace Marco.Network.Vision
         private readonly Dictionary<Renderer, bool> clickerHiddenRenderers = new();
         private MaterialPropertyBlock clickerVisibilityProperties;
         private float clickerVisibilityUntil;
+        private int clickerFlashSourcePlayerId = -1;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -368,10 +370,11 @@ namespace Marco.Network.Vision
         public void TriggerClickerCameraFlash()
         {
             Vector3 origin = visionCamera != null ? visionCamera.transform.position : transform.position;
-            TriggerClickerCameraFlash(origin);
+            int sourcePlayerId = NetworkPlayer.Local != null ? NetworkPlayer.Local.PlayerId : -1;
+            TriggerClickerCameraFlash(origin, sourcePlayerId);
         }
 
-        public void TriggerClickerCameraFlash(Vector3 origin)
+        public void TriggerClickerCameraFlash(Vector3 origin, int sourcePlayerId)
         {
             clickerFlashActive = true;
             clickerFlashStartedAt = Time.unscaledTime;
@@ -379,16 +382,21 @@ namespace Marco.Network.Vision
             clickerFlashOrigin = origin;
             if (terrainAfterglow == null)
                 terrainAfterglow = GetComponent<TerrainAfterglow>() ?? gameObject.AddComponent<TerrainAfterglow>();
-            BeginClickerVisibilitySuppression(origin);
+            NetworkPlayer localPlayer = NetworkPlayer.Local;
+            if (localPlayer != null && localPlayer.Role == PlayerRole.Seeker)
+                BeginClickerVisibilitySuppression(origin, sourcePlayerId);
+            else
+                RestoreClickerVisibilitySuppression();
             UpdateClickerFlashShader();
             terrainAfterglow.CaptureFlash(origin, ClickerCameraFlashRadius, ClickerCameraFlashSeconds,
                 ClickerAfterglowSeconds, ClickerAfterglowPeakOpacity);
         }
 
-        private void BeginClickerVisibilitySuppression(Vector3 origin)
+        private void BeginClickerVisibilitySuppression(Vector3 origin, int sourcePlayerId)
         {
             RestoreClickerVisibilitySuppression();
             clickerFlashOrigin = origin;
+            clickerFlashSourcePlayerId = sourcePlayerId;
             clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
             UpdateClickerVisibilitySuppression();
         }
@@ -406,13 +414,29 @@ namespace Marco.Network.Vision
                 clickerVisibilityProperties = new MaterialPropertyBlock();
             foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
             {
-                if (renderer == null || clickerHiddenRenderers.ContainsKey(renderer) ||
-                    renderer.bounds.SqrDistance(clickerFlashOrigin) > radiusSquared)
+                if (renderer == null || renderer.bounds.SqrDistance(clickerFlashOrigin) > radiusSquared)
                     continue;
 
-                renderer.GetPropertyBlock(clickerVisibilityProperties);
-                bool isTerrain = clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f;
-                if (isTerrain && renderer.GetComponentInParent<NetworkPlayer>(true) == null) continue;
+                if (clickerHiddenRenderers.ContainsKey(renderer))
+                {
+                    // Keep the local concealment in force if an animated/managed renderer is
+                    // re-enabled while the short flash is still active.
+                    renderer.forceRenderingOff = true;
+                    continue;
+                }
+
+                NetworkPlayer renderedPlayer = renderer.GetComponentInParent<NetworkPlayer>(true);
+                if (renderedPlayer != null)
+                {
+                    // Hide the Runner who used the item, but leave the Seeker and other characters
+                    // visible. This suppression runs only on the local Seeker's client.
+                    if (renderedPlayer.PlayerId != clickerFlashSourcePlayerId) continue;
+                }
+                else
+                {
+                    renderer.GetPropertyBlock(clickerVisibilityProperties);
+                    if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                }
 
                 clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
                 renderer.forceRenderingOff = true;

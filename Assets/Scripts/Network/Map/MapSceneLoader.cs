@@ -10,6 +10,7 @@ namespace Marco.Network.Map
     public sealed class MapSceneLoader : MonoBehaviour
     {
         private const string MapGamePointsRoot = "GamePoints";
+        private const string DesignOnlyCandidateMarker = "CandidateMarker_NoSpawnLogic";
 
         [SerializeField] private string mapScene = "IndoorPool_v1_2";
         // Names under the map's GamePoints to hide at runtime, e.g. Valve_A, Drain_1.
@@ -49,6 +50,10 @@ namespace Marco.Network.Map
                 // PoolV12Viewer lives in Assembly-CSharp, which this assembly cannot reference.
                 foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
                     if (behaviour.GetType().Name == "PoolV12Viewer") behaviour.enabled = false;
+                // Spawn-candidate cubes are editor/map-design markers only; actual pickups are
+                // spawned by NetworkRound. Keep them in the source map, but never show them in-game.
+                foreach (var transform in root.GetComponentsInChildren<Transform>(true))
+                    if (transform.name == DesignOnlyCandidateMarker) transform.gameObject.SetActive(false);
                 if (root.name == MapGamePointsRoot) HidePoints(root.transform);
                 if (Array.IndexOf(hiddenMapRoots, root.name) >= 0) root.SetActive(false);
             }

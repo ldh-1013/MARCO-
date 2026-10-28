@@ -1,4 +1,5 @@
 using UnityEngine;
+using Marco.Network.Player;
 
 namespace Marco.Network.Vision
 {
@@ -16,7 +17,14 @@ namespace Marco.Network.Vision
         private void Update()
         {
             if (vision == null) return;
-            if (Input.GetKeyDown(KeyCode.F7)) vision.TriggerClickerCameraFlash();
+            if (Input.GetKeyDown(KeyCode.F7))
+            {
+                NetworkPlayer localPlayer = NetworkPlayer.Local;
+                if (localPlayer != null && localPlayer.TryGetComponent(out PlayerInteractor interactor))
+                    interactor.RequestClickerFlashTest();
+                else
+                    vision.TriggerClickerCameraFlash();
+            }
 
             if (!Input.GetKeyDown(KeyCode.F8)) return;
             bool enabledVision = !vision.DevelopmentFullVision; vision.SetDevelopmentFullVision(enabledVision);
@@ -26,8 +34,8 @@ namespace Marco.Network.Vision
         {
             if (vision == null) return;
             GUI.Label(new Rect(Screen.width - 390, 25, 355, 28), vision.DevelopmentFullVision
-                ? "[DEV] 전체 시야 ON · F8로 해제 · F7 찰칵 플래시"
-                : "[DEV] F8 전체 시야 켜기 · F7 찰칵 플래시 테스트");
+                ? "[DEV] 전체 시야 ON · F8로 해제 · F7 찰칵 기능 테스트 (아이템 유지)"
+                : "[DEV] F8 전체 시야 켜기 · F7 찰칵 기능 테스트 (아이템 유지)");
         }
 #endif
     }

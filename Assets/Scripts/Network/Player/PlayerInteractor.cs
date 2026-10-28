@@ -228,6 +228,13 @@ namespace Marco.Network.Player
         [ServerRpc]
         private void UseClickerServer() => NetworkRound.Instance?.TryUseClicker(OwnerId);
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void RequestClickerFlashTest() => ClickerFlashTestServer();
+
+        [ServerRpc]
+        private void ClickerFlashTestServer() => NetworkRound.Instance?.TryClickerFlashTest(OwnerId);
+#endif
+
         [ServerRpc]
         private void BeginBandageServer() => NetworkRound.Instance?.TryBeginBandage(OwnerId);
 
