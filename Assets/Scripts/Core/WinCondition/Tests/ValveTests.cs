@@ -194,5 +194,103 @@ namespace Marco.Core.WinCondition.Tests
 
             CollectionAssert.AreEqual(new[] { ValveStatus.Rotating, ValveStatus.Open }, observed);
         }
+
+        // ── 재개방 4.0초 (기획서 6.1 · 부록 A [밸브], 10-26) ───────────────────────────────
+
+        // 한 번 열었다가 역류로 완전히 닫힌 밸브 (유예 240 + 역류 30)
+        private static Valve ReopenableClosedValve(WinConditionConfig config)
+        {
+            var valve = new Valve(config);
+            valve.BeginWork(1);
+            valve.Tick(8f);
+            valve.EndWork(1);
+            valve.Tick(270f);
+            Assert.AreEqual(ValveStatus.Closed, valve.Status);
+            return valve;
+        }
+
+        [Test]
+        public void NewValve_HasNotReachedOpen()
+        {
+            var valve = new Valve(new WinConditionConfig());
+
+            Assert.IsFalse(valve.HasReachedOpen);
+        }
+
+        [Test]
+        public void ReachingOpen_SetsReopenFlag()
+        {
+            var valve = new Valve(new WinConditionConfig());
+
+            valve.BeginWork(1);
+            valve.Tick(7f);
+            Assert.IsFalse(valve.HasReachedOpen);
+
+            valve.Tick(1f);
+            Assert.IsTrue(valve.HasReachedOpen);
+        }
+
+        // 역류로 Closed가 되어도 플래그는 유지된다
+        [Test]
+        public void ReopenFlag_SurvivesFullReflowClose()
+        {
+            var valve = ReopenableClosedValve(new WinConditionConfig());
+
+            Assert.IsTrue(valve.HasReachedOpen);
+        }
+
+        [TestCase(1, 3.9f, 4.05f)]  // 1인 1 / 0.25 = 4.0초
+        [TestCase(2, 2.4f, 2.55f)]  // 2인 1 / (0.25 × 1.6) = 2.5초
+        [TestCase(3, 2.1f, 2.15f)]  // 3인 1 / (0.25 × 1.9) = 2.105...초
+        public void Reopen_AfterReflowClose_UsesReopenTime(int workers, float justBefore, float justAfter)
+        {
+            var valve = ReopenableClosedValve(new WinConditionConfig());
+
+            for (int id = 1; id <= workers; id++) valve.BeginWork(id);
+            valve.Tick(justBefore);
+
+            Assert.AreEqual(ValveStatus.Rotating, valve.Status);
+
+            valve.Tick(justAfter - justBefore);
+
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+            Assert.AreEqual(1f, valve.Progress, Tolerance);
+        }
+
+        // 감쇠율은 재개방에서도 그대로다: 유예 3초 후 -0.10/sec
+        [Test]
+        public void Reopen_DecayIsUnchanged()
+        {
+            var valve = ReopenableClosedValve(new WinConditionConfig());
+
+            valve.BeginWork(1);
+            valve.Tick(2f); // 0.25 * 2 = 0.5
+            valve.EndWork(1);
+            valve.Tick(3f); // 유예
+            valve.Tick(1f); // 0.5 - 0.10
+
+            Assert.AreEqual(0.4f, valve.Progress, Tolerance);
+        }
+
+        // 새 라운드는 ValveBoard(Valve)를 새로 만든다 → 플래그가 리셋되어 다시 8.0초
+        [Test]
+        public void NewRoundBoard_ResetsReopenFlag_BackTo8Seconds()
+        {
+            var config = new WinConditionConfig();
+            var previousRound = new ValveBoard(new[] { ValveId.A }, config);
+            previousRound.GetValve(ValveId.A).BeginWork(1);
+            previousRound.Tick(8f);
+            Assert.IsTrue(previousRound.GetValve(ValveId.A).HasReachedOpen);
+
+            var nextRound = new ValveBoard(new[] { ValveId.A }, config);
+            var valve = nextRound.GetValve(ValveId.A);
+
+            Assert.IsFalse(valve.HasReachedOpen);
+            valve.BeginWork(1);
+            nextRound.Tick(7f);
+            Assert.AreEqual(ValveStatus.Rotating, valve.Status);
+            nextRound.Tick(1f);
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+        }
     }
 }

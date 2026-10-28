@@ -12,8 +12,12 @@ namespace Marco.Network.Round
 
         public RoundEventRelay(NetworkRound owner) => this.owner = owner;
 
-        public void OnValveStatusChanged(ValveId valveId, ValveStatus status) =>
+        // Open (first open or rework) → map-wide 2D cue for everyone; the valve id stays on the server.
+        public void OnValveStatusChanged(ValveId valveId, ValveStatus status)
+        {
             Debug.Log($"[MARCO] Valve {valveId}: {status}");
+            if (status == ValveStatus.Open) owner.ValveOpenedObservers();
+        }
 
         public void OnValveProgressChanged(ValveId valveId, float progress) { }
 

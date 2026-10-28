@@ -187,9 +187,22 @@ namespace Marco.Network.Player
             return best < float.MaxValue;
         }
 
+        // Any rejection (inactive, already open, not a Runner, out of range) gets the same jam cue, so the
+        // reply never tells the Seeker or anyone else which valves are active (기획서 6.1-0, 10-26).
         [ServerRpc]
-        private void BeginWorkServer(ValveId valveId) =>
-            NetworkRound.Instance?.TryBeginWork(OwnerId, valveId, transform.position);
+        private void BeginWorkServer(ValveId valveId)
+        {
+            var round = NetworkRound.Instance;
+            if (round == null || !round.TryBeginWork(OwnerId, valveId, transform.position)) ValveJamTarget(Owner, valveId);
+        }
+
+        // Local only: just the presser hears it, and it makes no pulse (기획서 6.1-0).
+        [TargetRpc]
+        private void ValveJamTarget(NetworkConnection conn, ValveId valveId)
+        {
+            if (workingValve == valveId) workingValve = null;
+            if (ValveView.TryGet(valveId, out var view)) view.PlayJam();
+        }
 
         [ServerRpc]
         private void EndWorkServer(ValveId valveId) => NetworkRound.Instance?.EndWork(OwnerId, valveId);
