@@ -5,8 +5,10 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Managing.Transporting;
 using FishNet.Object;
+using FishNet.Transporting;
 using FishNet.Transporting.Multipass;
 using FishNet.Transporting.Tugboat;
+using FishNet.Transporting.UTP;
 using Marco.Network.Character;
 using Marco.Network.Escape;
 using Marco.Network.Lobby;
@@ -21,7 +23,6 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using FishySteamworksTransport = FishySteamworks.FishySteamworks;
 
 namespace Marco.Network.Editor
 {
@@ -40,8 +41,8 @@ namespace Marco.Network.Editor
         private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
-        // Prototype room limit: 16 including the host.
-        private const int MaxPlayers = 16;
+        // Game design: six players total, so each transport accepts up to five remote peers.
+        private const int MaxPlayers = 6;
 
         private static readonly Vector3[] SpawnPositions =
             { new(-2, 1, -2), new(2, 1, -2), new(-2, 1, 2), new(2, 1, 2) };
@@ -85,7 +86,7 @@ namespace Marco.Network.Editor
             return playerPrefab;
         }
 
-        // Lobby (LAN + Steam) + HUD + spawning + roles; callers fill spawner.Spawns.
+        // Lobby (LAN + Unity Relay) + HUD + spawning + roles; callers fill spawner.Spawns.
         internal static PlayerSpawner CreateNetworkManager(NetworkObject playerPrefab)
         {
             var manager = new GameObject("NetworkManager");
@@ -101,49 +102,86 @@ namespace Marco.Network.Editor
             return spawner;
         }
 
-        [MenuItem("MARCO/Network/Update Scene Lobby")]
-        public static void UpdateSceneLobby()
+        [MenuItem("MARCO/Network/Migrate Scenes To Unity Relay")]
+        public static void MigrateScenesToUnityRelay()
         {
             foreach (string path in new[] { ScenePath, NetworkMapSceneTools.ScenePath })
             {
                 if (!File.Exists(path)) continue;
                 var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
                 var manager = Object.FindAnyObjectByType<NetworkManager>();
-                if (manager == null || manager.GetComponent<LobbyMenu>() != null) continue;
-                AddSession(manager.gameObject);
+                if (manager == null) continue;
+                ConfigureRelaySession(manager.gameObject);
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
-                Debug.Log($"[MARCO] Lobby added: {path}");
+                Debug.Log($"[MARCO] Scene switched to Unity Relay: {path}");
             }
         }
 
-        // LAN (Tugboat) and Steam (FishySteamworks P2P) under one Multipass. GlobalServerActions is off so
-        // LanConnector starts only the chosen transport's server, as the prototype kept the two apart.
+        // LAN (Tugboat) and Unity Relay (FishyUnityTransport) share a Multipass. GlobalServerActions is
+        // off so LanConnector starts only the selected transport's server.
         private static void AddSession(GameObject manager)
         {
             var tugboat = manager.AddComponent<Tugboat>();
-            var steam = manager.AddComponent<FishySteamworksTransport>();
+            var relay = manager.AddComponent<FishyUnityTransport>();
             var multipass = manager.AddComponent<Multipass>();
             multipass.GlobalServerActions = false;
             var serialized = new SerializedObject(multipass);
             var transports = serialized.FindProperty("_transports");
             transports.arraySize = 2;
             transports.GetArrayElementAtIndex(0).objectReferenceValue = tugboat;
-            transports.GetArrayElementAtIndex(1).objectReferenceValue = steam;
+            transports.GetArrayElementAtIndex(1).objectReferenceValue = relay;
             serialized.ApplyModifiedPropertiesWithoutUndo();
-            SetInt(tugboat, "_maximumClients", MaxPlayers);
-            SetInt(steam, "_maximumClients", MaxPlayers);
-            var steamSettings = new SerializedObject(steam);
-            steamSettings.FindProperty("_peerToPeer").boolValue = true;
-            steamSettings.ApplyModifiedPropertiesWithoutUndo();
+            SetInt(tugboat, "_maximumClients", MaxPlayers - 1);
+            relay.SetMaximumClients(MaxPlayers - 1);
             var transportManager = manager.GetComponent<TransportManager>();
             if (transportManager == null) transportManager = manager.AddComponent<TransportManager>();
             transportManager.Transport = multipass;
             EditorUtility.SetDirty(transportManager);
 
             if (manager.GetComponent<LanConnector>() == null) manager.AddComponent<LanConnector>();
-            manager.AddComponent<SteamLobby>();
-            manager.AddComponent<LobbyMenu>();
+            if (manager.GetComponent<UnityRelayLobby>() == null) manager.AddComponent<UnityRelayLobby>();
+            if (manager.GetComponent<LobbyMenu>() == null) manager.AddComponent<LobbyMenu>();
+        }
+
+        private static void ConfigureRelaySession(GameObject manager)
+        {
+            var tugboat = manager.GetComponent<Tugboat>();
+            if (tugboat == null) tugboat = manager.AddComponent<Tugboat>();
+            var relay = manager.GetComponent<FishyUnityTransport>();
+            if (relay == null) relay = manager.AddComponent<FishyUnityTransport>();
+            relay.SetMaximumClients(MaxPlayers - 1);
+            SetInt(tugboat, "_maximumClients", MaxPlayers - 1);
+
+            var multipass = manager.GetComponent<Multipass>();
+            if (multipass == null) multipass = manager.AddComponent<Multipass>();
+            multipass.GlobalServerActions = false;
+            var serialized = new SerializedObject(multipass);
+            var transports = serialized.FindProperty("_transports");
+            transports.arraySize = 2;
+            transports.GetArrayElementAtIndex(0).objectReferenceValue = tugboat;
+            transports.GetArrayElementAtIndex(1).objectReferenceValue = relay;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            foreach (var transport in manager.GetComponents<Transport>())
+                if (transport != tugboat && transport != relay && transport != multipass)
+                    Object.DestroyImmediate(transport);
+
+            var transportManager = manager.GetComponent<TransportManager>();
+            if (transportManager == null) transportManager = manager.AddComponent<TransportManager>();
+            transportManager.Transport = multipass;
+            if (manager.GetComponent<LanConnector>() == null) manager.AddComponent<LanConnector>();
+
+            // Remove the menu before the old lobby shim so Unity no longer sees its serialized
+            // RequireComponent dependency while we replace the component type.
+            var legacyMenu = manager.GetComponent<LobbyMenu>();
+            if (legacyMenu != null) Object.DestroyImmediate(legacyMenu);
+
+            var legacyLobby = manager.GetComponent<SteamLobby>();
+            if (legacyLobby != null) Object.DestroyImmediate(legacyLobby);
+            if (manager.GetComponent<UnityRelayLobby>() == null) manager.AddComponent<UnityRelayLobby>();
+            if (manager.GetComponent<LobbyMenu>() == null) manager.AddComponent<LobbyMenu>();
+            EditorUtility.SetDirty(transportManager);
         }
 
         private static void SetInt(Object target, string field, int value)

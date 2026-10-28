@@ -5,7 +5,7 @@
         "Marco.Network",
         "FishNet.Runtime",
         "Marco.Core.WinCondition",
-        "FishySteamworks"
+        "FishyUnityTransport"
     ],
     "includePlatforms": [
         "Editor"

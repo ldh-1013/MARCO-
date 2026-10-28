@@ -5,17 +5,15 @@ using FishNet.Managing;
 using FishNet.Transporting;
 using FishNet.Transporting.Multipass;
 using FishNet.Transporting.Tugboat;
+using FishNet.Transporting.UTP;
 using UnityEngine;
-using FishySteamworksTransport = FishySteamworks.FishySteamworks;
 
 namespace Marco.Network
 {
     public enum LanConnectionStatus { Offline, Connecting, Connected, Failed }
 
-    // Starts and stops the FishNet session. Replaces the prototype's TCP room (RoomSessionPrototype):
-    // LAN goes over Tugboat (UDP 7770), Steam over FishySteamworks P2P. With a Multipass transport
-    // (GlobalServerActions off) only the chosen transport's server runs; without one (NetworkTest)
-    // the single transport is used for LAN.
+    // Starts and stops FishNet sessions over LAN (Tugboat) or Unity Relay (FishyUnityTransport).
+    // With Multipass (GlobalServerActions off), only the selected transport's server runs.
     [RequireComponent(typeof(NetworkManager))]
     public sealed class LanConnector : MonoBehaviour
     {
@@ -25,13 +23,13 @@ namespace Marco.Network
         private NetworkManager networkManager;
         private Multipass multipass;
         private float connectDeadline;
-        private bool startSteamClientWhenServerStarts;
+        private bool startRelayClientWhenServerStarts;
         private bool runInBackgroundBefore;
         private bool keepingAliveInBackground;
 
         public LanConnectionStatus Status { get; private set; } = LanConnectionStatus.Offline;
         public bool IsHost => networkManager.IsServerStarted;
-        public bool UsingSteam { get; private set; }
+        public bool UsingRelay { get; private set; }
         public bool TimedOut { get; private set; }
         public string AdvertisedIp { get; private set; } = "127.0.0.1";
         // "IP:port" a LAN guest types in, as the prototype's 초대 IP.
@@ -90,28 +88,27 @@ namespace Marco.Network
             return StartClient(() => networkManager.ClientManager.StartConnection(ip.ToString(), port));
         }
 
-        // The Steam host's own client joins through FishySteamworks' client-host socket, which needs
-        // the server to be up first (as in the prototype).
-        public bool HostSteam()
+        // The relay host starts its local FishNet client after its relay server has started.
+        public bool HostRelay()
         {
-            if (!CanStart || multipass == null) return false;
-            UseClientTransport<FishySteamworksTransport>(true);
-            startSteamClientWhenServerStarts = true;
-            if (StartServer<FishySteamworksTransport>()) return true;
-            startSteamClientWhenServerStarts = false;
+            if (!CanStart || multipass == null || Find<FishyUnityTransport>() == null) return false;
+            UseClientTransport<FishyUnityTransport>(true);
+            startRelayClientWhenServerStarts = true;
+            if (StartServer<FishyUnityTransport>()) return true;
+            startRelayClientWhenServerStarts = false;
             return false;
         }
 
-        public bool JoinSteam(ulong hostSteamId)
+        public bool JoinRelay()
         {
-            if (!CanStart || multipass == null) return false;
-            UseClientTransport<FishySteamworksTransport>(true);
-            return StartClient(() => networkManager.ClientManager.StartConnection(hostSteamId.ToString()));
+            if (!CanStart || multipass == null || Find<FishyUnityTransport>() == null) return false;
+            UseClientTransport<FishyUnityTransport>(true);
+            return StartClient(() => networkManager.ClientManager.StartConnection());
         }
 
         public void Leave()
         {
-            startSteamClientWhenServerStarts = false;
+            startRelayClientWhenServerStarts = false;
             if (networkManager.IsClientStarted) networkManager.ClientManager.StopConnection();
             StopServer();
             Status = LanConnectionStatus.Offline;
@@ -153,9 +150,9 @@ namespace Marco.Network
             return false;
         }
 
-        private void UseClientTransport<T>(bool steam) where T : Transport
+        private void UseClientTransport<T>(bool relay) where T : Transport
         {
-            UsingSteam = steam;
+            UsingRelay = relay;
             if (multipass != null) multipass.SetClientTransport<T>();
         }
 
@@ -209,9 +206,9 @@ namespace Marco.Network
 
         private void OnServerConnectionState(ServerConnectionStateArgs args)
         {
-            if (args.ConnectionState == LocalConnectionState.Started && startSteamClientWhenServerStarts)
+            if (args.ConnectionState == LocalConnectionState.Started && startRelayClientWhenServerStarts)
             {
-                startSteamClientWhenServerStarts = false;
+                startRelayClientWhenServerStarts = false;
                 StartClient(() => networkManager.ClientManager.StartConnection());
             }
             ServerStateChanged?.Invoke(args);

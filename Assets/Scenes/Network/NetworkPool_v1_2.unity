@@ -743,16 +743,16 @@ GameObject:
   - component: {fileID: 511556158}
   - component: {fileID: 511556157}
   - component: {fileID: 511556156}
-  - component: {fileID: 511556155}
   - component: {fileID: 511556154}
   - component: {fileID: 511556153}
   - component: {fileID: 511556152}
-  - component: {fileID: 511556151}
-  - component: {fileID: 511556150}
   - component: {fileID: 511556149}
   - component: {fileID: 511556148}
   - component: {fileID: 511556147}
   - component: {fileID: 511556146}
+  - component: {fileID: 511556159}
+  - component: {fileID: 511556161}
+  - component: {fileID: 511556160}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -814,33 +814,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7867e1f85b58ea64cad12addf3a2c14b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.NetworkTestHud
---- !u!114 &511556150
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3a1c208084f90ac4b8a44e1009b69696, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.LobbyMenu
-  menuPosition: {x: 8, y: 330}
-  nicknamePosition: {x: 350, y: 140}
-  menuFontSize: 40
---- !u!114 &511556151
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bcda1f73f01ae5040a09f07e23bdf3d5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.SteamLobby
 --- !u!114 &511556152
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -890,24 +863,7 @@ MonoBehaviour:
   GlobalServerActions: 0
   _transports:
   - {fileID: 511556156}
-  - {fileID: 511556155}
---- !u!114 &511556155
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 28b19962fe839804180bd02ce1a545f0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishySteamworks::FishySteamworks.FishySteamworks
-  _serverBindAddress: 
-  _port: 7770
-  _maximumClients: 16
-  _peerToPeer: 1
-  _clientAddress: 
+  - {fileID: 511556159}
 --- !u!114 &511556156
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -927,7 +883,7 @@ MonoBehaviour:
   _enableIpv6: 1
   _ipv6BindAddress: 
   _port: 7770
-  _maximumClients: 16
+  _maximumClients: 5
   _clientAddress: localhost
 --- !u!114 &511556157
 MonoBehaviour:
@@ -963,6 +919,63 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &511556159
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cdcee4396754c63a1574492499cffc8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishyUnityTransport::FishNet.Transporting.UTP.FishyUnityTransport
+  m_ProtocolType: 0
+  m_UseWebSockets: 0
+  m_UseEncryption: 0
+  m_MaxPacketQueueSize: 128
+  m_MaxPayloadSize: 6144
+  m_HeartbeatTimeoutMS: 500
+  m_ConnectTimeoutMS: 1000
+  m_MaxConnectAttempts: 60
+  m_DisconnectTimeoutMS: 30000
+  ConnectionData:
+    Address: 127.0.0.1
+    Port: 7777
+    ServerListenAddress: 
+  DebugSimulator:
+    PacketDelayMS: 0
+    PacketJitterMS: 0
+    PacketDropRate: 0
+  m_MaximumClients: 5
+--- !u!114 &511556160
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a1c208084f90ac4b8a44e1009b69696, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.LobbyMenu
+  menuPosition: {x: 8, y: 330}
+  nicknamePosition: {x: 350, y: 140}
+  menuFontSize: 40
+--- !u!114 &511556161
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6da7840e09254560a10dbe8ea2c0505b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.UnityRelayLobby
 --- !u!1001 &524507879
 PrefabInstance:
   m_ObjectHideFlags: 0

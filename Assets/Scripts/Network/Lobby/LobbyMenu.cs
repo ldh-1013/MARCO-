@@ -5,10 +5,10 @@ using UnityEngine;
 namespace Marco.Network.Lobby
 {
     // The prototype lobby (RoomSessionPrototype's OnGUI) on top of the FishNet session: nickname,
-    // Create room (LAN / Steam relay + friend invite), Join (IP:port or MARCO- code), the room list,
+    // Create room (Unity Relay), Join (room code or public room list),
     // and the host's 게임 시작, which starts the round. Until then it covers the whole game screen.
     // In game, an unlocked cursor shows 계속하기 / 게임 나가기 · 로비로.
-    [RequireComponent(typeof(LanConnector), typeof(SteamLobby))]
+    [RequireComponent(typeof(LanConnector), typeof(UnityRelayLobby))]
     public sealed class LobbyMenu : MonoBehaviour
     {
         [Header("Lobby layout (1000 x 700 reference canvas)")]
@@ -17,18 +17,16 @@ namespace Marco.Network.Lobby
         [SerializeField, Range(24, 54)] private int menuFontSize = 40;
 
         private LanConnector connector;
-        private SteamLobby steam;
+        private UnityRelayLobby relay;
         private string playerName = "Player";
-        private string joinInput = "";
         private string status = "";
         private Vector2 rosterScroll;
         private bool showJoinInput;
-        private bool showCreateRoomOptions;
         private LanConnectionStatus lastStatus;
         private bool leavingOnPurpose;
         private NetworkPlayer nicknameSentFor;
         private bool wasOpen = true;
-        private bool creatingRoom;
+        private string relayJoinInput = "";
 
         private bool Joined => connector.Status == LanConnectionStatus.Connected;
         private static bool GameStarted => NetworkRound.Instance != null && NetworkRound.Instance.Mode != RoundMode.NotStarted;
@@ -38,7 +36,7 @@ namespace Marco.Network.Lobby
         private void Awake()
         {
             connector = GetComponent<LanConnector>();
-            steam = GetComponent<SteamLobby>();
+            relay = GetComponent<UnityRelayLobby>();
         }
 
         private void Update()
@@ -65,15 +63,17 @@ namespace Marco.Network.Lobby
             if (now == LanConnectionStatus.Connected)
                 status = connector.IsHost ? "친구를 초대하고 참가자를 기다리세요." : "방 입장 완료";
             else if (now == LanConnectionStatus.Failed)
+            {
                 status = connector.TimedOut ? "접속 시간 초과. 주소와 연결 상태를 확인하세요."
-                    : creatingRoom ? "방 생성 실패: 포트가 사용 중인지 확인하세요." : "연결 실패. 주소와 연결 상태를 확인하세요.";
+                    : "연결 실패. 네트워크 상태를 확인하세요.";
+                if (connector.UsingRelay) relay.Stop();
+            }
             else if (now == LanConnectionStatus.Offline && lastStatus == LanConnectionStatus.Connected)
             {
                 if (!leavingOnPurpose) status = "호스트와 연결이 종료되었습니다.";
-                steam.LeaveLobby();
+                relay.LeaveLobby();
             }
             if (now != LanConnectionStatus.Connected) nicknameSentFor = null;
-            if (now != LanConnectionStatus.Connecting) creatingRoom = false;
             leavingOnPurpose = false;
             lastStatus = now;
         }
@@ -81,9 +81,9 @@ namespace Marco.Network.Lobby
         private void Leave(string message)
         {
             leavingOnPurpose = true;
-            if (connector.UsingSteam) steam.Stop();
+            if (connector.UsingRelay) relay.Stop();
             else connector.Leave();
-            showJoinInput = showCreateRoomOptions = false;
+            showJoinInput = false;
             status = message;
             Cursor.lockState = CursorLockMode.None;
         }
@@ -100,7 +100,9 @@ namespace Marco.Network.Lobby
 
         private void StartGame()
         {
-            if (CanStartGame) NetworkRound.Instance.StartRound();
+            if (!CanStartGame) return;
+            relay.LockLobbyForGame();
+            NetworkRound.Instance.StartRound();
         }
 
         private void OnGUI()
@@ -167,11 +169,13 @@ namespace Marco.Network.Lobby
             if (connector.IsHost)
             {
                 GUILayout.Space(12);
-                if (connector.UsingSteam)
+                if (connector.UsingRelay)
                 {
-                    GUI.enabled = steam.LobbyOpen && steam.IsLobbyOwner;
-                    if (GUILayout.Button("Steam 친구 초대")) steam.InviteFriends();
-                    GUI.enabled = true;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("방 코드 " + relay.CurrentLobbyCode, GUILayout.Width(220));
+                    if (GUILayout.Button("코드 복사", GUILayout.Width(100)))
+                        GUIUtility.systemCopyBuffer = relay.CurrentLobbyCode;
+                    GUILayout.EndHorizontal();
                 }
                 else
                 {
@@ -183,14 +187,14 @@ namespace Marco.Network.Lobby
                 }
             }
             if (GUILayout.Button("방 나가기")) Leave("방에서 나왔습니다.");
-            GUILayout.Space(15); GUILayout.Label(status);
+            GUILayout.Space(15); GUILayout.Label(connector.UsingRelay ? relay.Status : status);
             GUILayout.EndArea();
         }
 
         private void DrawEntryMenu(float scale, float offsetX)
         {
             bool canConnect = connector.Status != LanConnectionStatus.Connecting;
-            GUI.enabled = canConnect && !showJoinInput && !showCreateRoomOptions;
+            GUI.enabled = canConnect && !showJoinInput;
             var label = new GUIStyle(GUI.skin.label) { fontSize = 22 };
             var input = new GUIStyle(GUI.skin.textField) { fontSize = 24, alignment = TextAnchor.MiddleLeft };
             // Keep the nickname field inside the reference canvas.
@@ -204,90 +208,68 @@ namespace Marco.Network.Lobby
             float menuX = (Mathf.Clamp(menuPosition.x, 0, 100) - offsetX) / Mathf.Max(0.001f, scale);
             float menuY = Mathf.Clamp(menuPosition.y, 20, 380);
             var menu = TextButtonStyle(menuFontSize);
-            if (GUI.Button(new Rect(menuX, menuY, 330, 65), "Create room", menu)) showCreateRoomOptions = true;
-            if (GUI.Button(new Rect(menuX, menuY + 80, 330, 65), "Join", menu)) showJoinInput = true;
+            GUI.enabled = canConnect && !showJoinInput && relay.CanCreate;
+            if (GUI.Button(new Rect(menuX, menuY, 330, 65), "방 만들기", menu)) CreateRelayRoom();
+            GUI.enabled = canConnect && !showJoinInput;
+            if (GUI.Button(new Rect(menuX, menuY + 80, 330, 65), "Join", menu))
+            {
+                showJoinInput = true;
+                relay.RefreshRooms();
+            }
             if (showJoinInput)
             {
                 GUI.enabled = true;
                 DrawDim(scale, offsetX, 0.7f);
-                GUI.Box(new Rect(280, 220, 440, 260), GUIContent.none);
-                GUI.Label(new Rect(310, 240, 380, 40), "Join room", label);
-                GUI.Label(new Rect(310, 290, 380, 35), "초대 IP / 코드", label);
+                GUI.Box(new Rect(200, 76, 600, 560), GUIContent.none);
+                GUI.Label(new Rect(235, 96, 530, 36), "방 코드 또는 공개 방 목록", label);
+                GUI.Label(new Rect(235, 138, 120, 34), "방 코드", label);
                 GUI.enabled = canConnect;
-                joinInput = GUI.TextField(new Rect(310, 330, 380, 45), joinInput, input);
+                relayJoinInput = GUI.TextField(new Rect(350, 138, 270, 40), relayJoinInput, 8, input);
                 var action = TextButtonStyle(26);
-                if (GUI.Button(new Rect(310, 410, 150, 40), "접속", action)) JoinRoom();
-                if (GUI.Button(new Rect(510, 410, 150, 40), "취소", action)) showJoinInput = false;
+                if (GUI.Button(new Rect(632, 138, 130, 40), "코드 참가", action)) JoinRelayRoom();
+                GUI.enabled = true;
+                GUI.Label(new Rect(235, 188, 350, 30), relay.RoomListStatus, messageStyle());
+                if (GUI.Button(new Rect(620, 184, 142, 34), relay.IsRefreshingRooms ? "불러오는 중…" : "새로고침", action))
+                    relay.RefreshRooms();
+                roomListScroll = GUI.BeginScrollView(new Rect(235, 224, 527, 320), roomListScroll,
+                    new Rect(0, 0, 500, Mathf.Max(320, relay.AvailableRooms.Count * 52)));
+                for (int i = 0; i < relay.AvailableRooms.Count; i++)
+                {
+                    var room = relay.AvailableRooms[i];
+                    var row = new Rect(0, i * 52, 500, 46);
+                    GUI.Box(row, GUIContent.none);
+                    GUI.Label(new Rect(10, row.y + 4, 325, 38),
+                        room.Name + "  ·  " + room.Players.Count + "/" + room.MaxPlayers + "명", label);
+                    if (GUI.Button(new Rect(350, row.y + 5, 140, 36), "참가", action))
+                        relay.JoinRoomById(room.Id);
+                }
+                GUI.EndScrollView();
+                if (GUI.Button(new Rect(582, 566, 180, 42), "취소", action)) showJoinInput = false;
+                GUI.Label(new Rect(235, 614, 527, 30), relay.Status, messageStyle());
             }
-            if (showCreateRoomOptions) DrawCreateRoomOptions(canConnect);
             if (connector.Status == LanConnectionStatus.Connecting) status = "방에 연결 중…";
             GUI.enabled = true;
             var message = new GUIStyle(GUI.skin.label) { fontSize = 17, wordWrap = true };
-            if (!string.IsNullOrEmpty(status)) GUI.Label(new Rect(menuX, 650, 920, 45), status, message);
+            string displayedStatus = string.IsNullOrEmpty(status) ? relay.Status : status;
+            if (!string.IsNullOrEmpty(displayedStatus)) GUI.Label(new Rect(menuX, 650, 920, 45), displayedStatus, message);
         }
 
-        private void JoinRoom()
+        private void JoinRelayRoom()
         {
             playerName = NetworkPlayer.CleanNickname(playerName);
-            if (!connector.TryParseAddress(joinInput, out _, out _)) { status = "올바른 IP:port 또는 MARCO 코드를 입력하세요."; return; }
-            showJoinInput = false;
-            connector.Join(joinInput);
+            relay.JoinRoomCode(relayJoinInput);
         }
 
-        private void CreateLanRoom()
+        private void CreateRelayRoom()
         {
             playerName = NetworkPlayer.CleanNickname(playerName);
-            showCreateRoomOptions = false;
-            creatingRoom = true;
-            connector.Host();
+            status = string.Empty;
+            relay.CreateLobby(playerName);
         }
 
-        private void DrawCreateRoomOptions(bool canConnect)
-        {
-            GUI.enabled = true;
-            Color previousColor = GUI.color;
-            GUI.color = new Color(0, 0, 0, 0.78f);
-            GUI.DrawTexture(new Rect(0, 0, 1000, 700), Texture2D.whiteTexture);
-            GUI.color = previousColor;
-            GUI.Box(new Rect(140, 48, 720, 604), "Create room");
-            GUI.Label(new Rect(190, 84, 620, 32), "연결 방식을 선택하세요.",
-                new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.MiddleCenter });
+        private Vector2 roomListScroll;
 
-            GUI.enabled = canConnect && !steam.InLobby;
-            if (GUI.Button(new Rect(190, 124, 620, 48), "LAN 방 만들기")) CreateLanRoom();
-
-            GUI.enabled = true;
-            DrawSteamPanel(new Rect(190, 188, 620, 348));
-            if (GUI.Button(new Rect(190, 558, 620, 44), steam.InLobby ? "닫기" : "취소"))
-                showCreateRoomOptions = false;
-            GUI.enabled = true;
-        }
-
-        private void DrawSteamPanel(Rect panel)
-        {
-            GUI.enabled = true;
-            GUI.Box(panel, "Steam 릴레이 · FishNet");
-            float x = panel.x + 20;
-            float width = panel.width - 40;
-            float y = panel.y + 35;
-            GUI.Label(new Rect(x, y, width, 26), steam.Ready ? "내 SteamID: " + steam.SteamId : "Steam 연결이 필요합니다.");
-
-            bool running = connector.Status == LanConnectionStatus.Connecting || connector.Status == LanConnectionStatus.Connected;
-            GUI.enabled = !running && steam.CanCreate;
-            if (GUI.Button(new Rect(x, y + 34, width, 38), "Steam 릴레이로 호스트 만들기"))
-            {
-                playerName = NetworkPlayer.CleanNickname(playerName);
-                steam.Nickname = playerName;
-                steam.CreateLobby();
-            }
-            GUI.enabled = steam.LobbyOpen && steam.IsLobbyOwner;
-            if (GUI.Button(new Rect(x, y + 78, width, 34), "Steam 친구 초대")) steam.InviteFriends();
-            GUI.enabled = running || steam.InLobby;
-            if (GUI.Button(new Rect(x, y + 118, width, 30), "Steam 연결 종료")) { leavingOnPurpose = true; steam.Stop(); }
-            GUI.enabled = true;
-            var statusStyle = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 15 };
-            GUI.Label(new Rect(x, y + 154, width, panel.height - 170), steam.Status, statusStyle);
-        }
+        private static GUIStyle messageStyle() => new(GUI.skin.label) { fontSize = 15, wordWrap = true };
 
         private static void DrawDim(float scale, float offsetX, float alpha)
         {
