@@ -31,6 +31,15 @@ namespace Marco.Network.Editor
         private const string WheelStemPart = "실린더.010";
         private const float LampAboveWheel = 0.3f;
 
+        // Valve A only: the wheel alone, standing upright and spinning about WallValveNormal. The pipe body
+        // is hidden and gets no collider, and the marker's rotation is not applied. The wheel sits a fixed
+        // offset from the Valve_A marker, placed by hand: marker (53.56, 1.127, 34.72) → wheel (58.50, 1.127, 34.72).
+        // Moving the marker moves the wheel by the same amount.
+        private const ValveId WallValve = ValveId.A;
+        private static readonly Vector3 WallValveNormal = Vector3.left;                // the wheel faces −X
+        private static readonly Vector3 WallValveOffset = new(4.9444404f, 0f, 0f);     // marker → wheel center
+        private const float WallValveLampOut = 0.1f;                                   // lamp in front of the wheel
+
         // The map scene's own pipe per valve (hidden at runtime, 0.4–7 m off the valve points), with the
         // yaw (relative to the valve marker) and scale copied from it; its materials are copied while
         // building, because the FBX has none. Ours put the wheel center on the marker instead.
@@ -110,10 +119,9 @@ namespace Marco.Network.Editor
             var map = EditorSceneManager.OpenScene(MapScenePath, OpenSceneMode.Additive);
             for (var id = ValveId.A; id <= ValveId.E; id++)
             {
-                var mapPipe = ValvePipes[(int)id].mapPipe;
-                Anchor(CreateMapValve(id, FindMapRoot(map, mapPipe)), $"Valve_{id}", Vector3.zero);
+                CreateAnchoredValve(id, map);
                 hidden.Add($"Valve_{id}");
-                hiddenRoots.Add(mapPipe);
+                hiddenRoots.Add(ValvePipes[(int)id].mapPipe);
             }
             EditorSceneManager.CloseScene(map, true);
             var exitSize = new Vector3(3, 3, 0.5f);  // both exits sit in walls running along X
@@ -130,10 +138,20 @@ namespace Marco.Network.Editor
             Debug.Log($"[MARCO] Network pool scene saved: {ScenePath}");
         }
 
+        // One valve with its GamePointAnchor.
+        private static GameObject CreateAnchoredValve(ValveId id, UnityEngine.SceneManagement.Scene map)
+        {
+            bool onWall = id == WallValve;
+            var valve = CreateMapValve(id, FindMapRoot(map, ValvePipes[(int)id].mapPipe), onWall);
+            Anchor(valve, $"Valve_{id}", onWall ? WallValveOffset : Vector3.zero, followRotation: !onWall);
+            return valve;
+        }
+
         // The pipe's wheel spins with progress; status color goes to a separate lamp above it,
         // because the pipe's materials are shared and ValveView must not tint them.
         // The root sits on the wheel center, so the marker and the server range check stay on the wheel.
-        private static GameObject CreateMapValve(ValveId id, Transform mapPipe)
+        // onWall: the wheel stands up facing WallValveNormal, the body's renderers are off and no collider is added.
+        private static GameObject CreateMapValve(ValveId id, Transform mapPipe, bool onWall = false)
         {
             var root = new GameObject($"Valve {id}");
             var pipe = InstantiateVisual(ValveVisualPath, root.transform).transform;
@@ -142,14 +160,30 @@ namespace Marco.Network.Editor
             pipe.localRotation = Quaternion.Euler(0, yaw, 0);
             pipe.localScale = Vector3.one * scale;
             var wheel = FindPart(pipe, WheelPart);
+            // The wheel ring lies in its local XY plane, so its forward is the spin axis (up for a lying wheel).
+            if (onWall) pipe.localRotation = Quaternion.FromToRotation(wheel.forward, WallValveNormal) * pipe.localRotation;
             pipe.localPosition = -wheel.position;  // root is still at the origin, unrotated
 
             // An added child keeps the pipe a prefab instance; the wheel parts can't be reparented under it.
             var pivot = new GameObject("WheelPivot").transform;
             pivot.SetParent(pipe, false);
             pivot.SetPositionAndRotation(wheel.position, wheel.rotation);
-            AddPipeCollider(pipe);
-            var lamp = CreateLamp(root.transform, new Vector3(0, LampAboveWheel, 0), 0.15f);
+            Renderer lamp;
+            if (onWall)
+            {
+                // Renderers off rather than objects inactive, so the FBX hierarchy (and the asset) stay as they are.
+                foreach (var renderer in pipe.GetComponentsInChildren<Renderer>(true))
+                    if (System.Array.IndexOf(WheelSpinParts, renderer.name) < 0) renderer.enabled = false;
+                // The FBX import generates a MeshCollider per part; switch them all off (wheel included),
+                // so the hidden body blocks nobody and the wheel on the wall needs no collision.
+                foreach (var collider in pipe.GetComponentsInChildren<Collider>(true)) collider.enabled = false;
+                lamp = CreateLamp(root.transform, new Vector3(0, LampAboveWheel, 0) + WallValveNormal * WallValveLampOut, 0.15f);
+            }
+            else
+            {
+                AddPipeCollider(pipe);
+                lamp = CreateLamp(root.transform, new Vector3(0, LampAboveWheel, 0), 0.15f);
+            }
 
             var view = root.AddComponent<ValveView>();
             var serialized = new SerializedObject(view);
@@ -253,12 +287,13 @@ namespace Marco.Network.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void Anchor(GameObject target, string pointName, Vector3 offset)
+        private static void Anchor(GameObject target, string pointName, Vector3 offset, bool followRotation = true)
         {
             var anchor = target.AddComponent<GamePointAnchor>();
             var serialized = new SerializedObject(anchor);
             serialized.FindProperty("pointName").stringValue = pointName;
             serialized.FindProperty("offset").vector3Value = offset;
+            serialized.FindProperty("followRotation").boolValue = followRotation;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
