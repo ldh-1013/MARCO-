@@ -93,7 +93,7 @@ namespace Marco.Core.WinCondition.Tests
 
         // 버그 수정: 열린 밸브 앞에서 E를 계속 누르고 있어도(EndWork 없음) 역류가 일어나서 닫혀야 한다.
         [Test]
-        public void HoldingWorkThroughOpen_ValveStillClosesAfter210Seconds()
+        public void HoldingWorkThroughOpen_ValveStillClosesAfter270Seconds()
         {
             var (service, board, roster, _, _) = CreateService(ValveId.A);
             roster.SetRole(1, PlayerRole.Runner);
@@ -104,7 +104,7 @@ namespace Marco.Core.WinCondition.Tests
             for (int i = 0; i < 8; i++) board.Tick(1f);
             Assert.AreEqual(ValveStatus.Open, valve.Status);
 
-            for (int i = 0; i < 210; i++) board.Tick(1f); // 유예 180 + 역류 30
+            for (int i = 0; i < 270; i++) board.Tick(1f); // 유예 240 + 역류 30
 
             Assert.AreEqual(ValveStatus.Closed, valve.Status);
             Assert.AreEqual(0f, valve.Progress, Tolerance);
@@ -125,7 +125,7 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual(0, board.GetValve(ValveId.A).WorkerCount);
             Assert.AreEqual(soundCountAfterOpen, sound.Notifications.Count);
 
-            board.Tick(181f); // 역류가 시작되면 다시 잡을 수 있다
+            board.Tick(241f); // 역류가 시작되면 다시 잡을 수 있다
             Assert.IsTrue(service.TryBeginWork(2, ValveId.A));
         }
 
@@ -168,7 +168,7 @@ namespace Marco.Core.WinCondition.Tests
             service.TryBeginWork(1, ValveId.A);
             board.Tick(8f); // Open
             service.EndWork(1, ValveId.A);
-            board.Tick(210f); // 유예 180 + 역류 30 전부 통과 -> Closed, 물소리 3회
+            board.Tick(270f); // 유예 240 + 역류 30 전부 통과 -> Closed, 물소리 3회
 
             int rippleCount = 0;
             foreach (var notification in sound.Notifications)

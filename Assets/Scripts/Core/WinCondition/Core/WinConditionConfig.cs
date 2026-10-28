@@ -11,10 +11,14 @@ namespace Marco.Core.WinCondition
         // 1인 작업 기준 초당 진행도. 1/8이면 8.0초에 완료.
         public float ValveBaseProgressPerSecond = 1f / 8f;
 
-        // 2인 동시 작업 배율 (약 5.0초에 완료)
+        // 재개방 1인 초당 진행도. 1/4이면 4.0초에 완료 (기획서 6.1 · 부록 A [밸브], 10-26).
+        // 한 번이라도 Open에 도달한 밸브에 적용되고 라운드 내 유지된다(역류로 닫혀도 유지). 다인 배율은 그대로 곱한다.
+        public float ValveReopenProgressPerSecond = 1f / 4f;
+
+        // 2인 동시 작업 배율 (약 5.0초에 완료, 재개방 2.5초)
         public float ValveTwoWorkerMultiplier = 1.6f;
 
-        // 3인 이상 작업 배율, 상한값 (약 4.2초에 완료)
+        // 3인 이상 작업 배율, 상한값 (약 4.2초에 완료, 재개방 2.1초)
         public float ValveThreeOrMoreWorkerMultiplier = 1.9f;
 
         // 작업자가 0명이 된 뒤 버티는 유예 시간. 이 시간 동안은 진행도가 줄지 않음.
@@ -28,15 +32,15 @@ namespace Marco.Core.WinCondition
         public bool ValveFullyReflowsBackToClosed = true;
 
         // ── 밸브 활성화 / 게이트 (v0.6: 인원과 무관하게 항상 고정값) ───────────────────────────────
-        // 활성 밸브는 항상 3개: B·E는 항상 포함, 나머지 1개는 A·C·D 중 무작위(ValveActivation.SelectActiveValves 참고)
+        // 활성 밸브는 항상 3개: A~E 5개 중 무작위 3개, 위치는 서버만 안다(10-26, ValveActivation.SelectActiveValves 참고)
         public int ActiveValveCount = 3;
 
         // 게이트가 열리려면 활성 밸브 3개가 전부 동시에 열려야 함 (활성 밸브 수와 항상 같음)
         public int RequiredOpenValveCount = 3;
 
         // ── 역류 (Reflow) ───────────────────────────────
-        // 밸브가 열린 뒤 역류가 시작되기까지의 유예 시간
-        public float ReflowOpenGraceSeconds = 180f;
+        // 밸브가 열린 뒤 역류가 시작되기까지의 유예 시간 (부록 A [밸브 역류] 240초, 10-26 — 예전 180초)
+        public float ReflowOpenGraceSeconds = 240f;
 
         // 유예가 끝난 뒤 완전히 닫힐 때까지 걸리는 시간
         public float ReflowCloseDurationSeconds = 30f;
@@ -61,12 +65,13 @@ namespace Marco.Core.WinCondition
         // ── 인원 표 (도망자 수 → 탈출 요구 / 제한시간) ───────────────────────────────
         // v0.6: 활성 밸브/요구 개방은 인원과 무관하게 항상 고정값이라 표에서 빠짐 (위 ActiveValveCount/RequiredOpenValveCount 참고)
         // 탈출 요구 인원 = ⌈도망자 수 ÷ 2⌉ (아래 값들과 일치함)
+        // 제한시간은 부록 A [밸브/시간 — 인원별] (10-26 전 구간 +3분). 도망자 1명(총원 2, 9분)은 v1.x라 넣지 않는다.
         private readonly Dictionary<int, RoundSettings> _roundSettingsByRunnerCount = new Dictionary<int, RoundSettings>
         {
-            { 2, new RoundSettings(escapeRequiredCount: 1, timeLimitSeconds: 8f * 60f) },
-            { 3, new RoundSettings(escapeRequiredCount: 2, timeLimitSeconds: 10f * 60f) },
-            { 4, new RoundSettings(escapeRequiredCount: 2, timeLimitSeconds: 10f * 60f) },
-            { 5, new RoundSettings(escapeRequiredCount: 3, timeLimitSeconds: 12f * 60f) },
+            { 2, new RoundSettings(escapeRequiredCount: 1, timeLimitSeconds: 11f * 60f) },
+            { 3, new RoundSettings(escapeRequiredCount: 2, timeLimitSeconds: 13f * 60f) },
+            { 4, new RoundSettings(escapeRequiredCount: 2, timeLimitSeconds: 13f * 60f) },
+            { 5, new RoundSettings(escapeRequiredCount: 3, timeLimitSeconds: 15f * 60f) },
         };
 
         // 도망자 수에 맞는 라운드 설정을 돌려준다. 기획서에 정의된 2~5명만 지원.
