@@ -156,12 +156,12 @@ namespace Marco.Network.Player
                 SetCrouchServer(false);
             }
 
-            Vector3 input = locked && !player.IsTreatmentLocked && !player.IsStunned
+            Vector3 input = locked && !player.IsTreatmentLocked
                 ? (transform.forward * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal"))
                 : Vector3.zero;
             input = Vector3.ClampMagnitude(input, 1f);
             bool moving = input.sqrMagnitude > 0.001f;
-            bool wantsSprint = moving && !player.IsTreatmentLocked && !player.IsStunned && !crouching &&
+            bool wantsSprint = moving && !player.IsTreatmentLocked && !crouching &&
                 player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
             ReportSprintIntent(wantsSprint);
             IsSprinting = StepSprintStamina(ref sprintStamina, ref sprintExhaustionRemaining, wantsSprint, Time.deltaTime);
@@ -170,7 +170,7 @@ namespace Marco.Network.Player
             // grounded behavior while giving both living roles an owner-controlled jump arc.
             bool grounded = controller.isGrounded;
             if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
-            if (locked && !player.IsTreatmentLocked && !player.IsStunned && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
+            if (locked && !player.IsTreatmentLocked && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
             verticalVelocity -= gravity * Time.deltaTime;
 
@@ -212,13 +212,13 @@ namespace Marco.Network.Player
         private void SetSprintIntentServer(bool wantsSprint)
         {
             serverWantsSprint = wantsSprint && player != null && player.Role == PlayerRole.Runner &&
-                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsStunned && !player.IsCrouching;
+                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsCrouching;
         }
 
         private void TickServerSprintStamina(float deltaTime)
         {
             bool eligible = serverWantsSprint && player != null && player.Role == PlayerRole.Runner &&
-                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsStunned && !player.IsCrouching;
+                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsCrouching;
             StepSprintStamina(ref serverSprintStamina, ref serverSprintExhaustionRemaining, eligible, deltaTime);
             if (Time.time < nextSprintStateSyncTime) return;
             nextSprintStateSyncTime = Time.time + MovementConfig.RunnerSprintStateSyncSeconds;
