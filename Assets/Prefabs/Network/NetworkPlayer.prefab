@@ -108,7 +108,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 93b61cacd87f99148978ddfe8f2b621f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.MicrophoneVisionController
-  useRnNoise: 1
   brightnessMode: 0
   worldLightColor: {r: 1, g: 1, b: 1, a: 1}
   silenceFloorDb: -60
