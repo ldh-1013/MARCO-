@@ -683,7 +683,10 @@ namespace Marco.Network.Round
                     (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius ||
                     !HasClearClickerPath(source, listener))
                     continue;
-                ClickerFlashTarget(listener.Owner);
+                Vector3 flashOrigin = source.transform.position;
+                if (source.TryGetComponent(out CharacterController sourceController))
+                    flashOrigin = sourceController.bounds.center;
+                ClickerFlashTarget(listener.Owner, flashOrigin);
             }
 
             float stunRadiusSquared = ClickerStunRadius * ClickerStunRadius;
@@ -743,7 +746,7 @@ namespace Marco.Network.Round
         }
 
         [TargetRpc]
-        private void ClickerFlashTarget(NetworkConnection conn)
+        private void ClickerFlashTarget(NetworkConnection conn, Vector3 flashOrigin)
         {
             NetworkPlayer localPlayer = NetworkPlayer.Local;
             Camera camera = localPlayer != null ? localPlayer.GetComponentInChildren<Camera>(true) : null;
@@ -754,7 +757,7 @@ namespace Marco.Network.Round
                 return;
             }
 
-            vision.TriggerClickerCameraFlash();
+            vision.TriggerClickerCameraFlash(flashOrigin);
         }
 
         [Server]

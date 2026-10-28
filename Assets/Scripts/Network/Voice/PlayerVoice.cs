@@ -1,3 +1,4 @@
+using System;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Transporting;
@@ -8,7 +9,7 @@ using UnityEngine;
 
 namespace Marco.Network.Voice
 {
-    // On the player prefab. Owner: denoised microphone frames (only while speech is detected, and
+    // On the player prefab. Owner: microphone speech frames (only while speech is detected, and
     // never while Left Alt mutes) go to the server with their loudness grade. Server: forwards each
     // frame only to players who may hear it (VoiceRouting, 기획서 13.2 · 5.6 · 5.7). Listener: plays
     // the speaker's stream from this object. Playback is ported from Prototype ProximityVoiceChat.
@@ -16,6 +17,7 @@ namespace Marco.Network.Voice
     public sealed class PlayerVoice : NetworkBehaviour
     {
         private const int AudioQueueCapacity = VoiceCodec.SampleRate; // 1 s
+        private const int AudioPrebufferSamples = VoiceCodec.SampleRate / 25; // 40 ms absorbs packet jitter.
 
         [SerializeField] private VoiceRouting routing = new();
         // Mouth height above the player pivot.
@@ -25,6 +27,8 @@ namespace Marco.Network.Voice
         private readonly object audioQueueLock = new();
         private int audioReadPosition;
         private int audioWritePosition;
+        private int audioBufferedSamples;
+        private bool audioPlaybackStarted;
         private NetworkPlayer player;
         private MicrophoneVisionController microphone;
         private AudioSource voiceSource;
@@ -87,9 +91,14 @@ namespace Marco.Network.Voice
                 foreach (byte value in packet)
                 {
                     int nextWrite = (audioWritePosition + 1) % audioQueue.Length;
-                    if (nextWrite == audioReadPosition) audioReadPosition = (audioReadPosition + 1) % audioQueue.Length;
+                    if (nextWrite == audioReadPosition)
+                    {
+                        audioReadPosition = (audioReadPosition + 1) % audioQueue.Length;
+                        audioBufferedSamples--;
+                    }
                     audioQueue[audioWritePosition] = VoiceCodec.Decode(value);
                     audioWritePosition = nextWrite;
+                    audioBufferedSamples++;
                 }
             }
         }
@@ -117,13 +126,28 @@ namespace Marco.Network.Voice
         {
             lock (audioQueueLock)
             {
+                if (!audioPlaybackStarted)
+                {
+                    if (audioBufferedSamples < AudioPrebufferSamples)
+                    {
+                        Array.Clear(output, 0, output.Length);
+                        return;
+                    }
+                    audioPlaybackStarted = true;
+                }
+
                 for (int i = 0; i < output.Length; i++)
                 {
-                    if (audioReadPosition == audioWritePosition) output[i] = 0f;
+                    if (audioBufferedSamples == 0)
+                    {
+                        output[i] = 0f;
+                        audioPlaybackStarted = false;
+                    }
                     else
                     {
                         output[i] = audioQueue[audioReadPosition];
                         audioReadPosition = (audioReadPosition + 1) % audioQueue.Length;
+                        audioBufferedSamples--;
                     }
                 }
             }

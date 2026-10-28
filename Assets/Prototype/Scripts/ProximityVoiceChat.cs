@@ -8,6 +8,7 @@ namespace Marco.Prototype
     {
         private const int InputSamplesPerFrame = ProximityVoiceProtocol.SamplesPerPacket / 2 * 3;
         private const int AudioQueueCapacity = ProximityVoiceProtocol.SampleRate;
+        private const int AudioPrebufferSamples = ProximityVoiceProtocol.SampleRate / 25; // 40 ms.
 
         private readonly float[] packetSamples = new float[ProximityVoiceProtocol.SamplesPerPacket];
         private readonly float[] downsampledFrame = new float[ProximityVoiceProtocol.SamplesPerPacket / 2];
@@ -16,6 +17,8 @@ namespace Marco.Prototype
         private int packetSampleCount;
         private int audioReadPosition;
         private int audioWritePosition;
+        private int audioBufferedSamples;
+        private bool audioPlaybackStarted;
         private uint sendSequence;
         private float lastVoiceFrameTime;
         private int playerId;
@@ -51,9 +54,9 @@ namespace Marco.Prototype
             CreateSpatialVoiceSource();
         }
 
-        private void OnVoiceSamplesReady(float[] denoisedSamples)
+        private void OnVoiceSamplesReady(float[] microphoneSamples)
         {
-            if (denoisedSamples == null || denoisedSamples.Length < InputSamplesPerFrame) return;
+            if (microphoneSamples == null || microphoneSamples.Length < InputSamplesPerFrame) return;
             if (Time.unscaledTime - lastVoiceFrameTime > 0.08f) packetSampleCount = 0;
             lastVoiceFrameTime = Time.unscaledTime;
 
@@ -61,7 +64,7 @@ namespace Marco.Prototype
             {
                 int input = i * 3;
                 float sum = 0f;
-                for (int j = 0; j < 3; j++) sum += denoisedSamples[input + j];
+                for (int j = 0; j < 3; j++) sum += microphoneSamples[input + j];
                 downsampledFrame[i] = sum / 3f;
             }
 
@@ -87,9 +90,13 @@ namespace Marco.Prototype
                     short value = (short)(pcm16[i] | (pcm16[i + 1] << 8));
                     int nextWrite = (audioWritePosition + 1) % audioQueue.Length;
                     if (nextWrite == audioReadPosition)
+                    {
                         audioReadPosition = (audioReadPosition + 1) % audioQueue.Length;
+                        audioBufferedSamples--;
+                    }
                     audioQueue[audioWritePosition] = value / 32768f;
                     audioWritePosition = nextWrite;
+                    audioBufferedSamples++;
                 }
             }
         }
@@ -120,13 +127,28 @@ namespace Marco.Prototype
         {
             lock (audioQueueLock)
             {
+                if (!audioPlaybackStarted)
+                {
+                    if (audioBufferedSamples < AudioPrebufferSamples)
+                    {
+                        System.Array.Clear(output, 0, output.Length);
+                        return;
+                    }
+                    audioPlaybackStarted = true;
+                }
+
                 for (int i = 0; i < output.Length; i++)
                 {
-                    if (audioReadPosition == audioWritePosition) output[i] = 0f;
+                    if (audioBufferedSamples == 0)
+                    {
+                        output[i] = 0f;
+                        audioPlaybackStarted = false;
+                    }
                     else
                     {
                         output[i] = audioQueue[audioReadPosition];
                         audioReadPosition = (audioReadPosition + 1) % audioQueue.Length;
+                        audioBufferedSamples--;
                     }
                 }
             }

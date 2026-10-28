@@ -4,7 +4,6 @@
     "references": [
         "FishNet.Runtime",
         "Marco.Core.WinCondition",
-        "Adrenak.RNNoise4Unity.Runtime",
         "FishyUnityTransport",
         "Unity.Networking.Transport",
         "Unity.Services.Authentication",

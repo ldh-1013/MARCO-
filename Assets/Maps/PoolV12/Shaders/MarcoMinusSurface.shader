@@ -4,6 +4,7 @@ Shader "MARCO/WorldSpaceTexturedSurface"
     {
         _BaseMap ("Base Map", 2D) = "white" {}
         _BaseColor ("Base Color", Color) = (1,1,1,1)
+        _MarcoClickerTerrain ("Clicker terrain", Float) = 0
     }
 
     SubShader
@@ -26,6 +27,13 @@ Shader "MARCO/WorldSpaceTexturedSurface"
             float _MarcoFalloffPower;
             float4 _MarcoPlayerPosition;
             float4 _MarcoLightColor;
+            float _MarcoClickerTerrain;
+            float _MarcoClickerEnabled;
+            float _MarcoClickerRadius;
+            float _MarcoClickerIntensity;
+            float _MarcoClickerFalloffPower;
+            float4 _MarcoClickerPosition;
+            float4 _MarcoClickerColor;
 
             struct Attributes
             {
@@ -52,14 +60,25 @@ Shader "MARCO/WorldSpaceTexturedSurface"
             float4 frag(Varyings input) : SV_Target
             {
                 float4 surface = tex2D(_BaseMap, input.uv) * _BaseColor;
+                float3 litColor = surface.rgb;
                 if (_MarcoMinusEnabled > 0.5)
                 {
                     float distanceToPlayer = distance(input.worldPosition, _MarcoPlayerPosition.xyz);
                     float attenuation = _MarcoLightRadius > 0.001
                         ? pow(saturate(1.0 - distanceToPlayer / _MarcoLightRadius), max(0.01, _MarcoFalloffPower))
                         : 0.0;
-                    surface.rgb *= _MarcoLightColor.rgb * _MarcoLightIntensity * attenuation;
+                    litColor *= _MarcoLightColor.rgb * _MarcoLightIntensity * attenuation;
                 }
+                if (_MarcoClickerEnabled > 0.5 && _MarcoClickerTerrain > 0.5)
+                {
+                    float distanceToFlash = distance(input.worldPosition, _MarcoClickerPosition.xyz);
+                    float flashAttenuation = _MarcoClickerRadius > 0.001
+                        ? pow(saturate(1.0 - distanceToFlash / _MarcoClickerRadius), max(0.01, _MarcoClickerFalloffPower))
+                        : 0.0;
+                    float3 flashColor = surface.rgb * _MarcoClickerColor.rgb * _MarcoClickerIntensity * flashAttenuation;
+                    litColor = max(litColor, flashColor);
+                }
+                surface.rgb = litColor;
                 return surface;
             }
             ENDCG
