@@ -35,6 +35,20 @@ namespace Marco.Network.Character
         public float LookPitch { get; private set; }
         public float Speed { get; private set; }
         public bool IsAttacking => attacking;
+        // Two alternating footfalls per visible locomotion cycle; audio reads this same clock.
+        public bool HasFootstepCycle => graph.IsValid() && asset != null && sources[1] != null;
+        public bool FootstepRunning => runWeight > 0.5f;
+        public int FootstepIndex
+        {
+            get
+            {
+                if (!HasFootstepCycle) return 0;
+                float period = FootstepRunning ? Mathf.Max(.01f, sources[2].length) :
+                    Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
+                float rate = FootstepRunning && asset.runClip == null ? 1.6f : 1f;
+                return Mathf.FloorToInt(walkClock * rate / period * 2f);
+            }
+        }
 
         private void Awake()
         {

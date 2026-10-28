@@ -36,7 +36,7 @@ namespace Marco.Network.Round
 
     // Scene object. The server assembles WinCondition (INTERFACES.md §0), ticks it and validates
     // valve / drain / escape / tag requests; clients only read the synced snapshot.
-    public sealed class NetworkRound : NetworkBehaviour
+    public sealed partial class NetworkRound : NetworkBehaviour
     {
         private const int ValveCount = 5;
         private const float ProgressSyncEpsilon = 0.001f;
@@ -238,6 +238,9 @@ namespace Marco.Network.Round
         {
             base.OnStartClient();
             clientStarted = true;
+            StartAudioClient();
+            if (SoundMap && suddenDeathDroneClip == null)
+                suddenDeathDroneClip = Resources.Load<AudioClip>("MarcoSound/EndDrone");
             EnsureBandageViews();
             EnsureClickerViews();
             Debug.Log($"[MARCO][Round] OnStartClient (mode {mode.Value})");
@@ -247,6 +250,7 @@ namespace Marco.Network.Round
         {
             base.OnStopClient();
             clientStarted = false;
+            StopAudioClient();
             suddenDeathDronePlaying = false;
             if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
@@ -255,7 +259,11 @@ namespace Marco.Network.Round
 
         private void Update()
         {
-            if (IsServerInitialized) TickHealingChannels();
+            if (IsServerInitialized)
+            {
+                TickHealingChannels();
+                TickAudioServer();
+            }
             if (IsServerInitialized) TickClickerRespawns();
             if (IsServerInitialized) TickClickerStuns();
             // The map's GamePoints can finish registering after the network scene object starts.
@@ -307,6 +315,7 @@ namespace Marco.Network.Round
 
         public override void OnStopServer()
         {
+            ResetAudioServer();
             CancelAllHealingActions();
             ClearClickerStuns();
             base.OnStopServer();
@@ -351,7 +360,8 @@ namespace Marco.Network.Round
             board = new ValveBoard(active, config);
             gate = new Gate(config.RequiredOpenValveCount);
             var events = new RoundEventRelay(this);
-            valves = new ValveInteractionService(board, gate, roster, new LogValveSoundSink(), events);
+            IValveSoundSink valveSound = SoundMap ? new ValveAudioSink(this) : new LogValveSoundSink();
+            valves = new ValveInteractionService(board, gate, roster, valveSound, events);
             try
             {
                 round = new RoundState(config, roster, gate, valves, events);
@@ -405,6 +415,7 @@ namespace Marco.Network.Round
 
         private void ResetRound()
         {
+            ResetAudioServer();
             CancelAllHealingActions();
             ClearClickerStuns();
             TimeManager.OnTick -= OnServerTick;
@@ -467,6 +478,7 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.loop = true;
                 suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
+                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
             }
             if (shouldPlay) suddenDeathDroneSource.Play();
             else suddenDeathDroneSource.Stop();
@@ -987,6 +999,7 @@ namespace Marco.Network.Round
         {
             if (!healingChannels.TryGetValue(actorId, out var channel)) return;
             healingChannels.Remove(actorId);
+            StopHealingAudio(actorId);
             if (NetworkPlayer.TryGet(channel.ActorId, out var actor))
             {
                 actor.SendHealingProgress(false, channel.IsBandage, 0f);
@@ -1064,6 +1077,7 @@ namespace Marco.Network.Round
             if (halves >= FullHalves)
             {
                 SetLives(target, WoundedHalves);
+                PlayHurtAudio(target);
                 return SwingResult.Wounded;
             }
             if (!ApplyTag(target)) return SwingResult.Missed;
