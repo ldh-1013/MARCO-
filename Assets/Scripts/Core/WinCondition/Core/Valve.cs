@@ -29,6 +29,10 @@ namespace Marco.Core.WinCondition
         // 역류 중 재작업 진행도(0.0 ~ 1.0). 역류로 줄어드는 Progress와 따로 0부터 채운다. 역류 중이 아니면 항상 0.
         public float ReworkProgress { get; private set; } = 0f;
 
+        // 한 번이라도 Open에 도달했는가 (기획서 6.1 재개방, 10-26). 켜지면 회전 속도가 재개방 기준(1인 4.0초)이 된다.
+        // 역류로 Closed가 되어도 끄지 않는다. 라운드마다 Valve를 새로 만들므로 새 라운드에서는 false로 시작한다.
+        public bool HasReachedOpen { get; private set; }
+
         public int WorkerCount => _activeWorkerIds.Count;
 
         // 상태가 바뀔 때마다 새 상태를 알려줌 (UI/네트워크 쪽에서 구독)
@@ -112,8 +116,8 @@ namespace Marco.Core.WinCondition
         }
 
         // Reflowing 상태: 30초에 걸쳐 진행도를 1 -> 0으로 줄이고, 균등 간격으로 물소리 알림을 보낸다.
-        // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 처음과 동일).
-        // 재작업이 먼저 끝나면 Open 복귀 + 180초 유예 리셋, 역류가 먼저 끝나면 Closed.
+        // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 재개방 4.0초, 10-26).
+        // 재작업이 먼저 끝나면 Open 복귀 + 240초 유예 리셋, 역류가 먼저 끝나면 Closed.
         // TODO(기획 확인): "재작업 중에도 역류는 멈추지 않고 계속 닫힌다"와
         // "역류가 먼저 끝나면 재작업 진행도를 버린다"는 임시 해석.
         // 완료 전까지는 Status를 Reflowing으로 유지한다(Rotating으로 바꾸면 다음 Tick이 TickWorking 경로로 새서 역류 타이머가 깨짐).
@@ -167,7 +171,7 @@ namespace Marco.Core.WinCondition
             FireDueRippleEvents();
         }
 
-        // 재작업 진행도: 1인 8초, 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
+        // 재작업 진행도: 재개방 1인 4초, 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
         // TODO(기획 확인): 역류 중 재작업을 멈췄을 때도 일반 작업처럼 유예 후 감쇠하는지 미정(지금은 같은 규칙으로 처리).
         private void TickReworkProgress(float seconds)
         {
@@ -199,12 +203,14 @@ namespace Marco.Core.WinCondition
             }
         }
 
+        // 한 번 Open에 도달한 밸브는 재개방 속도를 기준으로 쓴다(1인 4.0초). 감쇠율은 그대로(기획서 6.1).
         private float GetWorkRatePerSecond(int workerCount)
         {
             if (workerCount <= 0) return 0f;
-            if (workerCount == 1) return _config.ValveBaseProgressPerSecond;
-            if (workerCount == 2) return _config.ValveBaseProgressPerSecond * _config.ValveTwoWorkerMultiplier;
-            return _config.ValveBaseProgressPerSecond * _config.ValveThreeOrMoreWorkerMultiplier; // 3인 이상은 상한 배율로 동일
+            float baseRate = HasReachedOpen ? _config.ValveReopenProgressPerSecond : _config.ValveBaseProgressPerSecond;
+            if (workerCount == 1) return baseRate;
+            if (workerCount == 2) return baseRate * _config.ValveTwoWorkerMultiplier;
+            return baseRate * _config.ValveThreeOrMoreWorkerMultiplier; // 3인 이상은 상한 배율로 동일
         }
 
         private void UpdateStatusFromProgress()
@@ -231,6 +237,7 @@ namespace Marco.Core.WinCondition
         {
             Progress = 1f;
             ReworkProgress = 0f;
+            HasReachedOpen = true;
             _openElapsedSeconds = 0f;
             _reflowElapsedSeconds = 0f;
             _reflowRipplesFired = 0;

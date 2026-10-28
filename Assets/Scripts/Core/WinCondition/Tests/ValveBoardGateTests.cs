@@ -36,7 +36,7 @@ namespace Marco.Core.WinCondition.Tests
             Open(board, ValveId.A);
             gate.Evaluate(board.OpenValveCount);
 
-            board.Tick(210f); // A 완전히 역류 닫힘
+            board.Tick(270f); // A 완전히 역류 닫힘 (유예 240 + 역류 30)
             gate.Evaluate(board.OpenValveCount);
             Assert.AreEqual(ValveStatus.Closed, board.GetValve(ValveId.A).Status);
 
@@ -68,7 +68,7 @@ namespace Marco.Core.WinCondition.Tests
             board.GetValve(ValveId.A).EndWork(1);
             board.GetValve(ValveId.B).EndWork(1);
             board.GetValve(ValveId.C).EndWork(1);
-            board.Tick(210f); // 셋 다 역류로 완전히 닫힘
+            board.Tick(270f); // 셋 다 역류로 완전히 닫힘
 
             gate.Evaluate(board.OpenValveCount);
 
@@ -90,7 +90,7 @@ namespace Marco.Core.WinCondition.Tests
             valveA.BeginWork(1);
             valveA.Tick(8f); // Open, 열린 지 0초
             valveA.EndWork(1);
-            valveA.Tick(208f); // 유예 180 + 역류 28초 = 역류 종료까지 2초 남음
+            valveA.Tick(268f); // 유예 240 + 역류 28초 = 역류 종료까지 2초 남음
             Assert.AreEqual(ValveStatus.Reflowing, valveA.Status);
 
             // B: 이미 열려서 유지 중 (역류까지는 한참 남음)

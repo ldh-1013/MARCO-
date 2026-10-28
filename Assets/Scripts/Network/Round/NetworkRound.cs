@@ -26,9 +26,10 @@ namespace Marco.Network.Round
     // Escape and tagging still work there, but no result is ever decided.
     public enum RoundMode : byte { NotStarted, ValvesOnly, Full }
 
+    // No "active" flag: the active set stays on the server (기획서 6.1-0 · 14.3 ValveActivated, 10-26).
+    // Inactive valves simply stay Closed at 0, like an untouched active one.
     public struct ValveSnapshot
     {
-        public bool Active;
         public ValveStatus Status;
         public float Progress;
     }
@@ -109,6 +110,9 @@ namespace Marco.Network.Round
         [SerializeField] private float lastSurvivorPhaseSeconds = 90f;
         // GamePoints marker the Seeker is moved to when a round starts.
         [SerializeField] private string seekerSpawnPoint = "SpawnPoint_4";
+        // Valve reaching Open: map-wide 2D for everyone, no position, no pulse (기획서 6.1 · 부록 A [밸브], 10-26).
+        // Asset not made yet — while empty the cue is only logged.
+        [SerializeField] private AudioClip valveOpenedClip;
 
         // Index = (int)ValveId.
         private readonly SyncList<ValveSnapshot> valveStates = new();
@@ -148,6 +152,8 @@ namespace Marco.Network.Round
         private ValveInteractionService valves;
         private RoundState round;
         private DrainHatchInteractionService drains;
+        private AudioSource valveOpenedSource;
+        private static readonly int RequiredOpenValves = new WinConditionConfig().RequiredOpenValveCount;
 
         public float InteractRange => interactRange;
         public float ClickerInteractRange => ClickerPickupRange;
@@ -175,6 +181,20 @@ namespace Marco.Network.Round
             state = index < valveStates.Count ? valveStates[index] : default;
             return index < valveStates.Count;
         }
+
+        // What clients may know: how many valves are open, never which ones are active (기획서 12.4 · 6.1-0).
+        public int OpenValveCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (var state in valveStates)
+                    if (state.Status == ValveStatus.Open) count++;
+                return count;
+            }
+        }
+
+        public int RequiredOpenValveCount => RequiredOpenValves;
 
         public bool TryGetActiveDrainHatch(out DrainHatchId id)
         {
@@ -300,7 +320,8 @@ namespace Marco.Network.Round
 
             // INTERFACES.md §0 assembly order.
             var config = new WinConditionConfig { LastSurvivorPhaseDurationSeconds = lastSurvivorPhaseSeconds };
-            var active = ValveActivation.SelectActiveValves(new System.Random().Next);
+            // Server only: the active set is never written to a SyncVar or sent to clients (기획서 14.3).
+            var active = ValveActivation.SelectActiveValves(new System.Random().Next, config.ActiveValveCount);
             board = new ValveBoard(active, config);
             gate = new Gate(config.RequiredOpenValveCount);
             var events = new RoundEventRelay(this);
@@ -320,13 +341,6 @@ namespace Marco.Network.Round
                 Debug.Log($"[MARCO] Runner {roster.TotalRunnerCount}명: RoundState는 2~5명만 지원 → 밸브 전용 모드");
             }
 
-            foreach (var id in active)
-            {
-                int index = (int)id;
-                var state = valveStates[index];
-                state.Active = true;
-                valveStates[index] = state;
-            }
             TimeManager.OnTick += OnServerTick;
         }
 
@@ -1320,6 +1334,24 @@ namespace Marco.Network.Round
 
         [Server]
         internal void MarkGateOpened() => gateOpen.Value = true;
+
+        // No valve id in the payload: the cue must not tell anyone where the valve is (기획서 6.1, 10-26).
+        [ObserversRpc]
+        internal void ValveOpenedObservers()
+        {
+            if (valveOpenedClip == null)
+            {
+                Debug.Log("[MARCO] 밸브 개방 완료음 (에셋 없음)");
+                return;
+            }
+            if (valveOpenedSource == null)
+            {
+                valveOpenedSource = gameObject.AddComponent<AudioSource>();
+                valveOpenedSource.playOnAwake = false;
+                valveOpenedSource.spatialBlend = 0f; // 2D: no direction, no distance
+            }
+            valveOpenedSource.PlayOneShot(valveOpenedClip);
+        }
 
         [Server]
         internal void SetResult(RoundResult value) => result.Value = value;

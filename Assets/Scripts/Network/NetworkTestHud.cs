@@ -18,7 +18,6 @@ namespace Marco.Network
         private static readonly Color MutedColor = new(0.6f, 0.6f, 0.6f);
         private static readonly Color OpenColor = new(0.3f, 0.85f, 0.4f);
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
-        private static readonly Color ReflowColor = new(1f, 0.55f, 0.1f);
 
         private LanConnector connector;
 
@@ -83,26 +82,20 @@ namespace Marco.Network
             if (GUI.Button(rect, "↻  다시 시작", style)) round.RestartRound();
         }
 
-        // Left: valve A~E progress bars, then the controls reminder.
+        // Left: open valve count only (기획서 6.1-0 · 12.4 — which valves are active is never shown), then the controls reminder.
         private static void DrawValves(NetworkRound round)
         {
-            const int count = ValveId.E - ValveId.A + 1;
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + count * RowHeight + 220);
+            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + RowHeight + 220);
             TestHudSkin.Panel(rect);
             var inner = Inset(rect);
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), "밸브", TestHudSkin.Text(30, FontStyle.Bold));
 
             float y = inner.y + 50;
-            for (var id = ValveId.A; id <= ValveId.E; id++, y += RowHeight)
-            {
-                round.TryGetValveState(id, out var state);
-                var (label, color) = ValveLook(state);
-                GUI.Label(new Rect(inner.x, y, 40, 32), id.ToString(), TestHudSkin.Text(26, FontStyle.Bold));
-                TestHudSkin.Bar(new Rect(inner.x + 44, y + 6, inner.width - 180, 22), state.Active ? state.Progress : 0f, color);
-                var statusStyle = new GUIStyle(TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleRight));
-                statusStyle.normal.textColor = color;
-                GUI.Label(new Rect(inner.xMax - 128, y, 128, 32), label, statusStyle);
-            }
+            int open = round.OpenValveCount, required = round.RequiredOpenValveCount;
+            var countStyle = new GUIStyle(TestHudSkin.Text(26, FontStyle.Bold));
+            countStyle.normal.textColor = open >= required ? OpenColor : Color.white;
+            GUI.Label(new Rect(inner.x, y, inner.width, 32), $"열린 수  {open} / {required}", countStyle);
+            y += RowHeight;
 
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
@@ -329,18 +322,6 @@ namespace Marco.Network
         {
             int total = Mathf.Max(0, Mathf.CeilToInt(seconds));
             return $"{total / 60}:{total % 60:00}";
-        }
-
-        private static (string, Color) ValveLook(ValveSnapshot state)
-        {
-            if (!state.Active) return ("비활성", MutedColor);
-            return state.Status switch
-            {
-                ValveStatus.Rotating => ($"회전 {state.Progress:P0}", RotatingColor),
-                ValveStatus.Open => ("열림", OpenColor),
-                ValveStatus.Reflowing => ($"역류 {state.Progress:P0}", ReflowColor),
-                _ => ("닫힘", Color.white),
-            };
         }
 
         private static string RoleLabel(PlayerRole role) => role switch
