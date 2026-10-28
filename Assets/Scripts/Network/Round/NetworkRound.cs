@@ -113,6 +113,9 @@ namespace Marco.Network.Round
         // Valve reaching Open: map-wide 2D for everyone, no position, no pulse (기획서 6.1 · 부록 A [밸브], 10-26).
         // Asset not made yet — while empty the cue is only logged.
         [SerializeField] private AudioClip valveOpenedClip;
+        // Sudden death low drone from 2:00 left (기획서 6.2-1): presentation only, each client plays it from the
+        // synced remaining time. P4 owns the real cue (14.2) — while empty it is only logged.
+        [SerializeField] private AudioClip suddenDeathDroneClip;
 
         // Index = (int)ValveId.
         private readonly SyncList<ValveSnapshot> valveStates = new();
@@ -127,6 +130,8 @@ namespace Marco.Network.Round
         private readonly SyncVar<bool> hasDrainHatch = new();
         private readonly SyncVar<DrainHatchId> activeDrainHatch = new();
         private readonly SyncVar<float> drainHatchProgress = new();
+        // Set once at 1:00 left and kept until the round is reset (기획서 6.2-1).
+        private readonly SyncVar<bool> seekerSpeedBoosted = new();
 
         private readonly Dictionary<int, float> nextTagTimes = new();
         private readonly Dictionary<int, HealingChannel> healingChannels = new();
@@ -153,7 +158,10 @@ namespace Marco.Network.Round
         private RoundState round;
         private DrainHatchInteractionService drains;
         private AudioSource valveOpenedSource;
-        private static readonly int RequiredOpenValves = new WinConditionConfig().RequiredOpenValveCount;
+        private AudioSource suddenDeathDroneSource;
+        private bool suddenDeathDronePlaying;
+        private static readonly WinConditionConfig DefaultConfig = new();
+        private static readonly int RequiredOpenValves = DefaultConfig.RequiredOpenValveCount;
 
         public float InteractRange => interactRange;
         public float ClickerInteractRange => ClickerPickupRange;
@@ -167,6 +175,10 @@ namespace Marco.Network.Round
         // Owner side: movement multiplier for the lives the server last sent (1.5 → −15%).
         public float SpeedMultiplierFor(int halves) =>
             halves > WoundedHalves && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+
+        // Owner side: sudden death +5% for the Seeker once the server has applied it (기획서 6.2-1, multiplied).
+        public float SeekerSpeedMultiplierFor(PlayerRole role) =>
+            role == PlayerRole.Seeker && seekerSpeedBoosted.Value ? DefaultConfig.SuddenDeathSeekerSpeedMultiplier : 1;
         public RoundMode Mode => mode.Value;
         public bool GateOpen => gateOpen.Value;
         public RoundResult Result => result.Value;
@@ -227,6 +239,8 @@ namespace Marco.Network.Round
         {
             base.OnStopClient();
             clientStarted = false;
+            suddenDeathDronePlaying = false;
+            if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
             ClearClickerViews();
         }
@@ -245,6 +259,7 @@ namespace Marco.Network.Round
                     bandagePickupStates.Add(true);
             }
             if (!clientStarted) return;
+            UpdateSuddenDeathDrone();
             EnsureBandageViews();
             EnsureClickerViews();
             for (int i = 0; i < bandageViews.Count; i++)
@@ -329,6 +344,8 @@ namespace Marco.Network.Round
             try
             {
                 round = new RoundState(config, roster, gate, valves, events);
+                round.SuddenDeath.SeekerSpeedBoosted += () => seekerSpeedBoosted.Value = true;
+                round.SuddenDeath.ExitPulseTriggered += EmitExitPulses;
                 drains = new DrainHatchInteractionService(round.LastSurvivorPhase, roster);
                 WatchDrainHatch(DrainHatchId.First);
                 WatchDrainHatch(DrainHatchId.Second);
@@ -399,6 +416,42 @@ namespace Marco.Network.Round
             lastSurvivorRemainingSeconds.Value = 0;
             hasDrainHatch.Value = false;
             drainHatchProgress.Value = 0;
+            seekerSpeedBoosted.Value = false;
+        }
+
+        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
+        // pulses go through the pulse delivery path (14.2), which the sound/ripple part (남경) has not
+        // built yet — like LogValveSoundSink, only log here and connect it when that path exists.
+        private void EmitExitPulses()
+        {
+            foreach (var exit in ExitView.All)
+                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
+        }
+
+        // Client side, from the synced remaining time: on at 2:00 left, off when the round ends or resets.
+        private void UpdateSuddenDeathDrone()
+        {
+            float remaining = remainingSeconds.Value;
+            bool shouldPlay = mode.Value == RoundMode.Full && result.Value == RoundResult.InProgress &&
+                              remaining > 0f && remaining <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+            if (shouldPlay == suddenDeathDronePlaying) return;
+            suddenDeathDronePlaying = shouldPlay;
+
+            if (suddenDeathDroneClip == null)
+            {
+                Debug.Log(shouldPlay ? "[MARCO] 종반 저역 드론 시작 (에셋 없음)" : "[MARCO] 종반 저역 드론 끝");
+                return;
+            }
+            if (suddenDeathDroneSource == null)
+            {
+                suddenDeathDroneSource = gameObject.AddComponent<AudioSource>();
+                suddenDeathDroneSource.playOnAwake = false;
+                suddenDeathDroneSource.loop = true;
+                suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
+                suddenDeathDroneSource.clip = suddenDeathDroneClip;
+            }
+            if (shouldPlay) suddenDeathDroneSource.Play();
+            else suddenDeathDroneSource.Stop();
         }
 
         private void ClearCore()
