@@ -12,13 +12,17 @@ namespace Marco.Network.Map
         [SerializeField] private string pointName;
         // World-space offset from the marker, e.g. raising a 1 m valve cube so it rests on the floor.
         [SerializeField] private Vector3 offset;
+        // Off for objects whose own rotation matters more than the marker's, e.g. a wheel facing a wall.
+        [SerializeField] private bool followRotation = true;
+
+        private Quaternion RotationFrom(Transform point) => followRotation ? point.rotation : transform.rotation;
 
         // Start, not Awake: by now every GamePoints in the scene has registered itself.
         private void Start()
         {
             if (!Application.isPlaying) return;
             if (GamePoints.TryGet(pointName, out var point))
-                transform.SetPositionAndRotation(point.position + offset, point.rotation);
+                transform.SetPositionAndRotation(point.position + offset, RotationFrom(point));
             else
                 Debug.LogWarning($"[MARCO][Map] GamePoint '{pointName}' not found for '{name}'");
         }
@@ -29,8 +33,9 @@ namespace Marco.Network.Map
         {
             if (Application.isPlaying || !GamePoints.TryGetInEditor(pointName, out var point)) return;
             var position = point.position + offset;
-            if (transform.position == position && transform.rotation == point.rotation) return;
-            transform.SetPositionAndRotation(position, point.rotation);
+            var rotation = RotationFrom(point);
+            if (transform.position == position && transform.rotation == rotation) return;
+            transform.SetPositionAndRotation(position, rotation);
         }
 #endif
     }

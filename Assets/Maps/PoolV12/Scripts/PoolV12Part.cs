@@ -4,6 +4,8 @@ using UnityEngine;
 [ExecuteAlways]
 public sealed class PoolV12Part : MonoBehaviour
 {
+    private static readonly int ClickerTerrainId = Shader.PropertyToID("_MarcoClickerTerrain");
+
     public string designId;
     public string displayName;
     public string category;
@@ -23,11 +25,18 @@ public sealed class PoolV12Part : MonoBehaviour
 
     void RestoreWallPreview()
     {
-        if (category != "Wall") return;
+        bool isWall = category == "Wall";
+        bool isClickerTerrain = isWall || category == "Floor" || category == "Ceiling" ||
+            category == "Stair" || category == "Guardrail" || category == "Room" ||
+            category == "Door" || category == "ExternalDoor" || category == "Pool" ||
+            category == "NonWalkable" || category == "ServiceVoid";
         foreach (var renderer in GetComponentsInChildren<Renderer>(true))
         {
+            // Nested map parts own their own category; don't let a parent label override it.
+            if (renderer.GetComponentInParent<PoolV12Part>(true) != this) continue;
             var properties = new MaterialPropertyBlock(); renderer.GetPropertyBlock(properties);
-            properties.SetFloat("_WallBase", floor == 2 ? 3.5f : 0);
+            properties.SetFloat(ClickerTerrainId, isClickerTerrain ? 1f : 0f);
+            if (isWall) properties.SetFloat("_WallBase", floor == 2 ? 3.5f : 0);
             renderer.SetPropertyBlock(properties);
         }
     }

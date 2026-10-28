@@ -31,6 +31,8 @@ namespace Marco.Network.Vision
         private Mesh ringMesh;
         private Color ringColor = new Color(0.75f, 0.9f, 1f, 0.8f);
 
+        public Shader RingShader => ringShader;
+
         private void Start()
         {
             controller = GetComponentInParent<CharacterController>();
