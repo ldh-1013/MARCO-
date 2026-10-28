@@ -14,6 +14,7 @@ namespace Marco.Network.Vision
         private const int SampleRate = 48000;
         private const int FrameSamples = 960; // 20 ms at 48 kHz; RNNoise processes 480-sample frames.
         private const int RequiredConsecutiveFrames = 3;
+        private const float ClickerCameraFlashSeconds = 0.5f;
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
@@ -52,6 +53,9 @@ namespace Marco.Network.Vision
         private float nextFrameTime;
         private int consecutiveVoiceFrames;
         private float revealUntil;
+        private bool clickerFlashActive;
+        private float clickerFlashStartedAt = float.NegativeInfinity;
+        private float clickerFlashUntil;
         [Header("MARCO+ · screen-space mask")]
         [SerializeField] private float silenceDb = -50f;
         [SerializeField] private float fullVisionDb = -15f;
@@ -121,7 +125,8 @@ namespace Marco.Network.Vision
             public DefaultReflectionMode reflectionMode;
         }
 
-        public bool IsCenterVisible => developmentFullVision || radius > 0.01f;
+        private bool IsFullVisionActive => developmentFullVision;
+        public bool IsCenterVisible => IsFullVisionActive || clickerFlashActive || radius > 0.01f;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public bool DevelopmentFullVision => developmentFullVision;
 #endif
@@ -159,6 +164,11 @@ namespace Marco.Network.Vision
 
         private void Update()
         {
+            if (clickerFlashActive && Time.unscaledTime >= clickerFlashUntil)
+            {
+                clickerFlashActive = false;
+            }
+
             if (worldLightingOwner == null)
             {
                 worldLightingOwner = this;
@@ -187,7 +197,17 @@ namespace Marco.Network.Vision
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
-                SmoothWorldLighting(Time.unscaledDeltaTime);
+                if (clickerFlashActive && brightnessMode == BrightnessMode.MarcoMinus && !developmentFullVision)
+                {
+                    // Follow the microphone light's brighten and darken timing in one 0.5s pulse.
+                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
+                    worldRadius = Mathf.Lerp(targetWorldRadius, radiusMax, envelope);
+                    worldIntensity = Mathf.Lerp(targetWorldIntensity, intensityMax, envelope);
+                }
+                else
+                {
+                    SmoothWorldLighting(Time.unscaledDeltaTime);
+                }
                 PushWorldLighting();
             }
         }
@@ -203,6 +223,9 @@ namespace Marco.Network.Vision
 
         private void OnDisable()
         {
+            clickerFlashActive = false;
+            clickerFlashStartedAt = float.NegativeInfinity;
+            clickerFlashUntil = 0f;
             if (worldLightingOwner != this) return;
             RestoreEnvironment();
             worldLightingOwner = null;
@@ -247,8 +270,9 @@ namespace Marco.Network.Vision
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs > silenceDb ? 1 : 0;
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
-            if (level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames)
-                VoiceSamplesReady?.Invoke(analysisBuffer, level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper);
+            bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
+            VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;
+            if (recognizedVoice) VoiceSamplesReady?.Invoke(analysisBuffer, voiceGrade);
             if (brightnessMode == BrightnessMode.MarcoMinus && level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames
                 && microphoneFootDots != null && Time.unscaledTime >= nextFootDotTime)
             {
@@ -320,37 +344,83 @@ namespace Marco.Network.Vision
         public void SetDevelopmentFullVision(bool enabled)
         {
             if (developmentFullVision == enabled) return;
+            bool wasFullVision = IsFullVisionActive;
             developmentFullVision = enabled;
+            bool isFullVision = IsFullVisionActive;
+            if (wasFullVision != isFullVision) ApplyFullVisionOverride(isFullVision);
+        }
 
+        /// <summary>Briefly applies the strongest existing speech-light level without adding audio.</summary>
+        public void TriggerClickerCameraFlash()
+        {
+            if (clickerFlashActive) return;
+            clickerFlashActive = true;
+            clickerFlashStartedAt = Time.unscaledTime;
+            clickerFlashUntil = clickerFlashStartedAt + ClickerCameraFlashSeconds;
+        }
+
+        private void ApplyFullVisionOverride(bool enabled)
+        {
             if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus) return;
 
+            targetWorldRadius = worldRadius = 0f;
+            targetWorldIntensity = worldIntensity = 0f;
             if (enabled)
             {
-                targetWorldRadius = worldRadius = 0f;
-                targetWorldIntensity = worldIntensity = 0f;
                 RestoreEnvironment();
+                return;
             }
-            else
-            {
-                targetWorldRadius = worldRadius = 0f;
-                targetWorldIntensity = worldIntensity = 0f;
-                CaptureEnvironment();
-                ApplyBrightnessMode();
-            }
+
+            CaptureEnvironment();
+            ApplyBrightnessMode();
         }
 
         private void OnGUI()
         {
             GUI.depth = 100; // Darkness behind HUD (lower depths are drawn on top).
-            if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+            if (clickerFlashActive)
             {
-                UpdateMask();
-                var old = GUI.color; GUI.color = Color.white;
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
-                GUI.color = old;
+                if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+                {
+                    float envelope = GetClickerFlashEnvelope(Time.unscaledTime - clickerFlashStartedAt);
+                    float flashRadius = Mathf.Lerp(radius, GetFullScreenRevealRadius(), envelope);
+                    DrawDarknessMask(flashRadius);
+                }
             }
+            else if (brightnessMode == BrightnessMode.MarcoPlus && !developmentFullVision)
+                DrawDarknessMask(radius);
+
             GUI.depth = 0;
             GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
+        }
+
+        private void DrawDarknessMask(float revealRadius)
+        {
+            UpdateMask(revealRadius);
+            Color previousColor = GUI.color;
+            GUI.color = Color.white;
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), mask);
+            GUI.color = previousColor;
+        }
+
+        private float GetFullScreenRevealRadius()
+        {
+            float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
+            float cornerRadius = Mathf.Sqrt(aspect * aspect * 0.25f + 0.25f);
+            return cornerRadius + 0.06f;
+        }
+
+        private float GetClickerFlashEnvelope(float elapsed)
+        {
+            float totalTransitionTime = Mathf.Max(0.001f, brightenTimeConstant + darkenTimeConstant);
+            float openingDuration = ClickerCameraFlashSeconds * brightenTimeConstant / totalTransitionTime;
+            float openingProgress = Mathf.Clamp01(elapsed / Mathf.Max(0.001f, openingDuration));
+            if (elapsed <= openingDuration)
+                return Mathf.SmoothStep(0f, 1f, openingProgress);
+
+            float closingDuration = ClickerCameraFlashSeconds - openingDuration;
+            float closingProgress = Mathf.Clamp01((elapsed - openingDuration) / Mathf.Max(0.001f, closingDuration));
+            return 1f - Mathf.SmoothStep(0f, 1f, closingProgress);
         }
 
         private void CaptureEnvironment()
@@ -397,7 +467,7 @@ namespace Marco.Network.Vision
             appliedBrightnessMode = brightnessMode;
             brightnessModeInitialized = true;
 
-            if (brightnessMode == BrightnessMode.MarcoMinus && !developmentFullVision)
+            if (brightnessMode == BrightnessMode.MarcoMinus && !IsFullVisionActive)
             {
                 targetRadius = radius = 0f;
                 RenderSettings.ambientMode = AmbientMode.Flat;
@@ -495,7 +565,7 @@ namespace Marco.Network.Vision
 
         private void PushWorldLighting()
         {
-            if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus || developmentFullVision) return;
+            if (worldLightingOwner != this || brightnessMode != BrightnessMode.MarcoMinus || IsFullVisionActive) return;
             Vector3 position = visionCamera != null ? visionCamera.transform.position : transform.position;
             Shader.SetGlobalVector(PlayerPositionId, new Vector4(position.x, position.y, position.z, 1f));
             Shader.SetGlobalFloat(LightRadiusId, worldRadius);
@@ -505,21 +575,21 @@ namespace Marco.Network.Vision
 
         }
 
-        private void UpdateMask()
+        private void UpdateMask(float revealRadius)
         {
             float aspect = Screen.width / (float)Mathf.Max(1, Screen.height);
             if (mask == null) { mask = new Texture2D(256, 256, TextureFormat.RGBA32, false); mask.wrapMode = TextureWrapMode.Clamp; }
-            if (Mathf.Abs(drawnRadius - radius) < 0.002f && drawnAspect == aspect) return;
+            if (Mathf.Abs(drawnRadius - revealRadius) < 0.002f && drawnAspect == aspect) return;
             for (int y = 0; y < 256; y++) for (int x = 0; x < 256; x++)
             {
                 float dx = ((x + 0.5f) / 256f - 0.5f) * aspect;
                 float dy = (y + 0.5f) / 256f - 0.5f;
                 float distance = Mathf.Sqrt(dx * dx + dy * dy);
-                float alpha = radius <= 0.001f ? 1f : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(Mathf.Max(0, radius - 0.04f), radius, distance));
+                float alpha = revealRadius <= 0.001f ? 1f : Mathf.SmoothStep(0, 1, Mathf.InverseLerp(Mathf.Max(0, revealRadius - 0.04f), revealRadius, distance));
                 maskPixels[y * 256 + x] = new Color32(0, 0, 0, (byte)(alpha * 255));
             }
             mask.SetPixels32(maskPixels); mask.Apply(false);
-            drawnRadius = radius; drawnAspect = aspect;
+            drawnRadius = revealRadius; drawnAspect = aspect;
         }
     }
 

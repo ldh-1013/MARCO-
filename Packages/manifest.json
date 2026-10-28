@@ -4,6 +4,8 @@
     "com.firstgeargames.fishnet": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#4.7.3",
     "com.firstgeargames.fishysteamworks": "file:com.firstgeargames.fishysteamworks",
     "com.rlabrecque.steamworks.net": "https://github.com/rlabrecque/Steamworks.NET.git?path=/com.rlabrecque.steamworks.net#2025.164.1",
+    "com.alven.fishnet.unitytransport": "https://github.com/ooonush/FishyUnityTransport.git?path=Assets/FishNet/Plugins/FishyUnityTransport#1.2.0",
+    "com.unity.services.multiplayer": "2.4.0",
     "com.unity.multiplayer.center": "1.0.1",
     "com.unity.multiplayer.playmode": "2.0.2",
     "com.unity.inputsystem": "1.19.0",

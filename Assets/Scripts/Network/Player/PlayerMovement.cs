@@ -110,7 +110,7 @@ namespace Marco.Network.Player
                 SetCrouchServer(false);
             }
 
-            Vector3 input = locked && !player.IsTreatmentLocked
+            Vector3 input = locked && !player.IsTreatmentLocked && !player.IsStunned
                 ? (transform.forward * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal"))
                 : Vector3.zero;
             input = Vector3.ClampMagnitude(input, 1f);
@@ -122,13 +122,16 @@ namespace Marco.Network.Player
             // grounded behavior while giving both living roles an owner-controlled jump arc.
             bool grounded = controller.isGrounded;
             if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
-            if (locked && !player.IsTreatmentLocked && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
+            if (locked && !player.IsTreatmentLocked && !player.IsStunned && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
             verticalVelocity -= gravity * Time.deltaTime;
 
             float healthMultiplier = NetworkRound.Instance != null
                 ? NetworkRound.Instance.SpeedMultiplierFor(player.HealthHalves) : 1f;
-            float speed = moveSpeed * healthMultiplier * (IsSprinting ? sprintMultiplier : 1f);
+            // Sudden death +5% for the Seeker from 1:00 left, multiplied onto the rest (기획서 6.2-1).
+            float suddenDeathMultiplier = NetworkRound.Instance != null
+                ? NetworkRound.Instance.SeekerSpeedMultiplierFor(player.Role) : 1f;
+            float speed = moveSpeed * healthMultiplier * suddenDeathMultiplier * (IsSprinting ? sprintMultiplier : 1f);
             Vector3 velocity = input * speed + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
         }

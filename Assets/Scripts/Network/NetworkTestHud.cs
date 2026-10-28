@@ -18,7 +18,6 @@ namespace Marco.Network
         private static readonly Color MutedColor = new(0.6f, 0.6f, 0.6f);
         private static readonly Color OpenColor = new(0.3f, 0.85f, 0.4f);
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
-        private static readonly Color ReflowColor = new(1f, 0.55f, 0.1f);
 
         private LanConnector connector;
 
@@ -35,6 +34,7 @@ namespace Marco.Network
             DrawRoundStatus(round);
             DrawValves(round);
             DrawRunnerHealth(round);
+            DrawRunnerInventory();
             DrawHealingProgress();
             DrawResult(round);
         }
@@ -82,26 +82,20 @@ namespace Marco.Network
             if (GUI.Button(rect, "↻  다시 시작", style)) round.RestartRound();
         }
 
-        // Left: valve A~E progress bars, then the controls reminder.
+        // Left: open valve count only (기획서 6.1-0 · 12.4 — which valves are active is never shown), then the controls reminder.
         private static void DrawValves(NetworkRound round)
         {
-            const int count = ValveId.E - ValveId.A + 1;
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + count * RowHeight + 220);
+            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + RowHeight + 220);
             TestHudSkin.Panel(rect);
             var inner = Inset(rect);
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), "밸브", TestHudSkin.Text(30, FontStyle.Bold));
 
             float y = inner.y + 50;
-            for (var id = ValveId.A; id <= ValveId.E; id++, y += RowHeight)
-            {
-                round.TryGetValveState(id, out var state);
-                var (label, color) = ValveLook(state);
-                GUI.Label(new Rect(inner.x, y, 40, 32), id.ToString(), TestHudSkin.Text(26, FontStyle.Bold));
-                TestHudSkin.Bar(new Rect(inner.x + 44, y + 6, inner.width - 180, 22), state.Active ? state.Progress : 0f, color);
-                var statusStyle = new GUIStyle(TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleRight));
-                statusStyle.normal.textColor = color;
-                GUI.Label(new Rect(inner.xMax - 128, y, 128, 32), label, statusStyle);
-            }
+            int open = round.OpenValveCount, required = round.RequiredOpenValveCount;
+            var countStyle = new GUIStyle(TestHudSkin.Text(26, FontStyle.Bold));
+            countStyle.normal.textColor = open >= required ? OpenColor : Color.white;
+            GUI.Label(new Rect(inner.x, y, inner.width, 32), $"열린 수  {open} / {required}", countStyle);
+            y += RowHeight;
 
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
@@ -110,7 +104,8 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
             GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
-            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 붕대 줍기 · G 홀드: 붕대 감기 (6초, +0.5)", help);
+            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 붕대·찰칵이 줍기", help);
+            GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2: 아이템 선택 · G: 사용 (붕대는 홀드)", help);
         }
 
         private static void DrawHealingProgress()
@@ -189,15 +184,40 @@ namespace Marco.Network
                     TestHudSkin.Fill(new Rect(segment.x, segment.y, segment.width * amount, segment.height), fill);
             }
 
-            var bandagePanel = new Rect(panel.xMax + 10, panel.y, height, height);
-            TestHudSkin.Panel(bandagePanel);
-            DrawBandageSlot(new Rect(bandagePanel.x + 7, bandagePanel.y + 7, 64, 64), player.BandageCount);
         }
 
-        private static void DrawBandageSlot(Rect rect, int count)
+        private static void DrawRunnerInventory()
+        {
+            var player = NetworkPlayer.Local;
+            if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
+
+            const float width = 204, height = 144;
+            var panel = new Rect(TestHudSkin.Width - TestHudSkin.Margin - width,
+                TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
+            TestHudSkin.Panel(panel);
+            GUI.Label(new Rect(panel.x + 8, panel.y + 3, panel.width - 16, 22),
+                "아이템 · 1/2 슬롯", TestHudSkin.Text(18, FontStyle.Bold));
+
+            int selectedSlot = player.TryGetComponent(out PlayerInteractor interactor)
+                ? interactor.SelectedItemSlot
+                : 1;
+            var bandageLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
+            bandageLabel.normal.textColor = selectedSlot == 1 ? new Color(1f, 0.83f, 0.35f) : Color.white;
+            var clickerLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
+            clickerLabel.normal.textColor = selectedSlot == 2 ? new Color(0.45f, 0.85f, 1f) : Color.white;
+
+            GUI.Label(new Rect(panel.x + 8, panel.y + 26, 88, 20), "1 · 붕대", bandageLabel);
+            GUI.Label(new Rect(panel.x + 108, panel.y + 26, 88, 20), "2 · 찰칵", clickerLabel);
+            DrawBandageSlot(new Rect(panel.x + 20, panel.y + 47, 64, 64), player.BandageCount, selectedSlot == 1);
+            DrawClickerSlot(new Rect(panel.x + 120, panel.y + 47, 64, 64), player.ClickerCount, selectedSlot == 2);
+            GUI.Label(new Rect(panel.x + 8, panel.y + 115, panel.width - 16, 20),
+                "찰칵 Q/우클릭 · 붕대 G 홀드", TestHudSkin.Text(15, FontStyle.Normal, TextAnchor.MiddleCenter));
+        }
+
+        private static void DrawBandageSlot(Rect rect, int count, bool selected)
         {
             TestHudSkin.Fill(rect, new Color(0f, 0f, 0f, 0.42f));
-            Color border = new(1f, 1f, 1f, 0.35f);
+            Color border = selected ? new Color(1f, 0.78f, 0.2f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);
             TestHudSkin.Fill(new Rect(rect.x, rect.y, rect.width, 2), border);
             TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2), border);
             TestHudSkin.Fill(new Rect(rect.x, rect.y, 2, rect.height), border);
@@ -213,6 +233,23 @@ namespace Marco.Network
 
             GUI.Label(new Rect(rect.x, rect.y + 31, rect.width, 27), count.ToString(),
                 TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
+        }
+
+        private static void DrawClickerSlot(Rect rect, int count, bool selected)
+        {
+            TestHudSkin.Fill(rect, new Color(0f, 0f, 0f, 0.42f));
+            Color border = selected ? new Color(0.35f, 0.82f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);
+            TestHudSkin.Fill(new Rect(rect.x, rect.y, rect.width, 2), border);
+            TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2), border);
+            TestHudSkin.Fill(new Rect(rect.x, rect.y, 2, rect.height), border);
+            TestHudSkin.Fill(new Rect(rect.xMax - 2, rect.y, 2, rect.height), border);
+
+            Color body = count > 0 ? new Color(0.78f, 0.9f, 1f, 1f) : new Color(0.62f, 0.66f, 0.7f, 0.5f);
+            TestHudSkin.Fill(new Rect(rect.x + 18, rect.y + 14, 28, 25), body);
+            TestHudSkin.Fill(new Rect(rect.x + 22, rect.y + 9, 20, 6), body);
+            TestHudSkin.Fill(new Rect(rect.x + 26, rect.y + 20, 12, 12), new Color(0.18f, 0.3f, 0.42f, count > 0 ? 1f : 0.45f));
+            GUI.Label(new Rect(rect.x, rect.y + 38, rect.width, 20), count.ToString(),
+                TestHudSkin.Text(18, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         // Right: every player with role and status, then the disconnect button.
@@ -285,18 +322,6 @@ namespace Marco.Network
         {
             int total = Mathf.Max(0, Mathf.CeilToInt(seconds));
             return $"{total / 60}:{total % 60:00}";
-        }
-
-        private static (string, Color) ValveLook(ValveSnapshot state)
-        {
-            if (!state.Active) return ("비활성", MutedColor);
-            return state.Status switch
-            {
-                ValveStatus.Rotating => ($"회전 {state.Progress:P0}", RotatingColor),
-                ValveStatus.Open => ("열림", OpenColor),
-                ValveStatus.Reflowing => ($"역류 {state.Progress:P0}", ReflowColor),
-                _ => ("닫힘", Color.white),
-            };
         }
 
         private static string RoleLabel(PlayerRole role) => role switch

@@ -3,7 +3,7 @@
 비대칭 멀티플레이 공포 술래잡기. 완전한 암전 속에서 플레이어는 **소리를 내야만** 세상을 볼 수 있고,
 소리를 내는 순간 술래에게 위치가 드러난다.
 
-- 엔진: Unity 6000.5.4f1(고정) · 렌더링: URP · 네트워크: FishNet + Steamworks (URP · FishNet · Steamworks는 **계획** — `Packages/manifest.json`에 아직 없다)
+- 엔진: Unity 6000.5.4f1(고정) · 렌더링: URP · 네트워크: FishNet + Unity Relay/Lobby (`docs/UnityRelay_설정.md` 참조)
 - 팀: 6명 (프로그래머 4 · 디자이너 1 · 기획 1)
 - 현재 단계: **기획 확정(기획서 v0.6) → 본 구현 시작**
 
@@ -12,7 +12,7 @@
 ## 이 리포지토리의 상태
 
 이전 구현(Phase 3~4, 스프린트 1~27)은 전량 폐기했고, 확정된 기획서를 기준으로 본 구현을 새로 시작한다.
-URP · FishNet · Steamworks는 아직 도입 전이다(`Packages/manifest.json`에 없고 렌더 파이프라인 설정도 비어 있다).
+FishNet과 Unity Multiplayer Services 패키지는 프로젝트에 포함되어 있다. Unity Dashboard Cloud Project 연결과 Lobby/Relay 서비스 활성화는 개발 환경에서 별도로 설정한다. 네트워크 설정은 [`docs/UnityRelay_설정.md`](docs/UnityRelay_설정.md)를 따른다.
 
 이 저장소의 원격은 GitHub(https://github.com/ldh-1013/MARCO-.git)이며, 변경 절차는 `docs/작성규칙/작성규칙.md`를 따른다.
 

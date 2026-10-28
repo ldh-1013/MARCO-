@@ -5,8 +5,11 @@
         "FishNet.Runtime",
         "Marco.Core.WinCondition",
         "Adrenak.RNNoise4Unity.Runtime",
-        "FishySteamworks",
-        "com.rlabrecque.steamworks.net"
+        "FishyUnityTransport",
+        "Unity.Networking.Transport",
+        "Unity.Services.Authentication",
+        "Unity.Services.Core",
+        "Unity.Services.Multiplayer"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

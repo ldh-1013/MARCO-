@@ -21,6 +21,9 @@ namespace Marco.Network.Valves
         [SerializeField] private Vector3 spinAxis = Vector3.up;
         [SerializeField] private Transform[] spinParts;
         [SerializeField] private Renderer body;
+        // Metal jam when the server rejects an interaction; local only, no pulse (기획서 6.1-0, 10-26).
+        // Asset not made yet — while empty the cue is only logged.
+        [SerializeField] private AudioClip jamClip;
 
         // Each part's pose relative to the pivot (unscaled), taken before any spin.
         private Vector3[] restOffsets;
@@ -37,6 +40,16 @@ namespace Marco.Network.Valves
             var offset = position - transform.position;
             offset.y = 0;
             return offset.sqrMagnitude <= range * range;
+        }
+
+        public void PlayJam()
+        {
+            if (jamClip == null)
+            {
+                Debug.Log("[MARCO] 밸브 걸림음 (에셋 없음)");
+                return;
+            }
+            AudioSource.PlayClipAtPoint(jamClip, transform.position);
         }
 
         private void Awake()
@@ -67,7 +80,8 @@ namespace Marco.Network.Valves
             var spin = pivot.rotation * Quaternion.AngleAxis(state.Progress * 360f * HandleTurnsAtFullProgress, spinAxis);
             for (int i = 0; i < spinParts.Length; i++)
                 spinParts[i].SetPositionAndRotation(pivot.position + spin * restOffsets[i], spin * restRotations[i]);
-            body.material.color = !known || !state.Active ? Color.gray : state.Status switch
+            // Active and inactive valves look the same (기획서 6.1-0, 10-26): an inactive one just stays Closed.
+            body.material.color = !known ? Color.gray : state.Status switch
             {
                 ValveStatus.Rotating => Color.yellow,
                 ValveStatus.Open => Color.green,

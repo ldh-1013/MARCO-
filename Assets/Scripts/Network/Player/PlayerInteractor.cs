@@ -11,7 +11,7 @@ namespace Marco.Network.Player
 {
     // On the player prefab. The owner's input becomes ServerRpcs; the server re-checks range, role
     // and status (NetworkRound / WinCondition via IPlayerRoster). Clients decide nothing.
-    // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel.
+    // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel; Q/right-click uses Clicker.
     // Left click: swing (Seeker); the server decides the tag and all clients play the attack.
     [RequireComponent(typeof(NetworkPlayer))]
     public sealed class PlayerInteractor : NetworkBehaviour
@@ -21,6 +21,7 @@ namespace Marco.Network.Player
         private DrainHatchId? workingDrain;
         private bool workingTreatment;
         private bool workingBandage;
+        private int selectedItemSlot = 1;
         // Owner-side swing cooldown. It starts when the server's answer arrives, so it always ends
         // after the server's own cooldown and never sends a request the server would reject.
         private bool swingPending;
@@ -28,6 +29,7 @@ namespace Marco.Network.Player
 
         // Seeker only: seconds left on the swing cooldown, for the HUD.
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
+        public int SelectedItemSlot => selectedItemSlot;
 
         public bool CanTreatNearbyRunner
         {
@@ -36,6 +38,7 @@ namespace Marco.Network.Player
                 var round = NetworkRound.Instance;
                 return IsOwner && player != null && player.Role == PlayerRole.Runner &&
                     player.Status == PlayerStatus.Alive && !player.HasHealingAction && round != null &&
+                    (player.ClickerCount > 0 || !round.TryFindClickerPickup(transform.position, round.ClickerInteractRange, out _)) &&
                     (!round.HasBandageCapacity(player) || !round.TryFindBandagePickup(transform.position, round.InteractRange, out _)) &&
                     round.TryFindInjuredRunner(player, round.InteractRange, out _);
             }
@@ -53,6 +56,12 @@ namespace Marco.Network.Player
             bool held = Input.GetKey(KeyCode.E) && locked;
             float range = round.InteractRange;
 
+            if (locked && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1)) selectedItemSlot = 1;
+                else if (Input.GetKeyDown(KeyCode.Alpha2)) selectedItemSlot = 2;
+            }
+
             if (workingBandage)
             {
                 if (!Input.GetKey(KeyCode.G) || !locked)
@@ -61,7 +70,7 @@ namespace Marco.Network.Player
                     workingBandage = false;
                 }
             }
-            else if (locked && Input.GetKeyDown(KeyCode.G) && !workingTreatment &&
+            else if (locked && selectedItemSlot == 1 && Input.GetKeyDown(KeyCode.G) && !workingTreatment &&
                      workingValve == null && workingDrain == null && player.Role == PlayerRole.Runner &&
                      player.Status == PlayerStatus.Alive)
             {
@@ -106,6 +115,10 @@ namespace Marco.Network.Player
             }
 
             if (locked && Input.GetMouseButtonDown(0) && player.Role == PlayerRole.Seeker) Swing(round);
+            bool useClickerPressed = Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Q);
+            if (locked && useClickerPressed && !workingBandage && player.Role == PlayerRole.Runner &&
+                player.Status == PlayerStatus.Alive && player.ClickerCount > 0)
+                UseClickerServer();
         }
 
         // Clicks during the cooldown (or while the last swing is unanswered) send nothing (기획서 3.1-2).
@@ -118,7 +131,12 @@ namespace Marco.Network.Player
 
         private void BeginInteraction(NetworkRound round, float range)
         {
-            if (player.Role == PlayerRole.Runner && round.HasBandageCapacity(player) &&
+            if (player.Role == PlayerRole.Runner && player.ClickerCount == 0 &&
+                round.TryFindClickerPickup(transform.position, round.ClickerInteractRange, out int clickerIndex))
+            {
+                PickupClickerServer(clickerIndex);
+            }
+            else if (player.Role == PlayerRole.Runner && round.HasBandageCapacity(player) &&
                 round.TryFindBandagePickup(transform.position, range, out int pickupIndex))
             {
                 PickupBandageServer(pickupIndex);
@@ -169,9 +187,22 @@ namespace Marco.Network.Player
             return best < float.MaxValue;
         }
 
+        // Any rejection (inactive, already open, not a Runner, out of range) gets the same jam cue, so the
+        // reply never tells the Seeker or anyone else which valves are active (기획서 6.1-0, 10-26).
         [ServerRpc]
-        private void BeginWorkServer(ValveId valveId) =>
-            NetworkRound.Instance?.TryBeginWork(OwnerId, valveId, transform.position);
+        private void BeginWorkServer(ValveId valveId)
+        {
+            var round = NetworkRound.Instance;
+            if (round == null || !round.TryBeginWork(OwnerId, valveId, transform.position)) ValveJamTarget(Owner, valveId);
+        }
+
+        // Local only: just the presser hears it, and it makes no pulse (기획서 6.1-0).
+        [TargetRpc]
+        private void ValveJamTarget(NetworkConnection conn, ValveId valveId)
+        {
+            if (workingValve == valveId) workingValve = null;
+            if (ValveView.TryGet(valveId, out var view)) view.PlayJam();
+        }
 
         [ServerRpc]
         private void EndWorkServer(ValveId valveId) => NetworkRound.Instance?.EndWork(OwnerId, valveId);
@@ -189,6 +220,13 @@ namespace Marco.Network.Player
         [ServerRpc]
         private void PickupBandageServer(int pickupIndex) =>
             NetworkRound.Instance?.TryPickupBandage(OwnerId, pickupIndex, transform.position);
+
+        [ServerRpc]
+        private void PickupClickerServer(int pickupIndex) =>
+            NetworkRound.Instance?.TryPickupClicker(OwnerId, pickupIndex);
+
+        [ServerRpc]
+        private void UseClickerServer() => NetworkRound.Instance?.TryUseClicker(OwnerId);
 
         [ServerRpc]
         private void BeginBandageServer() => NetworkRound.Instance?.TryBeginBandage(OwnerId);

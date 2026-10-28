@@ -158,8 +158,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 31698764}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 32.05, y: 1.05, z: 5.75}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -561,8 +561,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 182672887}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 7, y: -3.5, z: 47}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -609,8 +609,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 225155289}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 27.85, y: 1.05, z: 5.75}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -669,6 +669,7 @@ MonoBehaviour:
   - {fileID: 563690020}
   - {fileID: 563690017}
   body: {fileID: 1446107756}
+  jamClip: {fileID: 0}
 --- !u!4 &269417617
 Transform:
   m_ObjectHideFlags: 0
@@ -677,8 +678,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 269417614}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 38.5, y: -2.312, z: 52}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -725,8 +726,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 362099061}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 29.95, y: 1.05, z: 5.75}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -743,16 +744,16 @@ GameObject:
   - component: {fileID: 511556158}
   - component: {fileID: 511556157}
   - component: {fileID: 511556156}
-  - component: {fileID: 511556155}
   - component: {fileID: 511556154}
   - component: {fileID: 511556153}
   - component: {fileID: 511556152}
-  - component: {fileID: 511556151}
-  - component: {fileID: 511556150}
   - component: {fileID: 511556149}
   - component: {fileID: 511556148}
   - component: {fileID: 511556147}
   - component: {fileID: 511556146}
+  - component: {fileID: 511556159}
+  - component: {fileID: 511556161}
+  - component: {fileID: 511556160}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -814,33 +815,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7867e1f85b58ea64cad12addf3a2c14b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.NetworkTestHud
---- !u!114 &511556150
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3a1c208084f90ac4b8a44e1009b69696, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.LobbyMenu
-  menuPosition: {x: 8, y: 330}
-  nicknamePosition: {x: 350, y: 140}
-  menuFontSize: 40
---- !u!114 &511556151
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bcda1f73f01ae5040a09f07e23bdf3d5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.SteamLobby
 --- !u!114 &511556152
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -890,24 +864,7 @@ MonoBehaviour:
   GlobalServerActions: 0
   _transports:
   - {fileID: 511556156}
-  - {fileID: 511556155}
---- !u!114 &511556155
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 511556145}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 28b19962fe839804180bd02ce1a545f0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishySteamworks::FishySteamworks.FishySteamworks
-  _serverBindAddress: 
-  _port: 7770
-  _maximumClients: 16
-  _peerToPeer: 1
-  _clientAddress: 
+  - {fileID: 511556159}
 --- !u!114 &511556156
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -927,7 +884,7 @@ MonoBehaviour:
   _enableIpv6: 1
   _ipv6BindAddress: 
   _port: 7770
-  _maximumClients: 16
+  _maximumClients: 5
   _clientAddress: localhost
 --- !u!114 &511556157
 MonoBehaviour:
@@ -963,6 +920,63 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &511556159
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cdcee4396754c63a1574492499cffc8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishyUnityTransport::FishNet.Transporting.UTP.FishyUnityTransport
+  m_ProtocolType: 0
+  m_UseWebSockets: 0
+  m_UseEncryption: 0
+  m_MaxPacketQueueSize: 128
+  m_MaxPayloadSize: 6144
+  m_HeartbeatTimeoutMS: 500
+  m_ConnectTimeoutMS: 1000
+  m_MaxConnectAttempts: 60
+  m_DisconnectTimeoutMS: 30000
+  ConnectionData:
+    Address: 127.0.0.1
+    Port: 7777
+    ServerListenAddress: 
+  DebugSimulator:
+    PacketDelayMS: 0
+    PacketJitterMS: 0
+    PacketDropRate: 0
+  m_MaximumClients: 5
+--- !u!114 &511556160
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a1c208084f90ac4b8a44e1009b69696, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.LobbyMenu
+  menuPosition: {x: 8, y: 330}
+  nicknamePosition: {x: 350, y: 140}
+  menuFontSize: 40
+--- !u!114 &511556161
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 511556145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6da7840e09254560a10dbe8ea2c0505b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Lobby.UnityRelayLobby
 --- !u!1001 &524507879
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1443,6 +1457,7 @@ MonoBehaviour:
   - {fileID: 1953675954}
   - {fileID: 1953675951}
   body: {fileID: 1544161606}
+  jamClip: {fileID: 0}
 --- !u!4 &685163658
 Transform:
   m_ObjectHideFlags: 0
@@ -1451,8 +1466,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 685163655}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 50.5, y: 1.154, z: 20}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1573,8 +1588,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 870053179}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 23, y: 1.5, z: 1}
   m_LocalScale: {x: 3, y: 3, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1633,6 +1648,7 @@ MonoBehaviour:
   - {fileID: 2114267207}
   - {fileID: 2114267204}
   body: {fileID: 1581827524}
+  jamClip: {fileID: 0}
 --- !u!4 &960865516
 Transform:
   m_ObjectHideFlags: 0
@@ -1641,8 +1657,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 960865513}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 58.5, y: 1, z: 36}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1703,6 +1719,7 @@ MonoBehaviour:
   - {fileID: 78347529}
   - {fileID: 78347526}
   body: {fileID: 582431453}
+  jamClip: {fileID: 0}
 --- !u!4 &967421995
 Transform:
   m_ObjectHideFlags: 0
@@ -1711,8 +1728,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 967421992}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 4.5, y: -0.11, z: 51}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1865,6 +1882,7 @@ MonoBehaviour:
   - {fileID: 1577353025}
   - {fileID: 1577353022}
   body: {fileID: 1547469577}
+  jamClip: {fileID: 0}
 --- !u!4 &1120961836
 Transform:
   m_ObjectHideFlags: 0
@@ -1873,8 +1891,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1120961833}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 6, y: 4.974, z: 16.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -2181,8 +2199,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1491257075}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 36, y: -3.5, z: 47.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -2784,6 +2802,8 @@ MonoBehaviour:
   recoveringSpeedPenalty: 0.15
   lastSurvivorPhaseSeconds: 90
   seekerSpawnPoint: SpawnPoint_4
+  valveOpenedClip: {fileID: 0}
+  suddenDeathDroneClip: {fileID: 0}
 --- !u!114 &1648571303
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3190,8 +3210,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2008167795}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 55, y: 1.5, z: 61}
   m_LocalScale: {x: 3, y: 3, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []

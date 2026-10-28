@@ -12,6 +12,7 @@ using Marco.Network.Map;
 using Marco.Network.Player;
 using Marco.Network.Roles;
 using Marco.Network.Valves;
+using Marco.Network.Vision;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -25,9 +26,10 @@ namespace Marco.Network.Round
     // Escape and tagging still work there, but no result is ever decided.
     public enum RoundMode : byte { NotStarted, ValvesOnly, Full }
 
+    // No "active" flag: the active set stays on the server (기획서 6.1-0 · 14.3 ValveActivated, 10-26).
+    // Inactive valves simply stay Closed at 0, like an untouched active one.
     public struct ValveSnapshot
     {
-        public bool Active;
         public ValveStatus Status;
         public float Progress;
     }
@@ -41,6 +43,19 @@ namespace Marco.Network.Round
         private const float BandageUseSeconds = 6f;
         private const float TeammateTreatmentSeconds = 9f;
         private const float HealingProgressSyncSeconds = 0.1f;
+        private const float ClickerRespawnSeconds = 120f;
+        private const float ClickerVisibilityRadius = 6f;
+        private const float ClickerStunRadius = 16f;
+        private const float ClickerStunSeconds = 3f;
+        private const float ClickerPickupRange = 1.5f;
+        // One each in the four diagram regions: lobby, 2F lobby, dock, main pool hall.
+        private static readonly Vector3[] ClickerSpawnPoints =
+        {
+            new(44.5f, 0f, 2.5f),  // 로비 · 안내데스크
+            new(33f, 3.5f, 18f),   // 2층 관람 로비
+            new(50f, 0f, 60f),     // 하역장
+            new(1f, 0f, 58f),      // 메인 풀 홀 북서 모서리
+        };
         // Map coordinates (x, height, z) from docs/맵설계.md §9.1. The nine fixed pickups
         // match the map diagram: AID 2, main pool hall 2, staff corridor 1, both changing rooms 1,
         // lobby 1, and second-floor spectator lobby 1.
@@ -95,10 +110,17 @@ namespace Marco.Network.Round
         [SerializeField] private float lastSurvivorPhaseSeconds = 90f;
         // GamePoints marker the Seeker is moved to when a round starts.
         [SerializeField] private string seekerSpawnPoint = "SpawnPoint_4";
+        // Valve reaching Open: map-wide 2D for everyone, no position, no pulse (기획서 6.1 · 부록 A [밸브], 10-26).
+        // Asset not made yet — while empty the cue is only logged.
+        [SerializeField] private AudioClip valveOpenedClip;
+        // Sudden death low drone from 2:00 left (기획서 6.2-1): presentation only, each client plays it from the
+        // synced remaining time. P4 owns the real cue (14.2) — while empty it is only logged.
+        [SerializeField] private AudioClip suddenDeathDroneClip;
 
         // Index = (int)ValveId.
         private readonly SyncList<ValveSnapshot> valveStates = new();
         private readonly SyncList<bool> bandagePickupStates = new();
+        private readonly SyncList<bool> clickerPickupStates = new();
         private readonly SyncVar<RoundMode> mode = new();
         private readonly SyncVar<bool> gateOpen = new();
         private readonly SyncVar<RoundResult> result = new();
@@ -108,6 +130,8 @@ namespace Marco.Network.Round
         private readonly SyncVar<bool> hasDrainHatch = new();
         private readonly SyncVar<DrainHatchId> activeDrainHatch = new();
         private readonly SyncVar<float> drainHatchProgress = new();
+        // Set once at 1:00 left and kept until the round is reset (기획서 6.2-1).
+        private readonly SyncVar<bool> seekerSpeedBoosted = new();
 
         private readonly Dictionary<int, float> nextTagTimes = new();
         private readonly Dictionary<int, HealingChannel> healingChannels = new();
@@ -116,10 +140,16 @@ namespace Marco.Network.Round
         // Server only (기획서 14.2): never in a SyncVar, sent to the owner alone. Missing = full.
         private readonly Dictionary<int, int> runnerHalves = new();
         private readonly Dictionary<int, int> bandageCounts = new();
+        private readonly Dictionary<int, bool> clickerHoldings = new();
+        private readonly Dictionary<int, float> clickerRespawnTimes = new();
+        private readonly Dictionary<int, float> clickerStunUntil = new();
+        private readonly List<int> expiredClickerStunIds = new();
         private readonly List<Vector3> bandagePositions = new();
         private readonly HashSet<int> resolvedBandageSpawns = new();
         private readonly List<Transform> bandageViews = new();
+        private readonly List<Transform> clickerViews = new();
         private Material bandageWrapMaterial, bandageMarkMaterial;
+        private Material clickerMaterial;
         private bool clientStarted;
         private NetworkPlayerRoster roster;
         private ValveBoard board;
@@ -127,8 +157,14 @@ namespace Marco.Network.Round
         private ValveInteractionService valves;
         private RoundState round;
         private DrainHatchInteractionService drains;
+        private AudioSource valveOpenedSource;
+        private AudioSource suddenDeathDroneSource;
+        private bool suddenDeathDronePlaying;
+        private static readonly WinConditionConfig DefaultConfig = new();
+        private static readonly int RequiredOpenValves = DefaultConfig.RequiredOpenValveCount;
 
         public float InteractRange => interactRange;
+        public float ClickerInteractRange => ClickerPickupRange;
         public float TagRadius => tagRadius;
         public float TagHitCooldown => tagHitCooldown;
         public float TagMissCooldown => tagMissCooldown;
@@ -139,6 +175,10 @@ namespace Marco.Network.Round
         // Owner side: movement multiplier for the lives the server last sent (1.5 → −15%).
         public float SpeedMultiplierFor(int halves) =>
             halves > WoundedHalves && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+
+        // Owner side: sudden death +5% for the Seeker once the server has applied it (기획서 6.2-1, multiplied).
+        public float SeekerSpeedMultiplierFor(PlayerRole role) =>
+            role == PlayerRole.Seeker && seekerSpeedBoosted.Value ? DefaultConfig.SuddenDeathSeekerSpeedMultiplier : 1;
         public RoundMode Mode => mode.Value;
         public bool GateOpen => gateOpen.Value;
         public RoundResult Result => result.Value;
@@ -153,6 +193,20 @@ namespace Marco.Network.Round
             state = index < valveStates.Count ? valveStates[index] : default;
             return index < valveStates.Count;
         }
+
+        // What clients may know: how many valves are open, never which ones are active (기획서 12.4 · 6.1-0).
+        public int OpenValveCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (var state in valveStates)
+                    if (state.Status == ValveStatus.Open) count++;
+                return count;
+            }
+        }
+
+        public int RequiredOpenValveCount => RequiredOpenValves;
 
         public bool TryGetActiveDrainHatch(out DrainHatchId id)
         {
@@ -177,6 +231,7 @@ namespace Marco.Network.Round
             base.OnStartClient();
             clientStarted = true;
             EnsureBandageViews();
+            EnsureClickerViews();
             Debug.Log($"[MARCO][Round] OnStartClient (mode {mode.Value})");
         }
 
@@ -184,12 +239,17 @@ namespace Marco.Network.Round
         {
             base.OnStopClient();
             clientStarted = false;
+            suddenDeathDronePlaying = false;
+            if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
+            ClearClickerViews();
         }
 
         private void Update()
         {
             if (IsServerInitialized) TickHealingChannels();
+            if (IsServerInitialized) TickClickerRespawns();
+            if (IsServerInitialized) TickClickerStuns();
             // The map's GamePoints can finish registering after the network scene object starts.
             // Retry on the server and make any late-resolved pickups available for this round.
             if (IsServerInitialized && mode.Value != RoundMode.NotStarted)
@@ -199,7 +259,9 @@ namespace Marco.Network.Round
                     bandagePickupStates.Add(true);
             }
             if (!clientStarted) return;
+            UpdateSuddenDeathDrone();
             EnsureBandageViews();
+            EnsureClickerViews();
             for (int i = 0; i < bandageViews.Count; i++)
             {
                 var view = bandageViews[i];
@@ -210,6 +272,18 @@ namespace Marco.Network.Round
                 view.Rotate(Vector3.up, 55f * Time.deltaTime, Space.World);
                 Vector3 position = bandagePositions[i];
                 position.y += 0.05f * Mathf.Sin(Time.time * 2.5f + i);
+                view.position = position;
+            }
+            for (int i = 0; i < clickerViews.Count; i++)
+            {
+                Transform view = clickerViews[i];
+                if (view == null) continue;
+                bool available = i < clickerPickupStates.Count && clickerPickupStates[i];
+                if (view.gameObject.activeSelf != available) view.gameObject.SetActive(available);
+                if (!available) continue;
+                view.Rotate(Vector3.up, 45f * Time.deltaTime, Space.World);
+                Vector3 position = ClickerSpawnPoints[i];
+                position.y += 0.12f + 0.05f * Mathf.Sin(Time.time * 2.5f + i);
                 view.position = position;
             }
         }
@@ -226,6 +300,7 @@ namespace Marco.Network.Round
         public override void OnStopServer()
         {
             CancelAllHealingActions();
+            ClearClickerStuns();
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             TimeManager.OnTick -= OnServerTick;
@@ -252,12 +327,16 @@ namespace Marco.Network.Round
             {
                 bandageCounts[player.PlayerId] = 0;
                 player.SendBandageCount(0);
+                clickerHoldings[player.PlayerId] = false;
+                player.SendClickerCount(0);
             }
             ResetBandagePickups(available: true);
+            ResetClickerPickups(available: true);
 
             // INTERFACES.md §0 assembly order.
             var config = new WinConditionConfig { LastSurvivorPhaseDurationSeconds = lastSurvivorPhaseSeconds };
-            var active = ValveActivation.SelectActiveValves(new System.Random().Next);
+            // Server only: the active set is never written to a SyncVar or sent to clients (기획서 14.3).
+            var active = ValveActivation.SelectActiveValves(new System.Random().Next, config.ActiveValveCount);
             board = new ValveBoard(active, config);
             gate = new Gate(config.RequiredOpenValveCount);
             var events = new RoundEventRelay(this);
@@ -265,6 +344,8 @@ namespace Marco.Network.Round
             try
             {
                 round = new RoundState(config, roster, gate, valves, events);
+                round.SuddenDeath.SeekerSpeedBoosted += () => seekerSpeedBoosted.Value = true;
+                round.SuddenDeath.ExitPulseTriggered += EmitExitPulses;
                 drains = new DrainHatchInteractionService(round.LastSurvivorPhase, roster);
                 WatchDrainHatch(DrainHatchId.First);
                 WatchDrainHatch(DrainHatchId.Second);
@@ -277,13 +358,6 @@ namespace Marco.Network.Round
                 Debug.Log($"[MARCO] Runner {roster.TotalRunnerCount}명: RoundState는 2~5명만 지원 → 밸브 전용 모드");
             }
 
-            foreach (var id in active)
-            {
-                int index = (int)id;
-                var state = valveStates[index];
-                state.Active = true;
-                valveStates[index] = state;
-            }
             TimeManager.OnTick += OnServerTick;
         }
 
@@ -321,12 +395,16 @@ namespace Marco.Network.Round
         private void ResetRound()
         {
             CancelAllHealingActions();
+            ClearClickerStuns();
             TimeManager.OnTick -= OnServerTick;
             ClearCore();
             nextTagTimes.Clear();
             ResetLives();
             foreach (var player in NetworkPlayer.All) player.SendBandageCount(0);
             bandageCounts.Clear();
+            foreach (var player in NetworkPlayer.All) player.SendClickerCount(0);
+            clickerHoldings.Clear();
+            ResetClickerPickups(available: false);
             bandagePickupStates.Clear();
             valveStates.Clear();
             for (int i = 0; i < ValveCount; i++) valveStates.Add(default);
@@ -338,6 +416,48 @@ namespace Marco.Network.Round
             lastSurvivorRemainingSeconds.Value = 0;
             hasDrainHatch.Value = false;
             drainHatchProgress.Value = 0;
+            seekerSpeedBoosted.Value = false;
+        }
+
+        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
+        // pulses go through the pulse delivery path (14.2), which the sound/ripple part (남경) has not
+        // built yet — like LogValveSoundSink, only log here and connect it when that path exists.
+        private void EmitExitPulses()
+        {
+            foreach (var exit in ExitView.All)
+                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
+            ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
+        }
+
+        // TEMPORARY — 파문 시스템 생기면 교체. Every client draws a ring at both exits, with no distance
+        // or occlusion check; the exit positions are public, so the payload carries nothing.
+        [ObserversRpc]
+        private void ExitPulseRingsObservers() => TemporaryExitPulseRings.ShowAtAllExits();
+
+        // Client side, from the synced remaining time: on at 2:00 left, off when the round ends or resets.
+        private void UpdateSuddenDeathDrone()
+        {
+            float remaining = remainingSeconds.Value;
+            bool shouldPlay = mode.Value == RoundMode.Full && result.Value == RoundResult.InProgress &&
+                              remaining > 0f && remaining <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+            if (shouldPlay == suddenDeathDronePlaying) return;
+            suddenDeathDronePlaying = shouldPlay;
+
+            if (suddenDeathDroneClip == null)
+            {
+                Debug.Log(shouldPlay ? "[MARCO] 종반 저역 드론 시작 (에셋 없음)" : "[MARCO] 종반 저역 드론 끝");
+                return;
+            }
+            if (suddenDeathDroneSource == null)
+            {
+                suddenDeathDroneSource = gameObject.AddComponent<AudioSource>();
+                suddenDeathDroneSource.playOnAwake = false;
+                suddenDeathDroneSource.loop = true;
+                suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
+                suddenDeathDroneSource.clip = suddenDeathDroneClip;
+            }
+            if (shouldPlay) suddenDeathDroneSource.Play();
+            else suddenDeathDroneSource.Stop();
         }
 
         private void ClearCore()
@@ -437,6 +557,7 @@ namespace Marco.Network.Round
         {
             if (round != null ? !round.NotifyRunnerEscaped(player.PlayerId) : !gate.IsOpen) return false;
 
+            ClearClickerHolding(player);
             RemoveFromWork(player.PlayerId);
             player.SetStatus(PlayerStatus.Escaped);
             return true;
@@ -458,6 +579,36 @@ namespace Marco.Network.Round
                 pickupIndex = i;
             }
             return pickupIndex >= 0;
+        }
+
+        public bool TryFindClickerPickup(Vector3 playerPosition, float range, out int pickupIndex)
+        {
+            ResolveBandagePositions();
+            pickupIndex = -1;
+            float best = range * range;
+            int count = Mathf.Min(ClickerSpawnPoints.Length, clickerPickupStates.Count);
+            for (int i = 0; i < count; i++)
+            {
+                if (!clickerPickupStates[i] || !HasClickerBandageClearance(i)) continue;
+                float distance = (ClickerSpawnPoints[i] - playerPosition).sqrMagnitude;
+                if (distance > best) continue;
+                best = distance;
+                pickupIndex = i;
+            }
+            return pickupIndex >= 0;
+        }
+
+        private bool HasClickerBandageClearance(int clickerIndex)
+        {
+            if (clickerIndex < 0 || clickerIndex >= ClickerSpawnPoints.Length) return false;
+            ResolveBandagePositions();
+            // Keep the pickup areas apart even if the bandage range is tuned in the Inspector.
+            float minimumDistance = Mathf.Max(0f, interactRange) + ClickerPickupRange;
+            float minimumDistanceSquared = minimumDistance * minimumDistance;
+            foreach (Vector3 bandagePosition in bandagePositions)
+                if ((ClickerSpawnPoints[clickerIndex] - bandagePosition).sqrMagnitude < minimumDistanceSquared)
+                    return false;
+            return true;
         }
 
         // Select the closest injured Runner so E can request treatment. Health stays private;
@@ -495,6 +646,115 @@ namespace Marco.Network.Round
             bandageCounts[playerId] = ++count;
             player.SendBandageCount(count);
             return true;
+        }
+
+        [Server]
+        public bool TryPickupClicker(int playerId, int pickupIndex)
+        {
+            if (valves == null || result.Value != RoundResult.InProgress ||
+                !TryGetAliveRunner(playerId, out var player) ||
+                pickupIndex < 0 || pickupIndex >= ClickerSpawnPoints.Length || pickupIndex >= clickerPickupStates.Count ||
+                !clickerPickupStates[pickupIndex] ||
+                !HasClickerBandageClearance(pickupIndex) ||
+                (ClickerSpawnPoints[pickupIndex] - player.transform.position).sqrMagnitude > ClickerPickupRange * ClickerPickupRange ||
+                (clickerHoldings.TryGetValue(playerId, out bool alreadyHolding) && alreadyHolding))
+                return false;
+
+            clickerPickupStates[pickupIndex] = false;
+            clickerRespawnTimes[pickupIndex] = Time.time + ClickerRespawnSeconds;
+            clickerHoldings[playerId] = true;
+            player.SendClickerCount(1);
+            return true;
+        }
+
+        [Server]
+        public bool TryUseClicker(int playerId)
+        {
+            if (valves == null || result.Value != RoundResult.InProgress ||
+                !TryGetAliveRunner(playerId, out var source) ||
+                !clickerHoldings.TryGetValue(playerId, out bool isHolding) || !isHolding)
+                return false;
+
+            clickerHoldings[playerId] = false;
+            source.SendClickerCount(0);
+            foreach (NetworkPlayer listener in NetworkPlayer.All)
+            {
+                if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
+                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius ||
+                    !HasClearClickerPath(source, listener))
+                    continue;
+                ClickerFlashTarget(listener.Owner);
+            }
+
+            float stunRadiusSquared = ClickerStunRadius * ClickerStunRadius;
+            foreach (NetworkPlayer listener in NetworkPlayer.All)
+            {
+                if (listener == null || listener.Role != PlayerRole.Seeker || listener.Status != PlayerStatus.Alive ||
+                    (listener.transform.position - source.transform.position).sqrMagnitude > stunRadiusSquared)
+                    continue;
+
+                float stunUntil = Time.time + ClickerStunSeconds;
+                if (clickerStunUntil.TryGetValue(listener.PlayerId, out float existingUntil))
+                    stunUntil = Mathf.Max(stunUntil, existingUntil);
+                clickerStunUntil[listener.PlayerId] = stunUntil;
+                listener.SetStunned(true);
+            }
+            return true;
+        }
+
+        private void TickClickerStuns()
+        {
+            expiredClickerStunIds.Clear();
+            foreach (KeyValuePair<int, float> stun in clickerStunUntil)
+            {
+                if (Time.time < stun.Value) continue;
+                if (NetworkPlayer.TryGet(stun.Key, out NetworkPlayer player)) player.SetStunned(false);
+                expiredClickerStunIds.Add(stun.Key);
+            }
+
+            foreach (int playerId in expiredClickerStunIds) clickerStunUntil.Remove(playerId);
+        }
+
+        private void ClearClickerStuns()
+        {
+            foreach (int playerId in clickerStunUntil.Keys)
+                if (NetworkPlayer.TryGet(playerId, out NetworkPlayer player)) player.SetStunned(false);
+            clickerStunUntil.Clear();
+            expiredClickerStunIds.Clear();
+        }
+
+        private static bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
+        {
+            if (source == listener) return true;
+            Vector3 from = source.transform.position + Vector3.up * 0.6f;
+            Vector3 to = listener.transform.position + Vector3.up * 0.6f;
+            Vector3 delta = to - from;
+            float distance = delta.magnitude;
+            if (distance <= 0.05f) return true;
+
+            RaycastHit[] hits = Physics.RaycastAll(from, delta / distance, distance,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.collider == null || hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                return false;
+            }
+            return true;
+        }
+
+        [TargetRpc]
+        private void ClickerFlashTarget(NetworkConnection conn)
+        {
+            NetworkPlayer localPlayer = NetworkPlayer.Local;
+            Camera camera = localPlayer != null ? localPlayer.GetComponentInChildren<Camera>(true) : null;
+            MicrophoneVisionController vision = camera != null ? camera.GetComponent<MicrophoneVisionController>() : null;
+            if (vision == null)
+            {
+                Debug.LogError("Clicker flash arrived before the local camera vision controller was ready.");
+                return;
+            }
+
+            vision.TriggerClickerCameraFlash();
         }
 
         [Server]
@@ -784,6 +1044,7 @@ namespace Marco.Network.Round
         {
             if (round != null && !round.NotifyRunnerTagged(target.PlayerId)) return false;
 
+            ClearClickerHolding(target);
             RemoveFromWork(target.PlayerId);
             target.SetStatus(PlayerStatus.Tagged);
             return true;
@@ -831,6 +1092,8 @@ namespace Marco.Network.Round
             nextTagTimes.Remove(conn.ClientId);
             runnerHalves.Remove(conn.ClientId);
             bandageCounts.Remove(conn.ClientId);
+            clickerHoldings.Remove(conn.ClientId);
+            clickerStunUntil.Remove(conn.ClientId);
             RemoveFromWork(conn.ClientId);
             // A spectator never entered RoundState's count; reporting them would count as a tag.
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;
@@ -856,6 +1119,23 @@ namespace Marco.Network.Round
             }
         }
 
+        private void ResetClickerPickups(bool available)
+        {
+            clickerPickupStates.Clear();
+            clickerRespawnTimes.Clear();
+            for (int i = 0; i < ClickerSpawnPoints.Length; i++) clickerPickupStates.Add(available);
+        }
+
+        private void TickClickerRespawns()
+        {
+            for (int i = 0; i < ClickerSpawnPoints.Length; i++)
+            {
+                if (!clickerRespawnTimes.TryGetValue(i, out float respawnAt) || Time.time < respawnAt) continue;
+                if (i < clickerPickupStates.Count) clickerPickupStates[i] = true;
+                clickerRespawnTimes.Remove(i);
+            }
+        }
+
         private void EnsureBandageViews()
         {
             ResolveBandagePositions();
@@ -873,6 +1153,28 @@ namespace Marco.Network.Round
                 CreateBandageCube(root.transform, "십자 세로", new Vector3(0.055f, 0.018f, 0.18f),
                     new Vector3(0, 0.18f, 0), bandageMarkMaterial);
                 bandageViews.Add(root.transform);
+            }
+        }
+
+        private void EnsureClickerViews()
+        {
+            if (ClickerSpawnPoints.Length == 0) return;
+            if (clickerMaterial == null)
+            {
+                Shader shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+                if (shader == null) return;
+                clickerMaterial = CreateBandageMaterial(shader, new Color(0.82f, 0.9f, 1f));
+            }
+
+            while (clickerViews.Count < ClickerSpawnPoints.Length)
+            {
+                int index = clickerViews.Count;
+                var root = new GameObject($"찰칵이 {index + 1}");
+                root.transform.position = ClickerSpawnPoints[index];
+                CreateBandageCube(root.transform, "본체", new Vector3(0.12f, 0.16f, 0.08f), Vector3.zero, clickerMaterial);
+                CreateBandageCube(root.transform, "렌즈", new Vector3(0.08f, 0.035f, 0.085f), new Vector3(0, 0.055f, -0.045f), clickerMaterial);
+                clickerViews.Add(root.transform);
+                root.SetActive(index < clickerPickupStates.Count && clickerPickupStates[index]);
             }
         }
 
@@ -922,9 +1224,26 @@ namespace Marco.Network.Round
             bandageWrapMaterial = bandageMarkMaterial = null;
         }
 
+        private void ClearClickerViews()
+        {
+            foreach (Transform view in clickerViews) if (view != null) Destroy(view.gameObject);
+            clickerViews.Clear();
+            if (clickerMaterial != null) Destroy(clickerMaterial);
+            clickerMaterial = null;
+        }
+
+        [Server]
+        private void ClearClickerHolding(NetworkPlayer player)
+        {
+            if (player == null) return;
+            clickerHoldings[player.PlayerId] = false;
+            player.SendClickerCount(0);
+        }
+
         private void OnDestroy()
         {
             ClearBandageViews();
+            ClearClickerViews();
             if (Instance == this) Instance = null;
         }
 
@@ -1074,6 +1393,24 @@ namespace Marco.Network.Round
 
         [Server]
         internal void MarkGateOpened() => gateOpen.Value = true;
+
+        // No valve id in the payload: the cue must not tell anyone where the valve is (기획서 6.1, 10-26).
+        [ObserversRpc]
+        internal void ValveOpenedObservers()
+        {
+            if (valveOpenedClip == null)
+            {
+                Debug.Log("[MARCO] 밸브 개방 완료음 (에셋 없음)");
+                return;
+            }
+            if (valveOpenedSource == null)
+            {
+                valveOpenedSource = gameObject.AddComponent<AudioSource>();
+                valveOpenedSource.playOnAwake = false;
+                valveOpenedSource.spatialBlend = 0f; // 2D: no direction, no distance
+            }
+            valveOpenedSource.PlayOneShot(valveOpenedClip);
+        }
 
         [Server]
         internal void SetResult(RoundResult value) => result.Value = value;

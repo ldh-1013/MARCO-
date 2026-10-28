@@ -17,6 +17,7 @@ namespace Marco.Network.Escape
         [SerializeField] private Renderer body;
 
         public ExitId Id => id;
+        public static IEnumerable<ExitView> All => views.Values;
 
         public static bool AnyInRange(Vector3 position, float range)
         {

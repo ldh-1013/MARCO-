@@ -35,6 +35,7 @@ namespace Marco.Network.Player
         private readonly SyncVar<PlayerStatus> status = new();
         private readonly SyncVar<bool> crouching = new();
         private readonly SyncVar<bool> treatmentLocked = new();
+        private readonly SyncVar<bool> stunned = new();
         private readonly SyncVar<bool> needsTreatment = new();
         // Lobby (ported from RoomSessionPrototype): nickname and whether this is the room's host.
         private readonly SyncVar<string> nickname = new();
@@ -49,6 +50,7 @@ namespace Marco.Network.Player
         public PlayerStatus Status => status.Value;
         public bool IsCrouching => crouching.Value;
         public bool IsTreatmentLocked => treatmentLocked.Value;
+        public bool IsStunned => stunned.Value;
         public bool NeedsTreatment => needsTreatment.Value;
         public bool IsEcho => status.Value == PlayerStatus.Tagged;
         public string Nickname => nickname.Value;
@@ -56,6 +58,7 @@ namespace Marco.Network.Player
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
         public int BandageCount { get; private set; }
+        public int ClickerCount { get; private set; }
         public bool HasHealingAction { get; private set; }
         public bool HealingActionIsBandage { get; private set; }
         public float HealingActionProgress { get; private set; }
@@ -114,6 +117,7 @@ namespace Marco.Network.Player
             {
                 crouching.Value = false;
                 treatmentLocked.Value = false;
+                stunned.Value = false;
                 needsTreatment.Value = false;
             }
         }
@@ -129,6 +133,9 @@ namespace Marco.Network.Player
         public void SetTreatmentLocked(bool value) => treatmentLocked.Value = value;
 
         [Server]
+        public void SetStunned(bool value) => stunned.Value = value;
+
+        [Server]
         public void SetNeedsTreatment(bool value) => needsTreatment.Value = value;
 
         // Movement is client-authoritative, so the server asks the owning client to move itself.
@@ -142,6 +149,9 @@ namespace Marco.Network.Player
         public void SendBandageCount(int count) => BandageCountTarget(Owner, count);
 
         [Server]
+        public void SendClickerCount(int count) => ClickerCountTarget(Owner, count);
+
+        [Server]
         public void SendHealingProgress(bool active, bool isBandage, float progress) =>
             HealingProgressTarget(Owner, active, isBandage, progress);
 
@@ -150,6 +160,9 @@ namespace Marco.Network.Player
 
         [TargetRpc]
         private void BandageCountTarget(NetworkConnection conn, int count) => BandageCount = count;
+
+        [TargetRpc]
+        private void ClickerCountTarget(NetworkConnection conn, int count) => ClickerCount = count;
 
         [TargetRpc]
         private void HealingProgressTarget(NetworkConnection conn, bool active, bool isBandage, float progress)

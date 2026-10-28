@@ -16,7 +16,7 @@ namespace Marco.Core.WinCondition.Tests
             var settings = config.GetRoundSettings(2);
 
             Assert.AreEqual(1, settings.EscapeRequiredCount);
-            Assert.AreEqual(8f * 60f, settings.TimeLimitSeconds, Tolerance);
+            Assert.AreEqual(11f * 60f, settings.TimeLimitSeconds, Tolerance);
         }
 
         [Test]
@@ -26,7 +26,7 @@ namespace Marco.Core.WinCondition.Tests
             var settings = config.GetRoundSettings(3);
 
             Assert.AreEqual(2, settings.EscapeRequiredCount);
-            Assert.AreEqual(10f * 60f, settings.TimeLimitSeconds, Tolerance);
+            Assert.AreEqual(13f * 60f, settings.TimeLimitSeconds, Tolerance);
         }
 
         [Test]
@@ -36,7 +36,7 @@ namespace Marco.Core.WinCondition.Tests
             var settings = config.GetRoundSettings(4);
 
             Assert.AreEqual(2, settings.EscapeRequiredCount);
-            Assert.AreEqual(10f * 60f, settings.TimeLimitSeconds, Tolerance);
+            Assert.AreEqual(13f * 60f, settings.TimeLimitSeconds, Tolerance);
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace Marco.Core.WinCondition.Tests
             var settings = config.GetRoundSettings(5);
 
             Assert.AreEqual(3, settings.EscapeRequiredCount);
-            Assert.AreEqual(12f * 60f, settings.TimeLimitSeconds, Tolerance);
+            Assert.AreEqual(15f * 60f, settings.TimeLimitSeconds, Tolerance);
         }
 
         [Test]
@@ -102,11 +102,19 @@ namespace Marco.Core.WinCondition.Tests
         {
             var config = new WinConditionConfig();
 
-            Assert.AreEqual(180f, config.ReflowOpenGraceSeconds, Tolerance);
+            Assert.AreEqual(240f, config.ReflowOpenGraceSeconds, Tolerance);
             Assert.AreEqual(30f, config.ReflowCloseDurationSeconds, Tolerance);
             Assert.AreEqual(3, config.ReflowRippleEventCount);
         }
 
+        // 부록 A [밸브]: 재개방 1인 +1/4 per sec (4.0초, 10-26)
+        [Test]
+        public void ValveReopenRate_MatchesDesign()
+        {
+            var config = new WinConditionConfig();
+
+            Assert.AreEqual(1f / 4f, config.ValveReopenProgressPerSecond, Tolerance);
+        }
         [Test]
         public void LastSurvivorPhase_MatchesDesign()
         {
