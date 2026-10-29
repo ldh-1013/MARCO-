@@ -1,4 +1,5 @@
 using FishNet.Component.Transforming;
+using FishNet.Connection;
 using FishNet.Object;
 using Marco.Core.WinCondition;
 using Marco.Network.Round;
@@ -11,11 +12,8 @@ namespace Marco.Network.Player
     [RequireComponent(typeof(CharacterController))]
     public sealed class PlayerMovement : NetworkBehaviour
     {
-        [SerializeField] private float moveSpeed = 4.5f;
-        [SerializeField, Min(1f)] private float sprintMultiplier = 1.6f;
         [SerializeField, Min(0.1f)] private float jumpHeight = 1.25f;
         [SerializeField, Min(0.1f)] private float gravity = 22f;
-        [SerializeField] private float echoSpeed = 6f;
         [SerializeField] private float mouseSensitivity = 2.2f;
         [SerializeField] private Transform cameraPivot;
         [SerializeField, Min(0.5f)] private float crouchedHeight = 1.1f;
@@ -29,9 +27,20 @@ namespace Marco.Network.Player
         private Vector3 standingCenter;
         private Vector3 standingCameraPosition;
         private bool crouching;
+        private static readonly WinConditionConfig FallbackMovementConfig = new();
+        private float sprintStamina;
+        private float sprintExhaustionRemaining;
+        private float serverSprintStamina;
+        private float serverSprintExhaustionRemaining;
+        private float nextSprintStateSyncTime;
+        private bool serverWantsSprint;
+        private bool lastReportedSprintIntent;
+        private bool hasReportedSprintIntent;
 
         public bool IsSprinting { get; private set; }
         public bool IsCrouching => crouching;
+        private WinConditionConfig MovementConfig => NetworkRound.Instance != null
+            ? NetworkRound.Instance.MovementConfig : FallbackMovementConfig;
 
         private void Awake()
         {
@@ -40,6 +49,41 @@ namespace Marco.Network.Player
             standingHeight = controller.height;
             standingCenter = controller.center;
             if (cameraPivot != null) standingCameraPosition = cameraPivot.localPosition;
+            sprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+            serverSprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+        }
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            serverSprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+            serverSprintExhaustionRemaining = 0f;
+            serverWantsSprint = false;
+        }
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (!IsOwner) return;
+            sprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+            sprintExhaustionRemaining = 0f;
+            hasReportedSprintIntent = false;
+        }
+
+        [Server]
+        public void ResetSprintStamina()
+        {
+            serverSprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+            serverSprintExhaustionRemaining = 0f;
+            serverWantsSprint = false;
+            if (IsOwner)
+            {
+                sprintStamina = serverSprintStamina;
+                sprintExhaustionRemaining = 0f;
+                IsSprinting = false;
+                hasReportedSprintIntent = false;
+            }
+            SprintStaminaResetTarget(Owner);
         }
 
         // Owner only. An enabled CharacterController overrides direct transform writes, and
@@ -68,6 +112,7 @@ namespace Marco.Network.Player
 
         private void Update()
         {
+            if (IsServerInitialized) TickServerSprintStamina(Time.deltaTime);
             if (!IsOwner) return;
 
             if (Input.GetKeyDown(KeyCode.Escape))
@@ -89,12 +134,13 @@ namespace Marco.Network.Player
             if (player.IsEcho)
             {
                 IsSprinting = false;
+                ReportSprintIntent(false);
                 if (!locked) return;
                 var look = cameraPivot != null ? cameraPivot.forward : transform.forward;
                 var fly = look * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal");
                 if (Input.GetKey(KeyCode.Space)) fly += Vector3.up;
                 if (Input.GetKey(KeyCode.LeftControl)) fly += Vector3.down;
-                transform.position += Vector3.ClampMagnitude(fly, 1) * echoSpeed * Time.deltaTime;
+                transform.position += Vector3.ClampMagnitude(fly, 1) * MovementConfig.EchoMoveSpeed * Time.deltaTime;
                 return;
             }
 
@@ -110,30 +156,116 @@ namespace Marco.Network.Player
                 SetCrouchServer(false);
             }
 
-            Vector3 input = locked && !player.IsTreatmentLocked && !player.IsStunned
+            Vector3 input = locked && !player.IsTreatmentLocked
                 ? (transform.forward * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal"))
                 : Vector3.zero;
             input = Vector3.ClampMagnitude(input, 1f);
             bool moving = input.sqrMagnitude > 0.001f;
-            IsSprinting = moving && !player.IsTreatmentLocked && !crouching && player.Role == PlayerRole.Runner &&
-                player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
+            bool wantsSprint = moving && !player.IsTreatmentLocked && !crouching &&
+                player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
+            ReportSprintIntent(wantsSprint);
+            IsSprinting = StepSprintStamina(ref sprintStamina, ref sprintExhaustionRemaining, wantsSprint, Time.deltaTime);
 
             // CharacterController.SimpleMove includes gravity but cannot jump. Move preserves its
             // grounded behavior while giving both living roles an owner-controlled jump arc.
             bool grounded = controller.isGrounded;
             if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
-            if (locked && !player.IsTreatmentLocked && !player.IsStunned && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
+            if (locked && !player.IsTreatmentLocked && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
             verticalVelocity -= gravity * Time.deltaTime;
 
             float healthMultiplier = NetworkRound.Instance != null
                 ? NetworkRound.Instance.SpeedMultiplierFor(player.HealthHalves) : 1f;
-            // Sudden death +5% for the Seeker from 1:00 left, multiplied onto the rest (기획서 6.2-1).
-            float suddenDeathMultiplier = NetworkRound.Instance != null
-                ? NetworkRound.Instance.SeekerSpeedMultiplierFor(player.Role) : 1f;
-            float speed = moveSpeed * healthMultiplier * suddenDeathMultiplier * (IsSprinting ? sprintMultiplier : 1f);
+            float speed;
+            if (player.Role == PlayerRole.Seeker)
+            {
+                bool sneaking = moving && locked && Input.GetKey(KeyCode.LeftControl);
+                float seekerSpeed = sneaking
+                    ? MovementConfig.SeekerSneakSpeed
+                    : NetworkRound.Instance != null
+                        ? NetworkRound.Instance.SeekerChaseSpeed
+                        : MovementConfig.SeekerBaseMoveSpeed * MovementConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count);
+                // Sudden-death +5% remains an additional Seeker multiplier (기획서 6.2-1).
+                float suddenDeathMultiplier = NetworkRound.Instance != null
+                    ? NetworkRound.Instance.SeekerSpeedMultiplierFor(player.Role) : 1f;
+                speed = seekerSpeed * suddenDeathMultiplier;
+            }
+            else
+            {
+                speed = (IsSprinting ? MovementConfig.RunnerSprintSpeed : MovementConfig.RunnerWalkSpeed) * healthMultiplier;
+                if (sprintExhaustionRemaining > 0f)
+                    speed *= MovementConfig.RunnerSprintExhaustionSpeedMultiplier;
+            }
             Vector3 velocity = input * speed + Vector3.up * verticalVelocity;
             controller.Move(velocity * Time.deltaTime);
+        }
+
+        private void ReportSprintIntent(bool wantsSprint)
+        {
+            if (hasReportedSprintIntent && wantsSprint == lastReportedSprintIntent) return;
+            hasReportedSprintIntent = true;
+            lastReportedSprintIntent = wantsSprint;
+            SetSprintIntentServer(wantsSprint);
+        }
+
+        [ServerRpc]
+        private void SetSprintIntentServer(bool wantsSprint)
+        {
+            serverWantsSprint = wantsSprint && player != null && player.Role == PlayerRole.Runner &&
+                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsCrouching;
+        }
+
+        private void TickServerSprintStamina(float deltaTime)
+        {
+            bool eligible = serverWantsSprint && player != null && player.Role == PlayerRole.Runner &&
+                player.Status == PlayerStatus.Alive && !player.IsTreatmentLocked && !player.IsCrouching;
+            StepSprintStamina(ref serverSprintStamina, ref serverSprintExhaustionRemaining, eligible, deltaTime);
+            if (Time.time < nextSprintStateSyncTime) return;
+            nextSprintStateSyncTime = Time.time + MovementConfig.RunnerSprintStateSyncSeconds;
+            SprintStaminaTarget(Owner, serverSprintStamina, serverSprintExhaustionRemaining);
+        }
+
+        private bool StepSprintStamina(ref float stamina, ref float exhaustionRemaining, bool wantsSprint, float deltaTime)
+        {
+            WinConditionConfig config = MovementConfig;
+            if (exhaustionRemaining > 0f)
+            {
+                exhaustionRemaining = Mathf.Max(0f, exhaustionRemaining - deltaTime);
+                stamina = Mathf.Min(config.RunnerSprintStaminaSeconds,
+                    stamina + config.RunnerSprintStaminaRecoveryPerSecond * deltaTime);
+                return false;
+            }
+
+            if (wantsSprint && stamina > 0f)
+            {
+                stamina = Mathf.Max(0f, stamina - config.RunnerSprintStaminaDrainPerSecond * deltaTime);
+                if (stamina <= 0f)
+                {
+                    exhaustionRemaining = config.RunnerSprintExhaustionSeconds;
+                    return false;
+                }
+                return true;
+            }
+
+            stamina = Mathf.Min(config.RunnerSprintStaminaSeconds,
+                stamina + config.RunnerSprintStaminaRecoveryPerSecond * deltaTime);
+            return false;
+        }
+
+        [TargetRpc]
+        private void SprintStaminaTarget(NetworkConnection conn, float stamina, float exhaustionRemaining)
+        {
+            sprintStamina = Mathf.Clamp(stamina, 0f, MovementConfig.RunnerSprintStaminaSeconds);
+            sprintExhaustionRemaining = Mathf.Max(0f, exhaustionRemaining);
+        }
+
+        [TargetRpc]
+        private void SprintStaminaResetTarget(NetworkConnection conn)
+        {
+            sprintStamina = MovementConfig.RunnerSprintStaminaSeconds;
+            sprintExhaustionRemaining = 0f;
+            IsSprinting = false;
+            hasReportedSprintIntent = false;
         }
 
         [ServerRpc]

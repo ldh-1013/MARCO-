@@ -36,7 +36,7 @@ namespace Marco.Network.Round
 
     // Scene object. The server assembles WinCondition (INTERFACES.md §0), ticks it and validates
     // valve / drain / escape / tag requests; clients only read the synced snapshot.
-    public sealed class NetworkRound : NetworkBehaviour
+    public sealed partial class NetworkRound : NetworkBehaviour
     {
         private const int ValveCount = 5;
         private const float ProgressSyncEpsilon = 0.001f;
@@ -45,8 +45,6 @@ namespace Marco.Network.Round
         private const float HealingProgressSyncSeconds = 0.1f;
         private const float ClickerRespawnSeconds = 120f;
         private const float ClickerVisibilityRadius = 6f;
-        private const float ClickerStunRadius = 16f;
-        private const float ClickerStunSeconds = 3f;
         private const float ClickerPickupRange = 1.5f;
         // One each in the four diagram regions: lobby, 2F lobby, dock, main pool hall.
         private static readonly Vector3[] ClickerSpawnPoints =
@@ -132,6 +130,8 @@ namespace Marco.Network.Round
         private readonly SyncVar<float> drainHatchProgress = new();
         // Set once at 1:00 left and kept until the round is reset (기획서 6.2-1).
         private readonly SyncVar<bool> seekerSpeedBoosted = new();
+        // Fixed for the round from the connected player count at round start (기획서 6.2).
+        private readonly SyncVar<float> seekerPopulationSpeedMultiplier = new();
 
         private readonly Dictionary<int, float> nextTagTimes = new();
         private readonly Dictionary<int, HealingChannel> healingChannels = new();
@@ -142,8 +142,6 @@ namespace Marco.Network.Round
         private readonly Dictionary<int, int> bandageCounts = new();
         private readonly Dictionary<int, bool> clickerHoldings = new();
         private readonly Dictionary<int, float> clickerRespawnTimes = new();
-        private readonly Dictionary<int, float> clickerStunUntil = new();
-        private readonly List<int> expiredClickerStunIds = new();
         private readonly List<Vector3> bandagePositions = new();
         private readonly HashSet<int> resolvedBandageSpawns = new();
         private readonly List<Transform> bandageViews = new();
@@ -172,9 +170,15 @@ namespace Marco.Network.Round
         public int FullHalves => Mathf.RoundToInt(startLives * 2);
         private int WoundedHalves => Mathf.RoundToInt(woundedLives * 2);
 
-        // Owner side: movement multiplier for the lives the server last sent (1.5 → −15%).
+        // Owner side: 1.5 lives or less applies the recovery movement penalty.
         public float SpeedMultiplierFor(int halves) =>
-            halves > WoundedHalves && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+            halves > 0 && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+
+        public WinConditionConfig MovementConfig => DefaultConfig;
+        public float SeekerChaseSpeed => DefaultConfig.SeekerBaseMoveSpeed *
+            (seekerPopulationSpeedMultiplier.Value > 0f
+                ? seekerPopulationSpeedMultiplier.Value
+                : DefaultConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count));
 
         // Owner side: sudden death +5% for the Seeker once the server has applied it (기획서 6.2-1, multiplied).
         public float SeekerSpeedMultiplierFor(PlayerRole role) =>
@@ -230,6 +234,9 @@ namespace Marco.Network.Round
         {
             base.OnStartClient();
             clientStarted = true;
+            StartAudioClient();
+            if (SoundMap && suddenDeathDroneClip == null)
+                suddenDeathDroneClip = Resources.Load<AudioClip>("MarcoSound/EndDrone");
             EnsureBandageViews();
             EnsureClickerViews();
             Debug.Log($"[MARCO][Round] OnStartClient (mode {mode.Value})");
@@ -239,6 +246,7 @@ namespace Marco.Network.Round
         {
             base.OnStopClient();
             clientStarted = false;
+            StopAudioClient();
             suddenDeathDronePlaying = false;
             if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
@@ -247,9 +255,12 @@ namespace Marco.Network.Round
 
         private void Update()
         {
-            if (IsServerInitialized) TickHealingChannels();
+            if (IsServerInitialized)
+            {
+                TickHealingChannels();
+                TickAudioServer();
+            }
             if (IsServerInitialized) TickClickerRespawns();
-            if (IsServerInitialized) TickClickerStuns();
             // The map's GamePoints can finish registering after the network scene object starts.
             // Retry on the server and make any late-resolved pickups available for this round.
             if (IsServerInitialized && mode.Value != RoundMode.NotStarted)
@@ -299,8 +310,8 @@ namespace Marco.Network.Round
 
         public override void OnStopServer()
         {
+            ResetAudioServer();
             CancelAllHealingActions();
-            ClearClickerStuns();
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             TimeManager.OnTick -= OnServerTick;
@@ -315,12 +326,15 @@ namespace Marco.Network.Round
             roster = NetworkManager.GetComponent<NetworkPlayerRoster>();
             // The Seeker is drawn once per round, before RoundState reads the Runner count.
             if (NetworkManager.TryGetComponent(out RoleAssigner roles)) roles.AssignRoles();
+            seekerSpeedBoosted.Value = false;
+            seekerPopulationSpeedMultiplier.Value = DefaultConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count);
             // Everyone connected now takes part, including last round's spectators.
             foreach (var player in NetworkPlayer.All)
             {
                 player.SetStatus(PlayerStatus.Alive);
                 player.SetCrouching(false);
                 player.SetTreatmentLocked(false);
+                if (player.TryGetComponent(out PlayerMovement movement)) movement.ResetSprintStamina();
             }
             MovePlayersToSpawn();
             foreach (var player in NetworkPlayer.All)
@@ -340,7 +354,8 @@ namespace Marco.Network.Round
             board = new ValveBoard(active, config);
             gate = new Gate(config.RequiredOpenValveCount);
             var events = new RoundEventRelay(this);
-            valves = new ValveInteractionService(board, gate, roster, new LogValveSoundSink(), events);
+            IValveSoundSink valveSound = SoundMap ? new ValveAudioSink(this) : new LogValveSoundSink();
+            valves = new ValveInteractionService(board, gate, roster, valveSound, events);
             try
             {
                 round = new RoundState(config, roster, gate, valves, events);
@@ -394,8 +409,8 @@ namespace Marco.Network.Round
 
         private void ResetRound()
         {
+            ResetAudioServer();
             CancelAllHealingActions();
-            ClearClickerStuns();
             TimeManager.OnTick -= OnServerTick;
             ClearCore();
             nextTagTimes.Clear();
@@ -417,6 +432,7 @@ namespace Marco.Network.Round
             hasDrainHatch.Value = false;
             drainHatchProgress.Value = 0;
             seekerSpeedBoosted.Value = false;
+            seekerPopulationSpeedMultiplier.Value = 1f;
         }
 
         // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
@@ -455,6 +471,7 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.loop = true;
                 suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
+                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
             }
             if (shouldPlay) suddenDeathDroneSource.Play();
             else suddenDeathDroneSource.Stop();
@@ -677,53 +694,54 @@ namespace Marco.Network.Round
 
             clickerHoldings[playerId] = false;
             source.SendClickerCount(0);
-            foreach (NetworkPlayer listener in NetworkPlayer.All)
-            {
-                if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
-                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius ||
-                    !HasClearClickerPath(source, listener))
-                    continue;
-                Vector3 flashOrigin = source.transform.position;
-                if (source.TryGetComponent(out CharacterController sourceController))
-                    flashOrigin = sourceController.bounds.center;
-                ClickerFlashTarget(listener.Owner, flashOrigin);
-            }
-
-            float stunRadiusSquared = ClickerStunRadius * ClickerStunRadius;
-            foreach (NetworkPlayer listener in NetworkPlayer.All)
-            {
-                if (listener == null || listener.Role != PlayerRole.Seeker || listener.Status != PlayerStatus.Alive ||
-                    (listener.transform.position - source.transform.position).sqrMagnitude > stunRadiusSquared)
-                    continue;
-
-                float stunUntil = Time.time + ClickerStunSeconds;
-                if (clickerStunUntil.TryGetValue(listener.PlayerId, out float existingUntil))
-                    stunUntil = Mathf.Max(stunUntil, existingUntil);
-                clickerStunUntil[listener.PlayerId] = stunUntil;
-                listener.SetStunned(true);
-            }
+            ApplyClickerEffect(source);
             return true;
         }
 
-        private void TickClickerStuns()
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // F7 exercises the real clicker effect without consuming a pickup. A Seeker uses the
+        // nearest living Runner as the simulated source so the local Seeker view is testable.
+        [Server]
+        public bool TryClickerFlashTest(int requesterId)
         {
-            expiredClickerStunIds.Clear();
-            foreach (KeyValuePair<int, float> stun in clickerStunUntil)
+            if (valves == null || result.Value != RoundResult.InProgress ||
+                !NetworkPlayer.TryGet(requesterId, out NetworkPlayer requester) || requester.Status != PlayerStatus.Alive)
+                return false;
+
+            NetworkPlayer source = null;
+            if (!TryGetAliveRunner(requesterId, out source))
             {
-                if (Time.time < stun.Value) continue;
-                if (NetworkPlayer.TryGet(stun.Key, out NetworkPlayer player)) player.SetStunned(false);
-                expiredClickerStunIds.Add(stun.Key);
+                float nearest = float.MaxValue;
+                foreach (NetworkPlayer candidate in NetworkPlayer.All)
+                {
+                    if (candidate == null || candidate.Role != PlayerRole.Runner || candidate.Status != PlayerStatus.Alive) continue;
+                    float distance = (candidate.transform.position - requester.transform.position).sqrMagnitude;
+                    if (distance >= nearest) continue;
+                    nearest = distance;
+                    source = candidate;
+                }
             }
 
-            foreach (int playerId in expiredClickerStunIds) clickerStunUntil.Remove(playerId);
+            if (source == null) return false;
+            ApplyClickerEffect(source);
+            return true;
         }
+#endif
 
-        private void ClearClickerStuns()
+        private void ApplyClickerEffect(NetworkPlayer source)
         {
-            foreach (int playerId in clickerStunUntil.Keys)
-                if (NetworkPlayer.TryGet(playerId, out NetworkPlayer player)) player.SetStunned(false);
-            clickerStunUntil.Clear();
-            expiredClickerStunIds.Clear();
+            Vector3 flashOrigin = source.transform.position;
+            if (source.TryGetComponent(out CharacterController sourceController))
+                flashOrigin = sourceController.bounds.center;
+            foreach (NetworkPlayer listener in NetworkPlayer.All)
+            {
+                if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
+                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius)
+                    continue;
+                // Nearby players all receive the terrain flash; entity concealment is applied only
+                // on the Seeker's client and only to this source Runner plus nearby props.
+                ClickerFlashTarget(listener.Owner, flashOrigin, source.PlayerId);
+            }
         }
 
         private static bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
@@ -746,7 +764,7 @@ namespace Marco.Network.Round
         }
 
         [TargetRpc]
-        private void ClickerFlashTarget(NetworkConnection conn, Vector3 flashOrigin)
+        private void ClickerFlashTarget(NetworkConnection conn, Vector3 flashOrigin, int sourcePlayerId)
         {
             NetworkPlayer localPlayer = NetworkPlayer.Local;
             Camera camera = localPlayer != null ? localPlayer.GetComponentInChildren<Camera>(true) : null;
@@ -757,7 +775,7 @@ namespace Marco.Network.Round
                 return;
             }
 
-            vision.TriggerClickerCameraFlash(flashOrigin);
+            vision.TriggerClickerCameraFlash(flashOrigin, sourcePlayerId);
         }
 
         [Server]
@@ -939,6 +957,7 @@ namespace Marco.Network.Round
         {
             if (!healingChannels.TryGetValue(actorId, out var channel)) return;
             healingChannels.Remove(actorId);
+            StopHealingAudio(actorId);
             if (NetworkPlayer.TryGet(channel.ActorId, out var actor))
             {
                 actor.SendHealingProgress(false, channel.IsBandage, 0f);
@@ -1016,6 +1035,7 @@ namespace Marco.Network.Round
             if (halves >= FullHalves)
             {
                 SetLives(target, WoundedHalves);
+                PlayHurtAudio(target);
                 return SwingResult.Wounded;
             }
             if (!ApplyTag(target)) return SwingResult.Missed;
@@ -1096,7 +1116,6 @@ namespace Marco.Network.Round
             runnerHalves.Remove(conn.ClientId);
             bandageCounts.Remove(conn.ClientId);
             clickerHoldings.Remove(conn.ClientId);
-            clickerStunUntil.Remove(conn.ClientId);
             RemoveFromWork(conn.ClientId);
             // A spectator never entered RoundState's count; reporting them would count as a tag.
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;

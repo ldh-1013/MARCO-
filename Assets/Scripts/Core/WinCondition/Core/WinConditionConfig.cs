@@ -7,6 +7,30 @@ namespace Marco.Core.WinCondition
     // 모든 값은 기획서 패치 v0.6 기준 "플레이테스트 시작값"이고, 확정값이 아니다.
     public sealed class WinConditionConfig
     {
+        // ── 이동 (기획서 3.1 · 부록 A [이동속도]) ───────────────────────────────
+        public float RunnerWalkSpeed = 5f;
+        public float RunnerSprintSpeed = 7.5f;
+        public float RunnerSprintStaminaSeconds = 5f;
+        public float RunnerSprintStaminaDrainPerSecond = 1f;
+        public float RunnerSprintStaminaRecoveryPerSecond = 0.5f;
+        public float RunnerSprintExhaustionSeconds = 3f;
+        public float RunnerSprintExhaustionSpeedMultiplier = 0.8f;
+        public float RunnerSprintStateSyncSeconds = 0.1f;
+        public float SeekerBaseMoveSpeed = 5f;
+        public float SeekerSneakSpeed = 3.5f;
+        public float EchoMoveSpeed = 6f;
+
+        // Total connected players (including the Seeker) selects the Seeker chase bonus (기획서 6.2).
+        public float GetSeekerPopulationSpeedMultiplier(int totalPlayerCount) => totalPlayerCount switch
+        {
+            2 => 1.05f,
+            3 => 1.05f,
+            4 => 1.04f,
+            5 => 1.06f,
+            6 => 1.08f,
+            _ => 1.01f, // The design's minimum bonus; two-player AI play remains v1.x.
+        };
+
         // ── 밸브 진행도 ───────────────────────────────
         // 1인 작업 기준 초당 진행도. 1/8이면 8.0초에 완료.
         public float ValveBaseProgressPerSecond = 1f / 8f;
