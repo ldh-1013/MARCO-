@@ -132,6 +132,10 @@ namespace Marco.Network.Round
         private readonly SyncVar<float> drainHatchProgress = new();
         // Set once at 1:00 left and kept until the round is reset (기획서 6.2-1).
         private readonly SyncVar<bool> seekerSpeedBoosted = new();
+        // Round start order (기획서 부록 A [라운드 시작], 10-26). Movement is client-authoritative, so the
+        // owners read these to lock input; the server rejects interactions from its own schedule below.
+        private readonly SyncVar<RoundStartPhase> startPhase = new();
+        private readonly SyncVar<float> startPhaseRemainingSeconds = new();
 
         private readonly Dictionary<int, float> nextTagTimes = new();
         private readonly Dictionary<int, HealingChannel> healingChannels = new();
@@ -162,6 +166,8 @@ namespace Marco.Network.Round
         private bool suddenDeathDronePlaying;
         private static readonly WinConditionConfig DefaultConfig = new();
         private static readonly int RequiredOpenValves = DefaultConfig.RequiredOpenValveCount;
+        // Lives across rounds; ResetRound puts it back to 0 s (role reveal start).
+        private readonly RoundStartSchedule startSchedule = new(DefaultConfig);
 
         public float InteractRange => interactRange;
         public float ClickerInteractRange => ClickerPickupRange;
@@ -186,6 +192,14 @@ namespace Marco.Network.Round
         public bool InLastSurvivorPhase => lastSurvivorPhase.Value;
         public float LastSurvivorRemainingSeconds => lastSurvivorRemainingSeconds.Value;
         public float DrainHatchProgress => drainHatchProgress.Value;
+        public RoundStartPhase StartPhase => startPhase.Value;
+        // Seconds until the current start phase ends: InGame start during RoleReveal, Seeker release during SeekerHold.
+        public float StartPhaseRemainingSeconds => startPhaseRemainingSeconds.Value;
+
+        // Owner side: no moving, jumping, crouching or sprinting while locked; looking around stays free.
+        // The lobby (no round) never locks.
+        public bool IsStartLocked(PlayerRole role) =>
+            mode.Value != RoundMode.NotStarted && RoundStartSchedule.IsMovementLocked(startPhase.Value, role);
 
         public bool TryGetValveState(ValveId id, out ValveSnapshot state)
         {
@@ -350,6 +364,8 @@ namespace Marco.Network.Round
                 WatchDrainHatch(DrainHatchId.First);
                 WatchDrainHatch(DrainHatchId.Second);
                 mode.Value = RoundMode.Full;
+                // The clock does not run during role reveal, but the HUD shows the full limit meanwhile.
+                remainingSeconds.Value = round.RemainingSeconds;
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -417,6 +433,8 @@ namespace Marco.Network.Round
             hasDrainHatch.Value = false;
             drainHatchProgress.Value = 0;
             seekerSpeedBoosted.Value = false;
+            startSchedule.Reset();
+            SyncStartPhase();
         }
 
         // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
@@ -484,9 +502,14 @@ namespace Marco.Network.Round
 
         private void OnServerTick() => Step((float)TimeManager.TickDelta);
 
-        // §0 tick order: board first, then round.
+        // §0 tick order: board first, then round. Both only get the time past InGame start, so the round
+        // clock, reflow and the last-survivor check all begin there (기획서 부록 A [라운드 시작] · 6.5-1).
         private void Step(float dt)
         {
+            dt = startSchedule.Tick(dt);
+            SyncStartPhase();
+            if (dt <= 0f) return;
+
             board.Tick(dt);
             round?.Tick(dt);
 
@@ -507,6 +530,12 @@ namespace Marco.Network.Round
             if (round.Result != RoundResult.InProgress) TimeManager.OnTick -= OnServerTick;
         }
 
+        private void SyncStartPhase()
+        {
+            if (startPhase.Value != startSchedule.Phase) startPhase.Value = startSchedule.Phase;
+            startPhaseRemainingSeconds.Value = startSchedule.PhaseRemainingSeconds;
+        }
+
         private void SyncLastSurvivorPhase(LastSurvivorPhase phase)
         {
             if (!phase.HasEntered) return;
@@ -521,7 +550,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
         {
-            if (valves == null || !ValveView.TryGet(id, out var view)) return false;
+            if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
             return valves.TryBeginWork(playerId, id);
         }
@@ -533,7 +562,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginDrainWork(int playerId, DrainHatchId id, Vector3 playerPosition)
         {
-            if (drains == null || !DrainHatchView.TryGet(id, out var view)) return false;
+            if (drains == null || !startSchedule.HasInGameStarted || !DrainHatchView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
             return drains.TryBeginWork(playerId, id);
         }
@@ -633,6 +662,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryPickupBandage(int playerId, int pickupIndex, Vector3 playerPosition)
         {
+            if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress || !TryGetAliveRunner(playerId, out var player)) return false;
             ResolveBandagePositions();
             if (pickupIndex < 0 || pickupIndex >= bandagePositions.Count || pickupIndex >= bandagePickupStates.Count ||
@@ -651,6 +681,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryPickupClicker(int playerId, int pickupIndex)
         {
+            if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress ||
                 !TryGetAliveRunner(playerId, out var player) ||
                 pickupIndex < 0 || pickupIndex >= ClickerSpawnPoints.Length || pickupIndex >= clickerPickupStates.Count ||
@@ -670,6 +701,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryUseClicker(int playerId)
         {
+            if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress ||
                 !TryGetAliveRunner(playerId, out var source) ||
                 !clickerHoldings.TryGetValue(playerId, out bool isHolding) || !isHolding)
@@ -763,6 +795,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginBandage(int playerId)
         {
+            if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress || healingChannels.ContainsKey(playerId) ||
                 !TryGetAliveRunner(playerId, out var player) || player.IsTreatmentLocked || !HasMissingLives(playerId) ||
                 !bandageCounts.TryGetValue(playerId, out int count) || count <= 0)
@@ -775,6 +808,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginTreatment(int healerId)
         {
+            if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress || healingChannels.ContainsKey(healerId) ||
                 !TryGetAliveRunner(healerId, out var healer) || healer.IsTreatmentLocked)
                 return false;
@@ -997,6 +1031,7 @@ namespace Marco.Network.Round
         public SwingResult TrySwing(int seekerId, Transform seeker, bool targetInReach)
         {
             if (valves == null || roster.GetRole(seekerId) != PlayerRole.Seeker) return SwingResult.Rejected;
+            if (!startSchedule.IsSeekerReleased) return SwingResult.Rejected;
             if (nextTagTimes.TryGetValue(seekerId, out float next) && Time.time < next) return SwingResult.Rejected;
 
             NetworkPlayer target = null;

@@ -98,8 +98,10 @@ namespace Marco.Network.Player
                 return;
             }
 
+            // Role reveal / Seeker hold at round start (기획서 부록 A [라운드 시작]): looking around stays free.
+            bool startLocked = NetworkRound.Instance != null && NetworkRound.Instance.IsStartLocked(player.Role);
             bool canCrouchRole = player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
-            if (locked && canCrouchRole && !player.IsTreatmentLocked && Input.GetKeyDown(KeyCode.C))
+            if (locked && canCrouchRole && !player.IsTreatmentLocked && !startLocked && Input.GetKeyDown(KeyCode.C))
             {
                 ApplyCrouchPresentation(!crouching);
                 SetCrouchServer(crouching);
@@ -110,19 +112,19 @@ namespace Marco.Network.Player
                 SetCrouchServer(false);
             }
 
-            Vector3 input = locked && !player.IsTreatmentLocked && !player.IsStunned
+            Vector3 input = locked && !player.IsTreatmentLocked && !player.IsStunned && !startLocked
                 ? (transform.forward * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal"))
                 : Vector3.zero;
             input = Vector3.ClampMagnitude(input, 1f);
             bool moving = input.sqrMagnitude > 0.001f;
-            IsSprinting = moving && !player.IsTreatmentLocked && !crouching && player.Role == PlayerRole.Runner &&
+            IsSprinting = moving && !player.IsTreatmentLocked && !startLocked && !crouching && player.Role == PlayerRole.Runner &&
                 player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
 
             // CharacterController.SimpleMove includes gravity but cannot jump. Move preserves its
             // grounded behavior while giving both living roles an owner-controlled jump arc.
             bool grounded = controller.isGrounded;
             if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
-            if (locked && !player.IsTreatmentLocked && !player.IsStunned && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
+            if (locked && !player.IsTreatmentLocked && !player.IsStunned && !startLocked && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
             verticalVelocity -= gravity * Time.deltaTime;
 
