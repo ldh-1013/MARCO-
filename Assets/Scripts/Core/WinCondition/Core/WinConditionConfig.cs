@@ -88,6 +88,13 @@ namespace Marco.Core.WinCondition
         public float SuddenDeathExitPulseIntervalSeconds = 5f;
         public int SuddenDeathExitPulseCount = 6;
 
+        // ── 라운드 시작 (RoundStartSchedule, 부록 A [라운드 시작] · 15.4, 10-26) ───────────────────────────────
+        // 0초 = 역할 확인 시작. 역할 확인 동안은 전원 이동 잠금이고, 끝나는 순간(5초)이 InGame 시작이다.
+        public float RoleRevealSeconds = 5f;
+
+        // InGame 시작 뒤 술래만 더 묶어두는 격리 시간. 술래는 역할 확인 시작 후 10초 시점에 풀린다.
+        public float SeekerHoldSeconds = 5f;
+
         // ── 최후 생존자 페이즈 (LastSurvivorPhase) ───────────────────────────────
         public float LastSurvivorPhaseDurationSeconds = 90f;
 
