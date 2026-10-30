@@ -36,7 +36,38 @@ namespace Marco.Network
             DrawRunnerHealth(round);
             DrawRunnerInventory();
             DrawHealingProgress();
+            DrawRoundStart(round);
             DrawResult(round);
+        }
+
+        // Center: own role only for the 5 s role reveal, then the Seeker's hold countdown (기획서 부록 A [라운드 시작]).
+        private static void DrawRoundStart(NetworkRound round)
+        {
+            var player = NetworkPlayer.Local;
+            if (player == null || round.Result != RoundResult.InProgress) return;
+            int seconds = Mathf.Max(1, Mathf.CeilToInt(round.StartPhaseRemainingSeconds));
+            bool seeker = player.Role == PlayerRole.Seeker;
+
+            string title, detail;
+            if (round.StartPhase == RoundStartPhase.RoleReveal)
+            {
+                title = $"당신은 {(seeker ? "술래" : "도망자")}";
+                detail = $"{seconds}초 뒤 시작";
+            }
+            else if (round.StartPhase == RoundStartPhase.SeekerHold && seeker)
+            {
+                title = "격리 중";
+                detail = $"출발까지 {seconds}초";
+            }
+            else return;
+
+            const float width = 640, height = 190;
+            var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.4f - height / 2, width, height);
+            TestHudSkin.Panel(rect);
+            var titleStyle = new GUIStyle(TestHudSkin.Text(72, FontStyle.Bold, TextAnchor.MiddleCenter));
+            titleStyle.normal.textColor = seeker ? SeekerColor : RunnerColor;
+            GUI.Label(new Rect(rect.x, rect.y + 16, rect.width, 96), title, titleStyle);
+            GUI.Label(new Rect(rect.x, rect.y + 116, rect.width, 52), detail, TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         // Top center: time, gate, last-survivor phase, and the host's start/restart button.
