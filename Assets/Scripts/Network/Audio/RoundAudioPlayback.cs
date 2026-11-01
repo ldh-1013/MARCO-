@@ -177,6 +177,7 @@ namespace Marco.Network.Audio
             public float AirStarted, PeakHeight, SuppressStepsUntil;
             public string GroundSurface = "";
             public int GroundWater;
+            public int PreviousWater;
             public float MovedAt, Timer, LastWaterStep = -10f;
         }
         private readonly Dictionary<NetworkPlayer, StepState> steps = new();
@@ -197,6 +198,7 @@ namespace Marco.Network.Audio
                     initial.Grounded = footWorld.TryFloorNear(player, out var initialFloor, .09f);
                     if (initial.Grounded) initial.GroundSurface = footWorld.Surface(initialFloor, position);
                     initial.GroundWater = footWorld.WaterState(player, out _);
+                    initial.PreviousWater = initial.GroundWater;
                     steps[player] = initial;
                     continue;
                 }
@@ -220,6 +222,19 @@ namespace Marco.Network.Audio
                 bool onGround = footWorld.TryFloorNear(player, out var contactFloor, .09f);
                 bool alive = player.Status == PlayerStatus.Alive && !player.IsEcho;
                 bool teleported = offset.magnitude > Mathf.Max(1.5f, Time.deltaTime * 30f);
+                bool enteredWater = alive && !teleported && state.PreviousWater == 0 && water != 0;
+                state.PreviousWater = water;
+                if (enteredWater)
+                {
+                    var impact = new Vector3(position.x, waterLevel, position.z);
+                    if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))
+                    {
+                        float strength = Mathf.Clamp(.5f + Mathf.Max(0, -offset.y) / Mathf.Max(Time.deltaTime, .001f) * .08f, .5f, 1f);
+                        Play("WaterEntry", splashPoint, strength * splashGain, 0, -1, splashBlocked, -1);
+                    }
+                    state.InAir = state.JumpPlayed = false;
+                    state.SuppressStepsUntil = Time.time + .35f;
+                }
                 if (!alive || teleported)
                 {
                     state.InAir = state.JumpPlayed = false;
@@ -227,7 +242,7 @@ namespace Marco.Network.Audio
                 }
                 else
                 {
-                    if (state.Grounded && !onGround)
+                    if (!enteredWater && state.Grounded && !onGround)
                     {
                         state.InAir = true; state.AirStarted = Time.time; state.PeakHeight = position.y;
                         state.JumpPlayed = offset.y / Mathf.Max(Time.deltaTime, .0001f) > .5f;

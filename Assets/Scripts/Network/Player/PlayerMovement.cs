@@ -100,6 +100,7 @@ namespace Marco.Network.Player
         // NetworkTransform.Teleport makes other clients snap instead of sliding across the map.
         public void Teleport(Vector3 position)
         {
+            waterFxReady = false;
             bool wasEnabled = controller.enabled;
             controller.enabled = false;
             transform.position = position;
