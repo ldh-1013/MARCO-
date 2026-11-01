@@ -9,6 +9,7 @@ namespace Marco.Core.WinCondition
     {
         // ── 이동 (기획서 3.1 · 부록 A [이동속도]) ───────────────────────────────
         public float RunnerWalkSpeed = 5f;
+        public float SurfaceSwimSpeed = 3f;
         public float RunnerSprintSpeed = 7.5f;
         public float RunnerSprintStaminaSeconds = 5f;
         public float RunnerSprintStaminaDrainPerSecond = 1f;

@@ -29,6 +29,7 @@ namespace Marco.Network.Voice
         // (walls and locker rows only); until then furniture blocks voice too.
         [SerializeField] private LayerMask occluders = ~0;
 
+        private readonly Marco.Network.Audio.SoundWorld waterWorld = new();
         private readonly RaycastHit[] hits = new RaycastHit[16];
 
         public static VoiceChannel ChannelOf(NetworkPlayer player)
@@ -60,9 +61,12 @@ namespace Marco.Network.Voice
             };
             if (listener.Role == PlayerRole.Seeker) radius *= seekerHearingMultiplier;
             Vector3 from = speaker.transform.position, to = listener.transform.position;
+            if (speaker.TryGetComponent<PlayerMovement>(out var speakerMovement)) from.y = speakerMovement.WaterEyeHeight;
+            if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) to.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(from, to);
             if (distance > radius) return false;
             radius *= Mathf.Pow(wallAttenuation, CountWalls(from, to, distance));
+            radius *= Mathf.Pow(.5f, waterWorld.WaterSurfaceCrossings(from, to));
             return distance <= radius;
         }
 

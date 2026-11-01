@@ -134,7 +134,7 @@ namespace Marco.Network.Player
 
         // Movement is client-authoritative, so the server asks the owning client to move itself.
         [Server]
-        public void TeleportOwner(Vector3 position) => TeleportTarget(Owner, position);
+        public void TeleportOwner(Vector3 position, Quaternion rotation) => TeleportTarget(Owner, position, rotation);
 
         [Server]
         public void SendHealth(int halves) => HealthTarget(Owner, halves);
@@ -167,8 +167,8 @@ namespace Marco.Network.Player
         }
 
         [TargetRpc]
-        private void TeleportTarget(NetworkConnection conn, Vector3 position) =>
-            GetComponent<PlayerMovement>().Teleport(position);
+        private void TeleportTarget(NetworkConnection conn, Vector3 position, Quaternion rotation) =>
+            GetComponent<PlayerMovement>().TeleportToSpawn(position, rotation);
 
         public override void OnStartNetwork()
         {

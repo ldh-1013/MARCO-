@@ -41,61 +41,42 @@ namespace Marco.Network.Audio
         }
 
         private readonly List<Bounds> pools = new();
-        private readonly List<(Bounds Area, float Radius)> deepWater = new();
-        // 0 dry, 1 body partly above water, 2 fully submerged. Pool water level is shared by
-        // shallow/deep volumes; the circular sump's top is NOT the water surface.
-        public int WaterState(NetworkPlayer player, out float surface)
+        private bool poolsLoaded;
+        public bool TryPool(Vector3 position, out Bounds pool)
         {
-            surface = 0;
-            if (pools.Count == 0)
+            if (!poolsLoaded)
+            {
+                poolsLoaded = true;
                 foreach (var component in Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include))
                 {
                     if (component == null || component.GetType().Name != "PoolV12Part") continue;
                     var type = component.GetType();
-                    string category = type.GetField("category")?.GetValue(component) as string;
-                    string id = type.GetField("designId")?.GetValue(component) as string ?? "";
-                    if (category == "WaterVolume" && (id.Contains("Deep") || id.Contains("CircularSump")))
-                    {
-                        var area = new Bounds((Vector3)type.GetField("designPosition").GetValue(component),
-                            (Vector3)type.GetField("designSize").GetValue(component));
-                        deepWater.Add((area, (float)type.GetField("radius").GetValue(component)));
-                    }
-                    if (category != "Pool") continue;
-                    var center = (Vector3)type.GetField("designPosition").GetValue(component);
-                    var size = (Vector3)type.GetField("designSize").GetValue(component);
-                    pools.Add(new Bounds(center, size));
+                    if (type.GetField("category")?.GetValue(component) as string != "Pool") continue;
+                    pools.Add(new Bounds((Vector3)type.GetField("designPosition").GetValue(component),
+                        (Vector3)type.GetField("designSize").GetValue(component)));
                 }
+            }
+            foreach (var area in pools)
+                if (position.x > area.min.x && position.x < area.max.x &&
+                    position.z > area.min.z && position.z < area.max.z)
+                { pool = area; return true; }
+            pool = default;
+            return false;
+        }
+
+        // The surface comes from map geometry; diving is determined by the eye height,
+        // never by proximity to a valve or a deep-water volume.
+        public int WaterState(NetworkPlayer player, out float surface)
+        {
+            surface = 0f;
+            if (player == null || player.IsEcho || !TryPool(player.transform.position, out var pool)) return 0;
             var controller = player.GetComponent<CharacterController>();
             if (controller == null || !controller.enabled) return 0;
-            var body = controller.bounds;
-            foreach (var pool in pools)
-            {
-                if (body.center.x <= pool.min.x || body.center.x >= pool.max.x ||
-                    body.center.z <= pool.min.z || body.center.z >= pool.max.z) continue;
-                surface = pool.center.y;
-                if (body.min.y >= surface - .05f) return 0;
-                if (player.Role == PlayerRole.Runner || player.Role == PlayerRole.Seeker)
-                {
-                    foreach (var deep in deepWater)
-                    {
-                        var center = deep.Area.center;
-                        bool inside = body.center.x > deep.Area.min.x && body.center.x < deep.Area.max.x &&
-                            body.center.z > deep.Area.min.z && body.center.z < deep.Area.max.z;
-                        if (inside && (deep.Radius <= 0 || new Vector2(body.center.x-center.x, body.center.z-center.z).sqrMagnitude < deep.Radius*deep.Radius))
-                            return 2;
-                    }
-                    float valveRange = NetworkRound.Instance != null ? NetworkRound.Instance.InteractRange : 2f;
-                    foreach (var valve in ValveView.All)
-                    {
-                        if (valve.Id != ValveId.B && valve.Id != ValveId.E) continue;
-                        var delta = body.center - valve.transform.position;
-                        if (new Vector2(delta.x, delta.z).sqrMagnitude <= valveRange * valveRange) return 2;
-                    }
-                    return 1; // Shallow-water Runner cue is independent of model height/crouch.
-                }
-                return body.max.y > surface + .05f ? 1 : 2;
-            }
-            return 0;
+            surface = pool.center.y;
+            if (controller.bounds.min.y >= surface - .05f) return 0;
+            var movement = player.GetComponent<PlayerMovement>();
+            float eyeY = movement != null ? movement.WaterEyeHeight : controller.bounds.max.y;
+            return eyeY < surface - .03f ? 2 : 1;
         }
 
         public bool TryFloor(NetworkPlayer player, out Collider floor) => TryFloorNear(player, out floor, .25f);
@@ -145,6 +126,20 @@ namespace Marco.Network.Audio
             return "";
         }
 
+        public int WaterSurfaceCrossings(Vector3 from, Vector3 to)
+        {
+            TryPool(from, out _); // Load map metadata once.
+            int count = 0;
+            foreach (var pool in pools)
+            {
+                float surface = pool.center.y;
+                if ((from.y < surface) == (to.y < surface) || Mathf.Abs(to.y - from.y) < .001f) continue;
+                Vector3 crossing = Vector3.Lerp(from, to, (surface - from.y) / (to.y - from.y));
+                if (crossing.x > pool.min.x && crossing.x < pool.max.x && crossing.z > pool.min.z && crossing.z < pool.max.z) count++;
+            }
+            return count;
+        }
+
         public bool Hear(Vector3 origin, NetworkPlayer listener, float radius,
             out Vector3 playbackPoint, out float gain, out bool muffled)
         {
@@ -152,6 +147,7 @@ namespace Marco.Network.Audio
             gain = 0;
             muffled = false;
             Vector3 end = listener.transform.position;
+            if (listener.TryGetComponent<PlayerMovement>(out var movement)) end.y = movement.WaterEyeHeight;
             float distance = Vector3.Distance(origin, end);
             if (listener.Role == PlayerRole.Seeker) radius *= 1.2f;
             if (distance > radius) return false;
@@ -167,9 +163,10 @@ namespace Marco.Network.Audio
                         part.Category == "Floor" || part.Category == "Ceiling")) walls.Add(part.Component);
                 }
             }
-            radius *= Mathf.Pow(0.5f, walls.Count);
+            int waterCrossings = WaterSurfaceCrossings(origin, end);
+            radius *= Mathf.Pow(0.5f, walls.Count + waterCrossings);
             if (distance > radius) return false;
-            muffled = walls.Count > 0;
+            muffled = walls.Count + waterCrossings > 0;
             if (muffled)
             {
                 // Do not send exact position/distance through an occluding wall.

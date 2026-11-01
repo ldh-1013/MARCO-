@@ -85,7 +85,7 @@ namespace Marco.Network.Player
             else if (workingValve is ValveId valve)
             {
                 // Releasing E or walking away both end the work.
-                if (!held || !ValveView.TryGet(valve, out var view) || !view.IsInRange(transform.position, range))
+                if (!held || ((valve == ValveId.B || valve == ValveId.E) && GetComponent<PlayerMovement>().IsSwimming && !GetComponent<PlayerMovement>().IsDiving) || !ValveView.TryGet(valve, out var view) || !view.IsInRange(transform.position, range))
                 {
                     EndWorkServer(valve);
                     workingValve = null;
@@ -93,7 +93,7 @@ namespace Marco.Network.Player
             }
             else if (workingDrain is DrainHatchId drain)
             {
-                if (!held || !DrainHatchView.TryGet(drain, out var view) || !view.IsInRange(transform.position, range))
+                if (!held || (GetComponent<PlayerMovement>().IsSwimming && !GetComponent<PlayerMovement>().IsDiving) || !DrainHatchView.TryGet(drain, out var view) || !view.IsInRange(transform.position, range))
                 {
                     EndDrainWorkServer(drain);
                     workingDrain = null;

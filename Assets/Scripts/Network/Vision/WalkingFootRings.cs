@@ -18,18 +18,26 @@ namespace Marco.Network.Vision
             public Renderer renderer;
             public MaterialPropertyBlock properties;
             public float createdAt;
+            public float radius;
         }
 
         private readonly List<Ring> rings = new();
         [SerializeField] private Shader ringShader;
-        [SerializeField, Min(0.05f)] private float walkingRingInterval = 0.45f;
+        [SerializeField, Min(0.1f)] private float walkingRingDistance = 6f;
         [SerializeField, Min(0.05f)] private float maxRadius = 1f;
         [SerializeField, Min(0.05f)] private float lifetime = 0.8f;
         private CharacterController controller;
-        private float nextFootRingTime;
+        private Vector3 lastRingPosition;
+        private float walkedDistanceSinceRing;
+        private bool trackingWalk;
         private Material material;
         private Mesh ringMesh;
         private Color ringColor = new Color(0.75f, 0.9f, 1f, 0.8f);
+
+        private readonly Dictionary<int, Vector3> swimPositions = new();
+        private readonly Dictionary<int, float> swimDistances = new();
+        private readonly Marco.Network.Audio.SoundWorld waterWorld = new();
+        public void EmitWaterPulse(Vector3 origin, float radius) => SpawnRing(origin, radius);
 
         public Shader RingShader => ringShader;
 
@@ -39,7 +47,7 @@ namespace Marco.Network.Vision
             EnsurePool(8);
         }
 
-        private void SpawnRing(Vector3 worldPosition)
+        private void SpawnRing(Vector3 worldPosition, float radius = -1f)
         {
             EnsurePool(rings.Count == 0 ? 1 : rings.Count);
             if (rings.Count == 0) return;
@@ -54,6 +62,7 @@ namespace Marco.Network.Vision
                     if (rings[i].createdAt < ring.createdAt) ring = rings[i];
             }
 
+            ring.radius = radius > 0 ? radius : maxRadius;
             ring.createdAt = Time.unscaledTime;
             ring.gameObject.transform.position = worldPosition;
             ring.gameObject.transform.localScale = Vector3.one * 0.03f;
@@ -64,6 +73,7 @@ namespace Marco.Network.Vision
         private void Update()
         {
             EmitWhileWalking();
+            EmitSwimming();
             float now = Time.unscaledTime;
             foreach (Ring ring in rings)
             {
@@ -76,23 +86,62 @@ namespace Marco.Network.Vision
                 }
 
                 float expansion = 1f - (1f - t) * (1f - t);
-                float radius = Mathf.Lerp(0.03f, maxRadius, expansion);
+                float radius = Mathf.Lerp(0.03f, ring.radius, expansion);
                 ring.gameObject.transform.localScale = Vector3.one * radius;
                 float alpha = ringColor.a * (1f - t);
                 SetAlpha(ring, alpha);
             }
         }
 
+        private void EmitSwimming()
+        {
+            var listener = Marco.Network.Player.NetworkPlayer.Local;
+            if (listener == null) return;
+            foreach (var swimmer in Marco.Network.Player.NetworkPlayer.All)
+            {
+                Vector3 position = swimmer.transform.position;
+                int id = swimmer.PlayerId;
+                float level = 0;
+                bool surface = swimmer.Status == Marco.Network.Player.PlayerStatus.Alive && waterWorld.WaterState(swimmer, out level) == 1;
+                if (swimPositions.TryGetValue(id, out var previous) && surface)
+                {
+                    float delta = Vector3.ProjectOnPlane(position - previous, Vector3.up).magnitude;
+                    swimDistances.TryGetValue(id, out float distance);
+                    distance = delta > 2f ? 0 : distance + delta;
+                    if (distance >= 6f)
+                    {
+                        distance %= 6f;
+                        Vector3 origin = new Vector3(position.x, level + .025f, position.z);
+                        if (waterWorld.Hear(origin, listener, 6f, out var audiblePoint, out _, out _))
+                            SpawnRing(audiblePoint, 6f);
+                    }
+                    swimDistances[id] = distance;
+                }
+                else swimDistances[id] = 0;
+                swimPositions[id] = position;
+            }
+        }
+
         private void EmitWhileWalking()
         {
+            var movement = controller != null ? controller.GetComponent<Marco.Network.Player.PlayerMovement>() : null;
+            if (movement != null && movement.IsSwimming) { trackingWalk = false; walkedDistanceSinceRing = 0; return; }
             bool walkingOnGround = controller != null && controller.isGrounded
                 && Vector3.ProjectOnPlane(controller.velocity, Vector3.up).sqrMagnitude > 0.01f;
-            if (!walkingOnGround) { nextFootRingTime = 0f; return; }
-            nextFootRingTime -= Time.deltaTime;
-            if (nextFootRingTime > 0f) return;
+            if (!walkingOnGround) { trackingWalk = false; walkedDistanceSinceRing = 0f; return; }
             Vector3 position = controller.transform.position;
+            if (!trackingWalk)
+            {
+                trackingWalk = true;
+                lastRingPosition = position;
+                walkedDistanceSinceRing = 0f;
+                return;
+            }
+            walkedDistanceSinceRing += Vector3.ProjectOnPlane(position - lastRingPosition, Vector3.up).magnitude;
+            lastRingPosition = position;
+            if (walkedDistanceSinceRing < walkingRingDistance) return;
+            walkedDistanceSinceRing %= walkingRingDistance;
             SpawnRing(new Vector3(position.x, controller.bounds.min.y + 0.025f, position.z));
-            nextFootRingTime = walkingRingInterval;
         }
 
         private void EnsurePool(int requiredCount)

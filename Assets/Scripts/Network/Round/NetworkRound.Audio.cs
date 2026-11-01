@@ -99,7 +99,7 @@ namespace Marco.Network.Round
             foreach (var id in rotatingSounds)
                 if (ValveView.TryGet(id, out var valve))
                     EmitSound("Valve", valve.transform.position,
-                        id == ValveId.A || id == ValveId.B || id == ValveId.E ? 6f : 12f,
+                        id == ValveId.A ? 6f : 12f,
                         0.5f, 0f, 100000 + (int)id, id == ValveId.B || id == ValveId.E);
 
             foreach (var pair in healingChannels)
@@ -123,7 +123,7 @@ namespace Marco.Network.Round
                 StopAudioObservers(100000 + (int)id, false);
             }
             else if (evt == ValveSoundEvent.ReflowRipple && ValveView.TryGet(id, out var valve))
-                EmitSound("Reflow", valve.transform.position, id == ValveId.B || id == ValveId.E ? 6f : 12f,
+                EmitSound("Reflow", valve.transform.position, 12f,
                     0.55f, 8f, -1, id == ValveId.B || id == ValveId.E);
         }
 
@@ -136,6 +136,25 @@ namespace Marco.Network.Round
         private void PlayHurtAudio(NetworkPlayer target)
         {
             if (SoundMap) HurtAudioTarget(target.Owner);
+        }
+
+        [Server]
+        public void EmitDrowningSound(NetworkPlayer player, float surface)
+        {
+            var origin = player.transform.position;
+            origin.y = surface + .1f;
+            EmitSound("Hurt", origin, 22f, 1f, 1.5f);
+            soundWorld ??= new SoundWorld();
+            foreach (var listener in NetworkPlayer.All)
+                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out _))
+                    DrowningPulseTarget(listener.Owner, point);
+        }
+
+        [TargetRpc]
+        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point)
+        {
+            var local = NetworkPlayer.Local;
+            if (local != null) local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,

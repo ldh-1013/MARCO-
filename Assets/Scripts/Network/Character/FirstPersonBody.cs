@@ -137,6 +137,11 @@ namespace Marco.Network.Character
         private void LateUpdate()
         {
             if (!IsReady) return;
+            if (TryGetComponent<Marco.Network.Player.PlayerMovement>(out var movement) && movement.IsSwimming)
+            {
+                playerCamera.transform.position = new Vector3(transform.position.x, movement.WaterEyeHeight, transform.position.z);
+                return;
+            }
             playerCamera.transform.position = body.BodyRoot.gameObject.activeInHierarchy
                 ? head.position + transform.TransformVector(eyeOffset)
                 : playerCamera.transform.parent.TransformPoint(cameraHome);

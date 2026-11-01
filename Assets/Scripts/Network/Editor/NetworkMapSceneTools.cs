@@ -53,7 +53,13 @@ namespace Marco.Network.Editor
             ("파이프 (1)", 0, 0.21299766f),    // E
         };
 
-        private static readonly string[] RunnerSpawnPoints = { "SpawnPoint_1", "SpawnPoint_2", "SpawnPoint_3" };
+        // SpawnPoint_4 is reserved for the hunter upstairs. Eight lobby slots keep
+        // every survivor (and every lobby participant before role selection) separate.
+        private static readonly string[] RunnerSpawnPoints =
+        {
+            "SpawnPoint_1", "SpawnPoint_2", "SpawnPoint_3", "SpawnPoint_5",
+            "SpawnPoint_6", "SpawnPoint_7", "SpawnPoint_8", "SpawnPoint_9"
+        };
 
         // Initial marker positions. Exit_* / SpawnPoint_* copy the map scene's GamePoints;
         // Valve_* / Drain_* come from Layout_v1_2.json "points" (x, height, z).
@@ -65,6 +71,11 @@ namespace Marco.Network.Editor
             ("SpawnPoint_2", new(29.95f, 0, 5.75f)),
             ("SpawnPoint_3", new(32.05f, 0, 5.75f)),
             ("SpawnPoint_4", new(55, 3.5f, 18)),
+            ("SpawnPoint_5", new(34.15f, 0, 5.75f)),
+            ("SpawnPoint_6", new(27.85f, 0, 7.25f)),
+            ("SpawnPoint_7", new(29.95f, 0, 7.25f)),
+            ("SpawnPoint_8", new(32.05f, 0, 7.25f)),
+            ("SpawnPoint_9", new(34.15f, 0, 7.25f)),
             ("Valve_A", new(58.5f, 1, 36)),
             ("Valve_B", new(38.5f, -3, 52)),
             ("Valve_C", new(6, 4.5f, 16.5f)),
@@ -304,6 +315,7 @@ namespace Marco.Network.Editor
             {
                 var marker = CreateMarker(name, root.transform, position);
                 if (name.StartsWith("Valve_")) marker.rotation = Quaternion.Euler(0, ValveMarkerYaw, 0);
+                if (name == "SpawnPoint_4") marker.rotation = Quaternion.Euler(0, 270, 0);
             }
             foreach (var (name, bottom, top) in Ladders)
                 CreateMarker("Top", CreateMarker(name, root.transform, bottom), top);

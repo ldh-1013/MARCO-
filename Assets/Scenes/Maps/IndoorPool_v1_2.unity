@@ -65968,7 +65968,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 104472ec8bf155e44848629ecce18719, type: 2}
     - target: {fileID: 919132149155446097, guid: 93ec359432fde134caaa7ae3f38e1858, type: 3}
       propertyPath: m_Name
-      value: "\uCE74\uBA54\uB77C"
+      value: "\uCC30\uCEAC\uC774"
       objectReference: {fileID: 0}
     - target: {fileID: 4353660550852266752, guid: 93ec359432fde134caaa7ae3f38e1858, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

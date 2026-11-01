@@ -36,6 +36,7 @@ namespace Marco.Network
             DrawRunnerHealth(round);
             DrawRunnerInventory();
             DrawHealingProgress();
+            DrawBreath();
             DrawRoundStart(round);
             DrawResult(round);
         }
@@ -139,6 +140,37 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2: 아이템 선택 · G: 사용 (붕대는 홀드)", help);
         }
 
+        private static void DrawBreath()
+        {
+            var player = NetworkPlayer.Local;
+            if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive ||
+                !player.TryGetComponent(out PlayerMovement movement)) return;
+            var bar = new Rect(TestHudSkin.Width * .5f - 150, TestHudSkin.Height - 155, 300, 14);
+            if (movement.IsSwimming)
+                GUI.Label(new Rect(bar.x - 130, bar.y + 22, 560, 28), "Ctrl 홀드: 잠수 · 마우스: 수중 방향 · 해제: 부상 · 가장자리 Space: 나오기", TestHudSkin.Text(16, FontStyle.Normal, TextAnchor.MiddleCenter));
+            if (!movement.IsDiving) return;
+
+            float value = movement.BreathSeconds;
+            Color saved = GUI.color;
+            if (value <= 1f)
+            {
+                GUI.color = new Color(.7f, .02f, .02f, .18f + .08f * Mathf.Sin(Time.time * 8f));
+                GUI.DrawTexture(new Rect(0, 0, TestHudSkin.Width, 45), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(0, TestHudSkin.Height - 45, TestHudSkin.Width, 45), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(0, 0, 45, TestHudSkin.Height), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(TestHudSkin.Width - 45, 0, 45, TestHudSkin.Height), Texture2D.whiteTexture);
+            }
+            GUI.color = new Color(.08f, .12f, .16f, .9f);
+            GUI.DrawTexture(bar, Texture2D.whiteTexture);
+            GUI.color = value <= 1f ? Color.red : value <= 3f ? Color.yellow : new Color(.3f, .8f, 1f);
+            GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * value / PlayerMovement.MaxBreath, bar.height), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.DrawTexture(new Rect(bar.x + bar.width / PlayerMovement.MaxBreath, bar.y - 3, 2, 20), Texture2D.whiteTexture);
+            GUI.color = saved;
+            string warning = value <= 1f ? " · 즉시 부상!" : value <= 3f ? " · 숨 부족" : "";
+            GUI.Label(new Rect(bar.x - 90, bar.y - 30, 480, 28), $"숨 {value:0.0} / 14초{warning}", TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
+        }
+
         private static void DrawHealingProgress()
         {
             var player = NetworkPlayer.Local;
@@ -187,11 +219,9 @@ namespace Marco.Network
             int totalHalves = Mathf.Max(1, round.FullHalves);
             int currentHalves = player.HealthHalves < 0 ? totalHalves : Mathf.Clamp(player.HealthHalves, 0, totalHalves);
             const float width = 330, height = 78;
-            var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
+            var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - TestHudSkin.Margin - height - 30, width, height);
             TestHudSkin.Panel(panel);
 
-            GUI.Label(new Rect(panel.x + 16, panel.y + 8, 140, 28), "생존자 체력",
-                TestHudSkin.Text(21, FontStyle.Bold));
             GUI.Label(new Rect(panel.xMax - 150, panel.y + 8, 134, 28),
                 $"{currentHalves / 2f:F1} / {totalHalves / 2f:F1}",
                 TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleRight));
@@ -214,7 +244,10 @@ namespace Marco.Network
                 if (amount > 0f)
                     TestHudSkin.Fill(new Rect(segment.x, segment.y, segment.width * amount, segment.height), fill);
             }
-
+            float staminaRatio = player.TryGetComponent(out PlayerMovement movement)
+                ? movement.SprintStaminaRatio : 1f;
+            TestHudSkin.Bar(new Rect(barX, panel.yMax + 10, barWidth, 16), staminaRatio,
+                new Color(0.36f, 0.72f, 1f, 0.95f));
         }
 
         private static void DrawRunnerInventory()

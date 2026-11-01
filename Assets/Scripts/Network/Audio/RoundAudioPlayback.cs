@@ -16,6 +16,7 @@ namespace Marco.Network.Audio
             public AudioSource Source;
             public AudioLowPassFilter Filter;
             public float Until, Started, Gain;
+            public bool Muffled;
             public int LoopKey = -1, ActionId = -1;
         }
         private readonly List<Voice> voices = new();
@@ -78,6 +79,7 @@ namespace Marco.Network.Audio
             voice.Source.volume = loopKey >= 200000
                 ? Mathf.MoveTowards(voice.Source.volume, Mathf.Clamp01(volume), Time.deltaTime * 4f)
                 : Mathf.Clamp01(volume);
+            voice.Muffled = muffled;
             voice.Filter.enabled = muffled;
             voice.Filter.cutoffFrequency = 1000f;
             voice.Until = Time.time + (loopKey >= 0 ? 0.4f : Mathf.Min(duration > 0 ? duration : clip.length, clip.length));
@@ -139,6 +141,9 @@ namespace Marco.Network.Audio
             }
             for (int i = voices.Count - 1; i >= 0; i--)
             {
+                var swimmer = NetworkPlayer.Local.GetComponent<PlayerMovement>();
+                voices[i].Filter.enabled = voices[i].Muffled || (swimmer != null && swimmer.IsDiving);
+                voices[i].Filter.cutoffFrequency = swimmer != null && swimmer.IsDiving ? 650f : 1000f;
                 float remaining = voices[i].Until - Time.time;
                 if (voices[i].Source.clip != null && voices[i].Source.clip.name.StartsWith("SurfaceSwim") && voices[i].LoopKey < 0)
                     voices[i].Source.volume = voices[i].Gain * Mathf.Clamp01((Time.time - voices[i].Started)/.02f) * Mathf.Clamp01(remaining/.04f);
@@ -154,7 +159,11 @@ namespace Marco.Network.Audio
                 foreach (var player in NetworkPlayer.All)
                     if (player.Role == PlayerRole.Seeker && player.Status == PlayerStatus.Alive)
                         heart = Mathf.Max(heart, 0.35f * Mathf.Clamp01(1f - Vector3.Distance(local.transform.position, player.transform.position) / 8f));
+            var swim = local.GetComponent<PlayerMovement>();
+            bool breathWarning = alive && swim != null && swim.IsDiving && swim.BreathSeconds <= 3f;
+            if (breathWarning) heart = Mathf.Max(heart, swim.BreathSeconds <= 1f ? .65f : .4f);
             Bed(ref heartbeat, "Heartbeat", heart, 1f);
+            if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f : 1f;
             Bed(ref seekerDrone, "SeekerDrone", alive && local.Role == PlayerRole.Seeker ? .15f : 0f, 2f);
         }
 
