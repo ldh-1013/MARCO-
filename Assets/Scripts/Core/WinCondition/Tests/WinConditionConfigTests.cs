@@ -69,23 +69,33 @@ namespace Marco.Core.WinCondition.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => config.GetRoundSettings(runnerCount));
         }
 
-        [Test]
-        public void ValveProgressRate_MatchesDesign()
+        // 기획서 6.1 · 6.1-1: A · C · D 회전 8.0 / 재개방 4.0, 수중 B · E는 회전 구간만(진입 · 부상은 헤엄)
+        [TestCase(ValveId.A, 8.0f, 4.0f)]
+        [TestCase(ValveId.B, 5.0f, 2.5f)]
+        [TestCase(ValveId.C, 8.0f, 4.0f)]
+        [TestCase(ValveId.D, 8.0f, 4.0f)]
+        [TestCase(ValveId.E, 7.0f, 3.5f)]
+        public void ValveRotationSeconds_MatchDesign(ValveId id, float firstSeconds, float reopenSeconds)
         {
             var config = new WinConditionConfig();
 
-            // 1인: 초당 1/8 → 8.0초에 완료
-            Assert.AreEqual(1f / 8f, config.ValveBaseProgressPerSecond, Tolerance);
-            float oneWorkerSeconds = 1f / config.ValveBaseProgressPerSecond;
-            Assert.AreEqual(8.0f, oneWorkerSeconds, 0.01f);
+            Assert.AreEqual(firstSeconds, config.GetValveRotationSeconds(id, reopen: false), Tolerance);
+            Assert.AreEqual(reopenSeconds, config.GetValveRotationSeconds(id, reopen: true), Tolerance);
+        }
 
-            // 2인: ×1.6 → 약 5.0초
-            float twoWorkerSeconds = 1f / (config.ValveBaseProgressPerSecond * config.ValveTwoWorkerMultiplier);
-            Assert.AreEqual(5.0f, twoWorkerSeconds, 0.01f);
+        [Test]
+        public void ValveWorkerMultipliers_MatchDesign()
+        {
+            var config = new WinConditionConfig();
+            float oneWorkerSeconds = config.GetValveRotationSeconds(ValveId.A, reopen: false);
 
-            // 3인 이상: ×1.9 → 약 4.2초 (상한)
-            float threePlusWorkerSeconds = 1f / (config.ValveBaseProgressPerSecond * config.ValveThreeOrMoreWorkerMultiplier);
-            Assert.AreEqual(4.2f, threePlusWorkerSeconds, 0.05f);
+            // 2인: ×1.6 → A 기준 약 5.0초
+            Assert.AreEqual(1.6f, config.ValveTwoWorkerMultiplier, Tolerance);
+            Assert.AreEqual(5.0f, oneWorkerSeconds / config.ValveTwoWorkerMultiplier, 0.01f);
+
+            // 3인 이상: ×1.9 → A 기준 약 4.2초 (상한)
+            Assert.AreEqual(1.9f, config.ValveThreeOrMoreWorkerMultiplier, Tolerance);
+            Assert.AreEqual(4.2f, oneWorkerSeconds / config.ValveThreeOrMoreWorkerMultiplier, 0.05f);
         }
 
         [Test]
@@ -107,14 +117,6 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual(3, config.ReflowRippleEventCount);
         }
 
-        // 부록 A [밸브]: 재개방 1인 +1/4 per sec (4.0초, 10-26)
-        [Test]
-        public void ValveReopenRate_MatchesDesign()
-        {
-            var config = new WinConditionConfig();
-
-            Assert.AreEqual(1f / 4f, config.ValveReopenProgressPerSecond, Tolerance);
-        }
         [Test]
         public void LastSurvivorPhase_MatchesDesign()
         {

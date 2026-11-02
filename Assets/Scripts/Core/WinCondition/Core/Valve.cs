@@ -23,13 +23,16 @@ namespace Marco.Core.WinCondition
         // 이번 역류에서 물소리 알림을 몇 번 보냈는지 (최대 ReflowRippleEventCount)
         private int _reflowRipplesFired;
 
+        // 회전 시간이 밸브마다 다르다 (WinConditionConfig.GetValveRotationSeconds)
+        public ValveId Id { get; }
+
         public ValveStatus Status { get; private set; } = ValveStatus.Closed;
         public float Progress { get; private set; } = 0f;
 
         // 역류 중 재작업 진행도(0.0 ~ 1.0). 역류로 줄어드는 Progress와 따로 0부터 채운다. 역류 중이 아니면 항상 0.
         public float ReworkProgress { get; private set; } = 0f;
 
-        // 한 번이라도 Open에 도달했는가 (기획서 6.1 재개방, 10-26). 켜지면 회전 속도가 재개방 기준(1인 4.0초)이 된다.
+        // 한 번이라도 Open에 도달했는가 (기획서 6.1 재개방, 10-26). 켜지면 회전 속도가 재개방 기준(A · C · D 1인 4.0초)이 된다.
         // 역류로 Closed가 되어도 끄지 않는다. 라운드마다 Valve를 새로 만들므로 새 라운드에서는 false로 시작한다.
         public bool HasReachedOpen { get; private set; }
 
@@ -41,9 +44,10 @@ namespace Marco.Core.WinCondition
         // 역류 중 물소리 파문 알림 (파문 자체는 남경 파트, 여기서는 "지금 알려야 한다"는 신호만 보냄)
         public event Action ReflowRippleTriggered;
 
-        public Valve(WinConditionConfig config)
+        public Valve(WinConditionConfig config, ValveId id)
         {
             _config = config;
+            Id = id;
             _noWorkerTracker = new GraceDecayTracker(config.ValveNoWorkerGraceSeconds, config.ValveNoWorkerDecayPerSecond);
         }
 
@@ -116,7 +120,7 @@ namespace Marco.Core.WinCondition
         }
 
         // Reflowing 상태: 30초에 걸쳐 진행도를 1 -> 0으로 줄이고, 균등 간격으로 물소리 알림을 보낸다.
-        // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 재개방 4.0초, 10-26).
+        // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 재개방 기준 — A · C · D 4.0초, 10-26).
         // 재작업이 먼저 끝나면 Open 복귀 + 240초 유예 리셋, 역류가 먼저 끝나면 Closed.
         // TODO(기획 확인): "재작업 중에도 역류는 멈추지 않고 계속 닫힌다"와
         // "역류가 먼저 끝나면 재작업 진행도를 버린다"는 임시 해석.
@@ -171,7 +175,7 @@ namespace Marco.Core.WinCondition
             FireDueRippleEvents();
         }
 
-        // 재작업 진행도: 재개방 1인 4초, 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
+        // 재작업 진행도: 재개방 회전 시간(A · C · D 1인 4초), 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
         // TODO(기획 확인): 역류 중 재작업을 멈췄을 때도 일반 작업처럼 유예 후 감쇠하는지 미정(지금은 같은 규칙으로 처리).
         private void TickReworkProgress(float seconds)
         {
@@ -203,11 +207,11 @@ namespace Marco.Core.WinCondition
             }
         }
 
-        // 한 번 Open에 도달한 밸브는 재개방 속도를 기준으로 쓴다(1인 4.0초). 감쇠율은 그대로(기획서 6.1).
+        // 한 번 Open에 도달한 밸브는 재개방 회전 시간을 기준으로 쓴다. 감쇠율은 그대로(기획서 6.1).
         private float GetWorkRatePerSecond(int workerCount)
         {
             if (workerCount <= 0) return 0f;
-            float baseRate = HasReachedOpen ? _config.ValveReopenProgressPerSecond : _config.ValveBaseProgressPerSecond;
+            float baseRate = 1f / _config.GetValveRotationSeconds(Id, HasReachedOpen);
             if (workerCount == 1) return baseRate;
             if (workerCount == 2) return baseRate * _config.ValveTwoWorkerMultiplier;
             return baseRate * _config.ValveThreeOrMoreWorkerMultiplier; // 3인 이상은 상한 배율로 동일
