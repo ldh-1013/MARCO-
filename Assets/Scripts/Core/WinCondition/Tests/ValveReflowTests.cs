@@ -10,7 +10,7 @@ namespace Marco.Core.WinCondition.Tests
 
         private static Valve OpenValve(WinConditionConfig config)
         {
-            var valve = new Valve(config);
+            var valve = new Valve(config, ValveId.A);
             valve.BeginWork(1);
             valve.Tick(100f); // 1인 작업으로 8초면 충분하지만 여유있게 큰 dt로 한 번에 Open까지 진행
             valve.EndWork(1);
@@ -102,7 +102,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void ValveOpening_ClearsWorkers()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.BeginWork(2);

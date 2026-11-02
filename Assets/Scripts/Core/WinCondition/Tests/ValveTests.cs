@@ -11,7 +11,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void OneWorker_CompletesIn8Seconds()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(8f);
@@ -23,7 +23,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void TwoWorkers_CompleteIn5Seconds()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.BeginWork(2);
@@ -36,7 +36,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void SamePlayerCallingBeginWorkTwice_CountsAsOneWorker()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.BeginWork(1);
@@ -48,8 +48,8 @@ namespace Marco.Core.WinCondition.Tests
         public void ThreeAndFourWorkers_HaveSameSpeed()
         {
             var config = new WinConditionConfig();
-            var valveThree = new Valve(config);
-            var valveFour = new Valve(config);
+            var valveThree = new Valve(config, ValveId.A);
+            var valveFour = new Valve(config, ValveId.A);
 
             valveThree.BeginWork(1);
             valveThree.BeginWork(2);
@@ -71,7 +71,7 @@ namespace Marco.Core.WinCondition.Tests
         {
             // 정확한 완료 시점은 1 / (0.125 * 1.9) = 4.21052...초.
             // 4.2초: 아직 완료 전(Rotating). 4.22초: 완료 시점을 넘겨서 Open.
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.BeginWork(2);
@@ -90,7 +90,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void StoppingWork_HoldsProgressDuringGraceWindow()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(4f); // progress 0.5
@@ -105,7 +105,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void AfterGraceWindow_ProgressDecays()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(4f); // progress 0.5
@@ -121,7 +121,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void DecayAllTheWayToZero_BecomesClosed()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(1f); // progress 0.125
@@ -137,7 +137,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void ReworkingDuringDecay_ContinuesFromCurrentProgress()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(4f); // progress 0.5
@@ -156,7 +156,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void LargeDtCrossingGraceAndDecayBoundary_IsStillCorrect()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(4f); // progress 0.5
@@ -172,7 +172,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void LargeDt_CompletesExactlyAtOne()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(100f); // 8초면 끝나는데 100초를 통째로 넘겨도 1.0에서 멈춰야 함
@@ -184,7 +184,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void StatusChanged_FiresOnClosedToRotatingToOpen()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
             var observed = new List<ValveStatus>();
             valve.StatusChanged += status => observed.Add(status);
 
@@ -200,7 +200,7 @@ namespace Marco.Core.WinCondition.Tests
         // 한 번 열었다가 역류로 완전히 닫힌 밸브 (유예 240 + 역류 30)
         private static Valve ReopenableClosedValve(WinConditionConfig config)
         {
-            var valve = new Valve(config);
+            var valve = new Valve(config, ValveId.A);
             valve.BeginWork(1);
             valve.Tick(8f);
             valve.EndWork(1);
@@ -212,7 +212,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void NewValve_HasNotReachedOpen()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             Assert.IsFalse(valve.HasReachedOpen);
         }
@@ -220,7 +220,7 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void ReachingOpen_SetsReopenFlag()
         {
-            var valve = new Valve(new WinConditionConfig());
+            var valve = new Valve(new WinConditionConfig(), ValveId.A);
 
             valve.BeginWork(1);
             valve.Tick(7f);
@@ -291,6 +291,120 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual(ValveStatus.Rotating, valve.Status);
             nextRound.Tick(1f);
             Assert.AreEqual(ValveStatus.Open, valve.Status);
+        }
+
+        // ── 밸브별 회전 시간 (기획서 6.1 · 6.1-1) ───────────────────────────────
+        // 수중 B · E는 회전 구간만 — 진입 · 부상은 플레이어가 직접 헤엄친다(docs/수영_잠수_구현메모.md).
+
+        private const float JustBeforeMargin = 0.05f;
+
+        // 시작부터 seconds - 0.05초까지는 Rotating, seconds + 0.05초에는 Open
+        private static void AssertOpensAt(Valve valve, float seconds)
+        {
+            valve.Tick(seconds - JustBeforeMargin);
+            Assert.AreEqual(ValveStatus.Rotating, valve.Status);
+
+            valve.Tick(JustBeforeMargin * 2f);
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+            Assert.AreEqual(1f, valve.Progress, Tolerance);
+        }
+
+        // 한 번 열었다가 역류로 완전히 닫힌 밸브 (회전 시간과 무관하게 큰 dt로 연다)
+        private static Valve ReopenableClosedValve(ValveId id)
+        {
+            var valve = new Valve(new WinConditionConfig(), id);
+            valve.BeginWork(1);
+            valve.Tick(100f);
+            valve.EndWork(1);
+            valve.Tick(270f);
+            Assert.AreEqual(ValveStatus.Closed, valve.Status);
+            return valve;
+        }
+
+        [TestCase(ValveId.A, 8.0f)]
+        [TestCase(ValveId.B, 5.0f)]
+        [TestCase(ValveId.C, 8.0f)]
+        [TestCase(ValveId.D, 8.0f)]
+        [TestCase(ValveId.E, 7.0f)]
+        public void OneWorker_FirstOpen_UsesPerValveRotationTime(ValveId id, float seconds)
+        {
+            var valve = new Valve(new WinConditionConfig(), id);
+
+            valve.BeginWork(1);
+
+            AssertOpensAt(valve, seconds);
+        }
+
+        [TestCase(ValveId.A, 4.0f)]
+        [TestCase(ValveId.B, 2.5f)]
+        [TestCase(ValveId.C, 4.0f)]
+        [TestCase(ValveId.D, 4.0f)]
+        [TestCase(ValveId.E, 3.5f)]
+        public void OneWorker_Reopen_UsesPerValveReopenTime(ValveId id, float seconds)
+        {
+            var valve = ReopenableClosedValve(id);
+
+            valve.BeginWork(1);
+
+            AssertOpensAt(valve, seconds);
+        }
+
+        // 역류 중 재작업(6.1-2)도 같은 재개방 시간을 쓴다
+        [TestCase(ValveId.A, 4.0f)]
+        [TestCase(ValveId.B, 2.5f)]
+        [TestCase(ValveId.E, 3.5f)]
+        public void ReworkDuringReflow_UsesPerValveReopenTime(ValveId id, float seconds)
+        {
+            var valve = new Valve(new WinConditionConfig(), id);
+            valve.BeginWork(1);
+            valve.Tick(100f);
+            valve.Tick(241f); // 역류 시작 후 1초
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+
+            valve.BeginWork(1);
+            valve.Tick(seconds - JustBeforeMargin);
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+
+            valve.Tick(JustBeforeMargin * 2f);
+            Assert.AreEqual(ValveStatus.Open, valve.Status);
+        }
+
+        // B 2인: 5.0 / 1.6 = 3.125초, 재개방 2.5 / 1.6 = 1.5625초
+        [Test]
+        public void ValveB_TwoWorkers_AppliesMultiplier()
+        {
+            var valve = new Valve(new WinConditionConfig(), ValveId.B);
+
+            valve.BeginWork(1);
+            valve.BeginWork(2);
+
+            AssertOpensAt(valve, 5.0f / 1.6f);
+        }
+
+        [Test]
+        public void ValveB_TwoWorkers_Reopen_AppliesMultiplier()
+        {
+            var valve = ReopenableClosedValve(ValveId.B);
+
+            valve.BeginWork(1);
+            valve.BeginWork(2);
+
+            AssertOpensAt(valve, 2.5f / 1.6f);
+        }
+
+        // 감쇠는 밸브와 무관하게 같다: 유예 3초 후 -0.10/sec
+        [Test]
+        public void ValveB_DecayIsUnchanged()
+        {
+            var valve = new Valve(new WinConditionConfig(), ValveId.B);
+
+            valve.BeginWork(1);
+            valve.Tick(2.5f); // 0.5
+            valve.EndWork(1);
+            valve.Tick(3f); // 유예
+            valve.Tick(1f); // 0.5 - 0.10
+
+            Assert.AreEqual(0.4f, valve.Progress, Tolerance);
         }
     }
 }
