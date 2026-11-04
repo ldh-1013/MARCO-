@@ -37,6 +37,7 @@ namespace Marco.Core.WinCondition
         public bool HasReachedOpen { get; private set; }
 
         public int WorkerCount => _activeWorkerIds.Count;
+        public bool HasWorker(int playerId) => _activeWorkerIds.Contains(playerId);
 
         // 상태가 바뀔 때마다 새 상태를 알려줌 (UI/네트워크 쪽에서 구독)
         public event Action<ValveStatus> StatusChanged;

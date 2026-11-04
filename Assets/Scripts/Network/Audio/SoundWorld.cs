@@ -73,10 +73,10 @@ namespace Marco.Network.Audio
             var controller = player.GetComponent<CharacterController>();
             if (controller == null || !controller.enabled) return 0;
             surface = pool.center.y;
-            if (controller.bounds.min.y >= surface - .05f) return 0;
             var movement = player.GetComponent<PlayerMovement>();
-            float eyeY = movement != null ? movement.WaterEyeHeight : controller.bounds.max.y;
-            return eyeY < surface - .03f ? 2 : 1;
+            if (movement != null) return movement.WaterStateAtSurface(surface);
+            if (controller.bounds.min.y >= surface - .05f) return 0;
+            return controller.bounds.max.y < surface - .03f ? 2 : 1;
         }
 
         public bool TryFloor(NetworkPlayer player, out Collider floor) => TryFloorNear(player, out floor, .25f);
@@ -96,6 +96,19 @@ namespace Marco.Network.Audio
                 nearest = hit.distance;
                 floor = hit.collider;
             }
+            if (floor != null) return true;
+            // A capsule rests on the uphill side of its rounded foot. A centre ray can miss
+            // that support on ramps even while the controller is standing on the staircase.
+            float radius = Mathf.Max(.01f, controller.radius * Mathf.Abs(player.transform.lossyScale.x) - .01f);
+            float castDistance = Mathf.Max(0, controller.bounds.extents.y - radius) + tolerance;
+            foreach (var hit in Physics.SphereCastAll(player.transform.TransformPoint(controller.center), radius,
+                Vector3.down, castDistance, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider.GetComponentInParent<NetworkPlayer>() != null || hit.normal.y < .5f) continue;
+                if (hit.distance >= nearest) continue;
+                nearest = hit.distance;
+                floor = hit.collider;
+            }
             return floor != null;
         }
 
@@ -105,17 +118,18 @@ namespace Marco.Network.Audio
             var part = Metadata(floor);
             if (part != null)
             {
-                if (part.Category == "Stair") return "Concrete";
-                if (part.Category == "Obstacle" && part.Zone == "ST") return "Tile";
+                if (part.Category == "Stair") return "MetalStairs";
+                if (part.Category == "Obstacle" && part.Zone == "ST") return "Carpet";
                 if (part.Category != "Floor") return "";
                 switch (part.Zone)
                 {
                     case "H": case "MS": case "WS": return "Tile";
-                    case "AID": return "Tile";
-                    case "SZ": return position.z >= 18f ? "Concrete" : "Tile";
+                    case "AID": return position.z >= 24f ? "Carpet" : "Tile";
+                    case "SZ": return position.z >= 18f ? "Concrete" : "Carpet";
                     case "A": case "DR": case "LD": case "C": return "Concrete";
-                    case "SC": case "ST2": case "L2": return "Concrete";
-                    case "LOB": case "OF1": case "ML": case "WL": case "CL": case "ST": return "Tile";
+                    case "SC": case "ST2": case "L2": return "Metal";
+                    case "ML": case "WL": return "Mat";
+                    case "LOB": case "OF1": case "CL": case "ST": return "Carpet";
                     default: return "";
                 }
             }
@@ -124,6 +138,72 @@ namespace Marco.Network.Audio
             if (name == "Tile") return "Tile";
             if (name == "Concrete") return "Concrete";
             return "";
+        }
+
+        public float SurfaceMultiplier(Collider floor, Vector3 position) => Surface(floor, position) switch
+        {
+            "Metal" or "MetalStairs" => 1.5f,
+            "Tile" => 1.3f,
+            "Carpet" or "Mat" => .7f,
+            _ => 1f
+        };
+
+        public static int FootstepVariants(string surface) => surface switch
+        {
+            "Tile" => 3,
+            "Concrete" => 4,
+            "Carpet" or "Mat" or "Metal" or "MetalStairs" => 1,
+            _ => 0
+        };
+
+        private readonly RaycastHit[] visualHits = new RaycastHit[32];
+        public int VisualQueryCount { get; private set; }
+        private RaycastHit[] VisualHits(Vector3 origin, Vector3 direction, float distance, out int count)
+        {
+            VisualQueryCount++;
+            count = Physics.RaycastNonAlloc(origin, direction, visualHits, distance, ~0, QueryTriggerInteraction.Ignore);
+            if (count < visualHits.Length) return visualHits;
+            // Never silently drop a wall when a crowded ray fills the reusable buffer.
+            VisualQueryCount++;
+            var overflow = Physics.RaycastAll(origin, direction, distance, ~0, QueryTriggerInteraction.Ignore);
+            count = overflow.Length;
+            return overflow;
+        }
+
+        // Follow the same walkable floor across ramps, without jumping to a different storey.
+        public bool VisualFloor(Vector3 near, out Vector3 point)
+        {
+            point = near;
+            float closest = float.MaxValue;
+            bool found = false;
+            var hits = VisualHits(near + Vector3.up * .6f, Vector3.down, 1.2f, out int count);
+            for (int i = 0; i < count; i++)
+            {
+                var hit = hits[i];
+                if (hit.collider.GetComponentInParent<NetworkPlayer>() != null || hit.normal.y < .5f) continue;
+                var part = Metadata(hit.collider);
+                if (part == null || !(part.Category == "Floor" || part.Category == "Stair" ||
+                    part.Category == "Obstacle" && part.Zone == "ST")) continue;
+                float difference = Mathf.Abs(hit.point.y - near.y);
+                if (difference >= closest) continue;
+                closest = difference; point = hit.point + Vector3.up * .025f; found = true;
+            }
+            return found;
+        }
+
+        public float VisualReach(Vector3 origin, Vector3 direction, float radius)
+        {
+            float reach = radius;
+            var hits = VisualHits(origin, direction, radius, out int count);
+            for (int i = 0; i < count; i++)
+            {
+                var hit = hits[i];
+                if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                var part = Metadata(hit.collider);
+                if (part != null && (part.Occluder || part.Category == "Wall" || part.Category == "Floor" || part.Category == "Ceiling"))
+                    reach = Mathf.Min(reach, hit.distance);
+            }
+            return reach;
         }
 
         public int WaterSurfaceCrossings(Vector3 from, Vector3 to)
@@ -141,31 +221,58 @@ namespace Marco.Network.Audio
         }
 
         public bool Hear(Vector3 origin, NetworkPlayer listener, float radius,
-            out Vector3 playbackPoint, out float gain, out bool muffled)
+            out Vector3 playbackPoint, out float gain, out bool muffled) =>
+            HearResolved(origin, listener, radius, out playbackPoint, out gain, out muffled, out _);
+
+        public bool HearResolved(Vector3 origin, NetworkPlayer listener, float radius,
+            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius)
         {
+            perceivedRadius = radius;
             playbackPoint = origin;
+            if (listener.IsEcho)
+            {
+                gain = 1;
+                muffled = false;
+                return true;
+            }
             gain = 0;
             muffled = false;
             Vector3 end = listener.transform.position;
-            if (listener.TryGetComponent<PlayerMovement>(out var movement)) end.y = movement.WaterEyeHeight;
+            if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) end.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(origin, end);
             if (listener.Role == PlayerRole.Seeker) radius *= 1.2f;
-            if (distance > radius) return false;
+            if (distance >= radius) return false;
             walls.Clear();
             if (distance > 0.05f)
             {
-                foreach (var hit in Physics.RaycastAll(origin, (end - origin) / distance, distance,
-                    ~0, QueryTriggerInteraction.Ignore))
+                var hits = Physics.RaycastNonAlloc(origin, (end - origin) / distance, visualHits,
+                    distance, ~0, QueryTriggerInteraction.Ignore);
+                var buffer = visualHits;
+                if (hits == buffer.Length)
                 {
+                    buffer = Physics.RaycastAll(origin, (end - origin) / distance, distance,
+                        ~0, QueryTriggerInteraction.Ignore);
+                    hits = buffer.Length;
+                }
+                for (int i = 0; i < hits; i++)
+                {
+                    var hit = buffer[i];
                     if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
                     var part = Metadata(hit.collider);
                     if (part != null && (part.Occluder || part.Category == "Wall" ||
                         part.Category == "Floor" || part.Category == "Ceiling")) walls.Add(part.Component);
                 }
             }
+            int wallCount = 0;
+            foreach (var wall in walls)
+            {
+                string category = wall.GetType().GetField("category")?.GetValue(wall) as string;
+                wallCount += category == "Floor" || category == "Ceiling" ? 2 : 1;
+            }
             int waterCrossings = WaterSurfaceCrossings(origin, end);
-            radius *= Mathf.Pow(0.5f, walls.Count + waterCrossings);
-            if (distance > radius) return false;
+            radius *= Mathf.Pow(0.5f, wallCount + waterCrossings);
+            if (distance >= radius) return false;
+            perceivedRadius = radius;
             muffled = walls.Count + waterCrossings > 0;
             if (muffled)
             {

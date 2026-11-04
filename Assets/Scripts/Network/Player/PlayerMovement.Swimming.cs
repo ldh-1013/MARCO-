@@ -10,6 +10,7 @@ namespace Marco.Network.Player
     public sealed partial class PlayerMovement
     {
         public const float MaxBreath = 14f;
+        public const float SwimmingEyeOffset = .25f;
         private readonly SoundWorld swimWorld = new();
         private bool swimming, serverDiveHeld, diveReported, forcedSurface, serverForcedSurface;
         private float breath = MaxBreath, serverBreath = MaxBreath, lastBreathUse = -10f;
@@ -26,13 +27,29 @@ namespace Marco.Network.Player
             swimWorld.WaterState(player, out _) == 2;
         public float BreathSeconds => breath;
         public float SwimPenaltyRemaining => Mathf.Max(0, penaltyUntil - Time.time);
-        public float WaterEyeHeight => transform.position.y + (swimming ? .25f : standingCameraPosition.y);
+        public float WaterEyeHeight => transform.position.y + (swimming ? SwimmingEyeOffset : standingCameraPosition.y);
+
+        // Never use the resized swimming capsule to decide whether to undo that resize.
+        // The standing footprint stays at the same world height during crouch/swim presentation.
+        public bool HasWaterContact(float surface)
+        {
+            if (controller == null || !controller.enabled) return false;
+            float feet = transform.TransformPoint(standingCenter).y - standingHeight * Mathf.Abs(transform.lossyScale.y) * .5f;
+            return feet < surface + (swimming ? .05f : -.05f);
+        }
+
+        public int WaterStateAtSurface(float surface)
+        {
+            if (!HasWaterContact(surface)) return 0;
+            // Use the effective wet eye height even if queried just before Update applies the pose.
+            return transform.position.y + SwimmingEyeOffset < surface - .03f ? 2 : 1;
+        }
 
         private void UpdateWaterPresentation()
         {
             bool wet = player.Status == PlayerStatus.Alive && !player.IsEcho &&
                 swimWorld.TryPool(transform.position, out var pool) && controller.enabled &&
-                controller.bounds.min.y < pool.center.y - .05f;
+                HasWaterContact(pool.center.y);
             if (swimWorld.TryPool(transform.position, out var area)) waterSurface = area.center.y;
             if (wet == swimming) return;
             if (swimming && player.IsEcho && IsOwner && IsDiving)
@@ -47,7 +64,7 @@ namespace Marco.Network.Player
                 if (IsOwner) SetCrouchServer(false);
                 controller.height = .7f;
                 controller.center = Vector3.zero;
-                if (cameraPivot != null) cameraPivot.localPosition = new Vector3(standingCameraPosition.x, .25f, standingCameraPosition.z);
+                if (cameraPivot != null) cameraPivot.localPosition = new Vector3(standingCameraPosition.x, SwimmingEyeOffset, standingCameraPosition.z);
                 verticalVelocity = 0;
             }
             else ApplyCrouchPresentation(false);

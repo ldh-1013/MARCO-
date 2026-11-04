@@ -46,20 +46,21 @@ namespace Marco.Network.Editor
                 {
                     player.GetComponent<PlayerMovement>().enabled = false;
                     player.GetComponent<PlayerInteractor>().enabled = false;
-                    Require(Find(round, "SeekerDrone") is { loop: true }, "Seeker drone missing");
+                    CheckSeekerDrone(round);
                     var type = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld", true);
                     water = Activator.CreateInstance(type); query = type.GetMethod("WaterState");
                     Teleport(player, new Vector3(4.5f, -.15f, 43));
                     Require(Water(player) == 1, "Seeker shallow water incorrectly submerged");
-                    previous = Time.time; until = now + 2; phase = 20; return;
+                    previous = Time.time; until = now + 4; phase = 20; return;
                 }
                 if (phase == 20)
                 {
                     float elapsed = Mathf.Min(.05f, Time.time-previous); previous=Time.time;
-                    float direction = ((int)(Time.time/.8f)%2==0) ? 1 : -1;
-                    player.GetComponent<CharacterController>().Move(Vector3.right*direction*.8f*elapsed);
+                    float direction = ((int)(Time.time/.55f)%2==0) ? 1 : -1;
+                    player.GetComponent<CharacterController>().Move(Vector3.right*direction*2.5f*elapsed);
+                    if (Find(round, "SurfaceSwim") is { loop: false }) splashes.Add(Find(round, "SurfaceSwim"));
                     if (now < until) return;
-                    Require(Find(round, "SurfaceSwim") is { loop: true }, "Seeker movement sound missing");
+                    Require(splashes.Count > 0, "Seeker movement sound missing");
                     Call(round, "CheatToggleHostRole"); until=now+3; phase=3; return;
                 }
                 if (phase == 3 && now >= until)
@@ -74,19 +75,19 @@ namespace Marco.Network.Editor
                 if (phase == 4 || phase == 6)
                 {
                     float dt = Mathf.Min(.05f, Time.time - previous); previous = Time.time;
-                    player.GetComponent<CharacterController>().Move(Vector3.right * (((int)(Time.time/.8f)%2==0) ? 1 : -1) * .8f * dt);
+                    player.GetComponent<CharacterController>().Move(Vector3.right * (((int)(Time.time/.55f)%2==0) ? 1 : -1) * 2.5f * dt);
                                         if (phase == 4)
                         foreach (var sound in round.GetComponentsInChildren<AudioSource>())
                             if (sound.clip != null && sound.clip.name.StartsWith("SurfaceSwim"))
-                            { Require(sound.loop, "Water must continue across step boundaries"); splashes.Add(sound); }
+                            { Require(!sound.loop, "Water movement must play discrete distance cues"); splashes.Add(sound); }
                     if (now < until) return;
                     if (phase == 4)
                     {
                         Debug.Log($"[AudioWaterChecks] Shallow end position={player.transform.position}, bounds={player.GetComponent<CharacterController>().bounds}, water={Water(player)}");
                         foreach (var sound in round.GetComponentsInChildren<AudioSource>()) Debug.Log($"[AudioWaterChecks] Source={sound.name} clip={sound.clip} loop={sound.loop} volume={sound.volume}");
-                        Require(splashes.Count == 1, "Water loop restarted or disappeared: " + splashes.Count);
+                        Require(splashes.Count >= 2, "Missing repeated distance cues: " + splashes.Count);
                         Debug.Log("[AudioWaterChecks] Repeated splashes=" + splashes.Count);
-                        until = now + .5; phase++; return;
+                        until = now + 1; phase++; return;
                     }
                     Require(Water(player) == 2 && Find(round, "SurfaceSwim") == null, "Submerged movement played surface sound");
                     Teleport(player, new Vector3(4.5f, -.15f, 43));
@@ -94,13 +95,13 @@ namespace Marco.Network.Editor
                     Physics.SyncTransforms();
                     Require(Water(player) == 1, "Short/crouching Runner in shallow water should retain surface cue");
                     player.GetComponent<PlayerMovement>().ApplyCrouchPresentation(false);
-                    Teleport(player, new Vector3(4.5f, -.15f, 51));
-                    Require(Water(player) == 2, "Underwater valve E area must be excluded");
+                    Teleport(player, new Vector3(4.5f, -.8f, 51));
+                    Require(Water(player) == 2, "A fully submerged listener near valve E must be excluded");
                     Teleport(player, new Vector3(7, -2.45f, 47));
                     Require(Water(player) == 2, "Circular sump must use pool surface, not lower trigger top");
                     Teleport(player, new Vector3(1, 1.05f, 40));
                     Require(Water(player) == 0, "Dry deck classified as water");
-                    Debug.Log("[AudioWaterChecks] PASS: seeker movement sound, Runner 12-second single-source loop, seeker-only drone, stop, deep areas, crouch, sump, underwater valve and dry deck.");
+                    Debug.Log("[AudioWaterChecks] PASS: seeker movement sound, Runner repeated surface movement cues, seeker-only drone, stop, deep areas, crouch, sump, underwater valve and dry deck.");
                     Finish(0); return;
                 }
                 if (phase == 5 && now >= until)
@@ -111,6 +112,38 @@ namespace Marco.Network.Editor
                 }
             }
             catch (Exception ex) { Debug.LogException(ex); Finish(1); }
+        }
+        static void CheckSeekerDrone(NetworkRound round)
+        {
+            var playback = round.GetComponent<Marco.Network.Audio.RoundAudioPlayback>();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var clock = playback.GetType().GetField("quietSince", flags);
+            var fadeClock = playback.GetType().GetField("fadeStartedAt", flags);
+            var tick = playback.GetType().GetMethod("TickSeekerDrone", flags);
+            void Sample(float quietSeconds, float expected)
+            {
+                clock.SetValue(playback, Time.timeAsDouble - quietSeconds);
+                tick.Invoke(playback, new object[] { true });
+                var source = Find(round, "SeekerDrone");
+                Require(Mathf.Abs((source == null ? 0f : source.volume) - expected) < .002f,
+                    $"Unexpected drone gain after {quietSeconds} seconds");
+            }
+            Require(Find(round, "SeekerDrone") == null, "Drone started before 20 seconds");
+            Sample(19f, 0f);
+            Sample(25f, .045f);
+            Sample(30f, .09f);
+            Sample(45f, .12f);
+            Sample(60f, .15f);
+            playback.NotifyOtherSound();
+            fadeClock.SetValue(playback, Time.timeAsDouble - .1);
+            playback.NotifyOtherSound();
+            tick.Invoke(playback, new object[] { true });
+            Require(Mathf.Abs(Find(round, "SeekerDrone").volume - .075f) < .002f,
+                "Repeated sounds restarted the fade");
+            fadeClock.SetValue(playback, Time.timeAsDouble - .21);
+            tick.Invoke(playback, new object[] { true });
+            Require(Find(round, "SeekerDrone").volume == 0f, "Drone did not fade out in .2 seconds");
+            Debug.Log("[AudioWaterChecks] Drone silence, gain ramp, and repeated-event fade PASS.");
         }
         static void Teleport(NetworkPlayer player, Vector3 point) { player.GetComponent<PlayerMovement>().Teleport(point); Physics.SyncTransforms(); }
         static int Water(NetworkPlayer player) { object[] args = { player, 0f }; return (int)query.Invoke(water, args); }
