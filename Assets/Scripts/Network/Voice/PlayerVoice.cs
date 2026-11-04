@@ -18,7 +18,7 @@ namespace Marco.Network.Voice
     public sealed class PlayerVoice : NetworkBehaviour
     {
         private const int AudioQueueCapacity = VoiceCodec.SampleRate; // 1 s
-        private const int AudioPrebufferSamples = VoiceCodec.SampleRate / 25; // 40 ms absorbs packet jitter.
+        private const int AudioPrebufferSamples = VoiceCodec.SampleRate / 10; // 100 ms absorbs transport and frame scheduling jitter.
 
         [SerializeField] private VoiceRouting routing = new();
         // Mouth height above the player pivot.
@@ -90,12 +90,11 @@ namespace Marco.Network.Voice
                 lastLocalPulse = grade;
                 round.ShowSoundPulse(VoiceOrigin(), radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
             }
-            SendVoiceServer(packet, grade, Channel.Unreliable);
+            SendVoiceServer(packet, grade, Channel.Reliable);
         }
 
-        // Unreliable: a late voice frame is worse than a lost one.
         [ServerRpc]
-        private void SendVoiceServer(byte[] packet, VoiceGrade grade, Channel channel = Channel.Unreliable)
+        private void SendVoiceServer(byte[] packet, VoiceGrade grade, Channel channel = Channel.Reliable)
         {
             if (packet == null || packet.Length != VoiceCodec.SamplesPerPacket) return;
             if ((byte)grade > (byte)VoiceGrade.Shout) return;
@@ -115,10 +114,10 @@ namespace Marco.Network.Voice
                         out bool blocked, out float radius)) continue;
                     float life = listener.IsEcho ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
                     if (pulse && !blocked) VoicePulseTarget(listener.Owner, point, radius, life);
-                    if (!listener.IsEcho) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Unreliable);
+                    if (!listener.IsEcho) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
-                    PlayVoiceTarget(listener.Owner, packet, radius, origin, 1f, false, false, Channel.Unreliable);
+                    PlayVoiceTarget(listener.Owner, packet, radius, origin, 1f, false, false, Channel.Reliable);
             }
         }
 
@@ -131,7 +130,7 @@ namespace Marco.Network.Voice
 
         [TargetRpc]
         private void PlayVoiceTarget(NetworkConnection conn, byte[] packet, float radius, Vector3 point,
-            float gain, bool blocked, bool serverGain, Channel channel = Channel.Unreliable)
+            float gain, bool blocked, bool serverGain, Channel channel = Channel.Reliable)
         {
             if (IsOwner || packet == null) return;
             NetworkRound.Instance?.NotifyOtherSound();
@@ -203,7 +202,6 @@ namespace Marco.Network.Voice
                     if (audioBufferedSamples == 0)
                     {
                         output[i] = 0f;
-                        audioPlaybackStarted = false;
                     }
                     else
                     {
