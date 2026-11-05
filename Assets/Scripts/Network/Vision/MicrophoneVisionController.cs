@@ -17,6 +17,7 @@ namespace Marco.Network.Vision
         private const int FrameSamples = 960; // 20 ms at 48 kHz.
         private const int RequiredConsecutiveFrames = 3;
         private const int VoiceHangoverFrames = 8; // Bridge brief level dips without transmitting indefinitely.
+        private const int VoicePreRollFrames = 2; // Keep the first 40 ms of speech before VAD confirms it.
         private const float ClickerCameraFlashSeconds = 0.6f;
         private const float ClickerCameraFlashRadius = 6f;
         private const float ClickerAfterglowSeconds = 12f;
@@ -25,7 +26,15 @@ namespace Marco.Network.Vision
         private AudioClip microphoneClip;
         private string microphoneDevice;
         private readonly float[] sampleBuffer = new float[FrameSamples];
+        private readonly float[][] voicePreRollBuffers =
+        {
+            new float[FrameSamples],
+            new float[FrameSamples]
+        };
         private float[] microphoneReadBuffer;
+        private int voicePreRollWriteIndex;
+        private int voicePreRollCount;
+        private bool voicePacketBurstActive;
         // Raw 20 ms microphone frame and its loudness grade, only while speech is detected (voice chat, step 5).
         public event Action<float[], VoiceGrade> VoiceSamplesReady;
         // Consumed synchronously; this buffer is reused. No callback is raised while muted.
@@ -216,6 +225,7 @@ namespace Marco.Network.Vision
                 targetWorldRadius = targetWorldIntensity = 0f;
                 consecutiveVoiceFrames = 0;
                 voiceHangoverFramesRemaining = 0;
+                ClearVoicePreRoll();
                 status = "마이크 강제 뮤트 (Left Alt)";
             }
             else
@@ -275,6 +285,8 @@ namespace Marco.Network.Vision
             VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;
             if (recognizedVoice)
             {
+                if (!voicePacketBurstActive) SendVoicePreRoll(voiceGrade);
+                voicePacketBurstActive = true;
                 lastVoiceGrade = voiceGrade;
                 voiceHangoverFramesRemaining = VoiceHangoverFrames;
                 VoiceSamplesReady?.Invoke(sampleBuffer, voiceGrade);
@@ -283,7 +295,10 @@ namespace Marco.Network.Vision
             {
                 voiceHangoverFramesRemaining--;
                 VoiceSamplesReady?.Invoke(sampleBuffer, lastVoiceGrade);
+                if (voiceHangoverFramesRemaining == 0) voicePacketBurstActive = false;
             }
+            else voicePacketBurstActive = false;
+            CacheVoicePreRollFrame();
             if (brightnessMode == BrightnessMode.MarcoMinus && level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames
                 && microphoneFootDots != null && Time.unscaledTime >= nextFootDotTime)
             {
@@ -326,6 +341,9 @@ namespace Marco.Network.Vision
             if (availableSamples > microphoneClip.samples - FrameSamples)
             {
                 microphoneReadPosition = position;
+                consecutiveVoiceFrames = 0;
+                voiceHangoverFramesRemaining = 0;
+                ClearVoicePreRoll();
                 return;
             }
 
@@ -336,6 +354,27 @@ namespace Marco.Network.Vision
                 availableSamples -= FrameSamples;
                 ProcessFrame();
             }
+        }
+
+        private void SendVoicePreRoll(VoiceGrade grade)
+        {
+            int first = (voicePreRollWriteIndex - voicePreRollCount + VoicePreRollFrames) % VoicePreRollFrames;
+            for (int i = 0; i < voicePreRollCount; i++)
+                VoiceSamplesReady?.Invoke(voicePreRollBuffers[(first + i) % VoicePreRollFrames], grade);
+        }
+
+        private void CacheVoicePreRollFrame()
+        {
+            Array.Copy(sampleBuffer, voicePreRollBuffers[voicePreRollWriteIndex], FrameSamples);
+            voicePreRollWriteIndex = (voicePreRollWriteIndex + 1) % VoicePreRollFrames;
+            voicePreRollCount = Mathf.Min(voicePreRollCount + 1, VoicePreRollFrames);
+        }
+
+        private void ClearVoicePreRoll()
+        {
+            voicePreRollWriteIndex = 0;
+            voicePreRollCount = 0;
+            voicePacketBurstActive = false;
         }
 
         private Vector3 GetFootWorldPosition()

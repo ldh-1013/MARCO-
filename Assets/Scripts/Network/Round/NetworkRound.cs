@@ -165,6 +165,12 @@ namespace Marco.Network.Round
         private AudioSource valveOpenedSource;
         private AudioSource suddenDeathDroneSource;
         private bool suddenDeathDronePlaying;
+        private const float EndDroneFadeSeconds = 10f;
+        internal bool IsEndDronePhase => Mode == RoundMode.Full && Result == RoundResult.InProgress &&
+            RemainingSeconds > 0f && RemainingSeconds <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+        internal float EndDroneBlend => IsEndDronePhase
+            ? Mathf.Clamp01((DefaultConfig.SuddenDeathDroneRemainingSeconds - RemainingSeconds) / EndDroneFadeSeconds)
+            : 0f;
         private static readonly WinConditionConfig DefaultConfig = new();
         private static readonly int RequiredOpenValves = DefaultConfig.RequiredOpenValveCount;
         // Lives across rounds; ResetRound puts it back to 0 s (role reveal start).
@@ -493,9 +499,9 @@ namespace Marco.Network.Round
         // Client side, from the synced remaining time: on at 2:00 left, off when the round ends or resets.
         private void UpdateSuddenDeathDrone()
         {
-            float remaining = remainingSeconds.Value;
-            bool shouldPlay = mode.Value == RoundMode.Full && result.Value == RoundResult.InProgress &&
-                              remaining > 0f && remaining <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+            bool shouldPlay = IsEndDronePhase;
+            if (suddenDeathDroneSource != null && shouldPlay)
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
             if (shouldPlay == suddenDeathDronePlaying) return;
             suddenDeathDronePlaying = shouldPlay;
 
@@ -513,7 +519,11 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
                 if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
             }
-            if (shouldPlay) suddenDeathDroneSource.Play();
+            if (shouldPlay)
+            {
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.Play();
+            }
             else suddenDeathDroneSource.Stop();
         }
 
@@ -1527,6 +1537,8 @@ namespace Marco.Network.Round
         [ObserversRpc]
         internal void ValveOpenedObservers()
         {
+            if (valveOpenedClip == null && SoundMap)
+                valveOpenedClip = Resources.Load<AudioClip>("MarcoSound/ValveOpened");
             if (valveOpenedClip == null)
             {
                 Debug.Log("[MARCO] 밸브 개방 완료음 (에셋 없음)");

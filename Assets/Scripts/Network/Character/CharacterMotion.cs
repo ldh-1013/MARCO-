@@ -28,7 +28,8 @@ namespace Marco.Network.Character
         private readonly Dictionary<Transform, Quaternion> unmodifiedRotations = new();
         private readonly Dictionary<Transform, Vector3> unmodifiedPositions = new();
         private Vector3 previousPosition;
-        private float clock, walkClock, walkWeight, runWeight, crouchWeight, treatmentPoseWeight;
+        private float clock, walkWeight, runWeight, crouchWeight, treatmentPoseWeight;
+        private double gaitCycles;
         private float attackStart, attackDuration, attackSourceDuration, interactionStart, interactionDuration;
         private bool attacking, interacting;
         private float swimWeight, swimClock, swimTravel;
@@ -42,17 +43,14 @@ namespace Marco.Network.Character
         // Movement is sampled from replicated positions; leave a small tolerance so 5.0 m/s
         // walking noise never crosses into the sprint sound tier.
         public bool FootstepRunning => Speed > runSpeed + 0.05f;
-        public int FootstepIndex
-        {
-            get
-            {
-                if (!HasFootstepCycle) return 0;
-                float period = FootstepRunning ? Mathf.Max(.01f, sources[2].length) :
-                    Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
-                float rate = FootstepRunning && asset.runClip == null ? 1.6f : 1f;
-                return Mathf.FloorToInt(walkClock * rate / period * 2f);
-            }
-        }
+        private float WalkPeriod => Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
+        private float RunPeriod => asset.runClip != null ? Mathf.Max(.01f,sources[2].length) : WalkPeriod;
+        // Scale visible strides with actual movement, including slow stairs/crouching.
+        private float GaitPlaybackRate => Mathf.Clamp(Speed /
+            (FootstepRunning && asset.runClip != null ? runSpeed * 1.5f : runSpeed), .15f, 1.6f);
+        public float GaitPhase => (float)(gaitCycles - System.Math.Floor(gaitCycles));
+        // One monotonic phase drives both visible feet and sound. Changing gait cannot jump indices.
+        public int FootstepIndex => HasFootstepCycle ? (int)System.Math.Floor(gaitCycles * 2d) : 0;
 
         private void Awake()
         {
@@ -68,6 +66,7 @@ namespace Marco.Network.Character
             if (graph.IsValid()) graph.Destroy();
             unmodifiedRotations.Clear(); unmodifiedPositions.Clear();
             attacking = interacting = false;
+            gaitCycles = 0;
             swimWeight = swimTravel = 0f;
             treatmentPoseWeight = 0f;
             asset = body.Definition;
@@ -146,10 +145,12 @@ namespace Marco.Network.Character
             bool moving = Speed > 0.05f;
             walkWeight = Mathf.MoveTowards(walkWeight, moving && swimWeight < .01f ? 1 : 0, dt * 10);
             runWeight = Mathf.MoveTowards(runWeight, moving && FootstepRunning ? 1 : 0, dt * 8);
-            clock += dt; if (moving) walkClock += dt;
+            clock += dt;
+            if (moving) gaitCycles += dt * GaitPlaybackRate / (FootstepRunning ? RunPeriod : WalkPeriod);
             clips[0].SetTime(Mathf.Repeat(clock, Mathf.Max(.01f, sources[0].length)));
-            clips[1].SetTime(Mathf.Repeat(walkClock, Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length))));
-            clips[2].SetTime(Mathf.Repeat(walkClock * (asset.runClip == null ? 1.6f : 1), Mathf.Max(.01f, sources[2].length)));
+            // The fallback run reuses the same complete walk window, not the entire multi-cycle FBX.
+            clips[1].SetTime(GaitPhase * WalkPeriod);
+            clips[2].SetTime(GaitPhase * RunPeriod);
 
             float elapsed = Time.time - attackStart;
             if (attacking && elapsed >= attackDuration) attacking = false;
@@ -213,24 +214,40 @@ namespace Marco.Network.Character
                 ApplySeekerSwimmingPose(travel, phase);
                 return;
             }
+            ApplyRunnerSwimmingPose(travel, phase, diving);
+            Tilt(head, -10f * travel * swimWeight);
+        }
+
+        private void ApplyRunnerSwimmingPose(float travel, float phase, bool diving)
+        {
+            // Aim real bone segments in the tilted body's frame. Rotating around the un-tilted
+            // player's forward axis twisted the humanoid elbows/knees across the torso.
+            var root = body.BodyRoot;
+            Vector3 up = root.up, front = root.forward, right = root.right;
             for (int side = 0; side < 2; side++)
             {
                 bool left = side == 0;
-                float cycle = phase + (left || diving ? 0f : Mathf.PI);
-                float stroke = Mathf.Sin(cycle);
-                float recovery = Mathf.Max(0f, Mathf.Cos(cycle));
-                float arm = Mathf.Lerp(-15f + stroke * 8f, -45f + stroke * 40f, travel);
-                Tilt(body.ResolveBone(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm), arm * swimWeight);
-                Tilt(body.ResolveBone(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm), (-25f - recovery * 35f) * swimWeight);
-                TuckArm(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm,
-                    (left ? 1 : -1) * (35f - travel * 15f + recovery * 10f) * swimWeight);
-                BendLeg(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg,
-                    (Mathf.Sin(phase * 2f + side * Mathf.PI) * 12f - (1f - travel) * 12f) * swimWeight);
-                BendLeg(left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg,
-                    (30f + recovery * 18f) * swimWeight);
-                BendLeg(left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot, 12f * swimWeight);
+                float sign = left ? -1f : 1f;
+                float cycle = phase + (left || diving ? 0 : Mathf.PI);
+                float reach = .5f + .5f * Mathf.Cos(cycle);
+                Vector3 relaxedUpper = -up * .25f + front * .4f + right * (sign * .65f);
+                Vector3 relaxedLower = front * .6f - up * .2f + right * (sign * .15f);
+                Vector3 strokeUpper = Vector3.Lerp(-up * .6f + front * .6f + right * (sign * .35f),
+                    up * .9f + front * .25f + right * (sign * .2f), reach);
+                Vector3 strokeLower = Vector3.Lerp(-up * .55f + front * .2f + right * (sign * .1f),
+                    up * .65f + front * .3f - right * (sign * .05f), reach);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm,
+                    left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm,
+                    left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand,
+                    Vector3.Lerp(relaxedUpper, strokeUpper, travel), Vector3.Lerp(relaxedLower, strokeLower, travel));
+
+                float kick = Mathf.Sin(phase * 2f + side * Mathf.PI);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg,
+                    left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg,
+                    left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot,
+                    -up + front * (.1f + .08f * kick * travel) + right * (sign * .12f),
+                    -up - front * (.25f + .12f * kick * travel) + right * (sign * .08f));
             }
-            Tilt(head, -15f * travel * swimWeight);
         }
 
         private void ApplySeekerSwimmingPose(float travel, float phase)

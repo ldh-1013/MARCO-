@@ -228,6 +228,15 @@ namespace Marco.Network.Editor
                 }
                 if (phase == 6 && now >= until)
                 {
+                    var visual = player.GetComponentInChildren<WalkingFootRings>();
+                    Check(visual != null, "No recorder pulse renderer");
+                    bool sawRecorderPulse = false;
+                    foreach (var pulse in (IList)Field(visual, "rings"))
+                        if ((bool)Field(pulse, "Sound") &&
+                            Mathf.Approximately((float)Field(pulse, "Radius"), SoundCanConfig.PulseRadius) &&
+                            Mathf.Approximately((float)Field(pulse, "Lifetime"), SoundCanConfig.PulseSeconds))
+                            sawRecorderPulse = true;
+                    Check(sawRecorderPulse, "Recorder pulse lost its sound classification, radius or duration after merge");
                     var playback = (RecordedSoundPlayback)Field(round, "recordedPlayback");
                     Check(playback != null, "No audible playback received");
                     var streams = (IDictionary)Field(playback, "playing");

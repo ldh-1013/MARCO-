@@ -1,247 +1,308 @@
 using System.Collections.Generic;
+using Marco.Core.WinCondition;
+using Marco.Network.Audio;
+using Marco.Network.Player;
+using Marco.Network.Round;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace Marco.Network.Vision
 {
-    // Expanding floor rings while the owner walks on the ground. Owner only: it sits on the player
-    // camera, which only the owner activates. Copied from Prototype WalkingFootRings; the emission
-    // that lived in PrototypeFirstPersonController now reads the CharacterController here.
+    // Floor-only movement marks (§5.5-3). Voice, clicker and environment lighting stay independent.
     public sealed class WalkingFootRings : MonoBehaviour
     {
-        private const int RingSegments = 48;
-        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-
+        [SerializeField] private Shader ringShader;
+        public Shader RingShader => ringShader;
+        private readonly MovementPulseClock clock = new();
+        private readonly SoundWorld world = new();
+        private readonly List<Ring> rings = new();
+        private Material material;
+        private readonly List<Ring> pool = new();
+        private NetworkPlayer owner;
+        private bool localMoving;
+        public void SetLocalMoving(bool moving) => localMoving = moving;
         private sealed class Ring
         {
-            public GameObject gameObject;
-            public Renderer renderer;
-            public MaterialPropertyBlock properties;
-            public float createdAt;
-            public float radius;
-            public float duration;
+            public GameObject Object;
+            public Mesh Mesh;
+            public Renderer Renderer;
+            public MaterialPropertyBlock Properties = new();
+            public float Started, Lifetime;
+            public float StoppedAt = -1;
+            public int Source;
+            public bool Seeker, Contact, Expand, Sound;
+            public Color Tint;
+            public float Radius;
+            public Vector3[][] Paths;
+            public Vector3[] Vertices;
         }
-
-        private readonly List<Ring> rings = new();
-        [SerializeField] private Shader ringShader;
-        [SerializeField, Min(0.1f)] private float walkingRingDistance = 6f;
-        [SerializeField, Min(0.05f)] private float maxRadius = 1f;
-        [SerializeField, Min(0.05f)] private float lifetime = 0.8f;
-        private CharacterController controller;
-        private Vector3 lastRingPosition;
-        private float walkedDistanceSinceRing;
-        private bool trackingWalk;
-        private Material material;
-        private Mesh ringMesh;
-        private Color ringColor = new Color(0.75f, 0.9f, 1f, 0.8f);
-
-        private readonly Dictionary<int, Vector3> swimPositions = new();
-        private readonly Dictionary<int, float> swimDistances = new();
-        private readonly Marco.Network.Audio.SoundWorld waterWorld = new();
-        public void EmitWaterPulse(Vector3 origin, float radius) => SpawnRing(origin, radius);
-        public void EmitSoundPulse(Vector3 origin, float radius, float duration) => SpawnRing(origin, radius, duration);
-
-        public void ClearPulses()
-        {
-            foreach (var ring in rings) if (ring.gameObject != null) ring.gameObject.SetActive(false);
-        }
-
-        public Shader RingShader => ringShader;
-
-        private void Start()
-        {
-            controller = GetComponentInParent<CharacterController>();
-            EnsurePool(8);
-        }
-
-        private void SpawnRing(Vector3 worldPosition, float radius = -1f, float duration = -1f)
-        {
-            EnsurePool(rings.Count == 0 ? 1 : rings.Count);
-            if (rings.Count == 0) return;
-
-            Ring ring = null;
-            foreach (Ring candidate in rings)
-                if (!candidate.gameObject.activeSelf) { ring = candidate; break; }
-            if (ring == null)
-            {
-                ring = rings[0];
-                for (int i = 1; i < rings.Count; i++)
-                    if (rings[i].createdAt < ring.createdAt) ring = rings[i];
-            }
-
-            ring.radius = radius > 0 ? radius : maxRadius;
-            ring.duration = duration > 0 ? duration : lifetime;
-            ring.createdAt = Time.unscaledTime;
-            ring.gameObject.transform.position = worldPosition;
-            ring.gameObject.transform.localScale = Vector3.one * 0.03f;
-            ring.gameObject.SetActive(true);
-            SetAlpha(ring, ringColor.a);
-        }
-
+        private void Start() => owner = GetComponentInParent<NetworkPlayer>();
         private void Update()
         {
-            EmitWhileWalking();
-            EmitSwimming();
-            float now = Time.unscaledTime;
-            foreach (Ring ring in rings)
+            if (owner == null || owner != NetworkPlayer.Local) { Clear(); return; }
+            var round = NetworkRound.Instance;
+            bool active = round != null && round.Mode != RoundMode.NotStarted &&
+                round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.IsEcho);
+            int water = world.WaterState(owner, out float level);
+            bool grounded = world.TryFloorNear(owner, out var floor, .09f);
+            var velocity = owner.GetComponent<CharacterController>()?.velocity ?? Vector3.zero;
+            float speed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
+            bool fast = MovementPulseClock.IsFastMovement(owner.Role, speed, water == 1);
+            clock.Advance(owner.transform.position, Time.deltaTime, active && !owner.IsEcho && water != 2 && (grounded || water == 1), fast, out bool emit);
+            fast = clock.Fast;
+            if (!active) { Clear(); return; }
+            if (emit && !round.UsesPoolAudio)
             {
-                if (!ring.gameObject.activeSelf) continue;
-                float t = (now - ring.createdAt) / ring.duration;
-                if (t >= 1f)
+                var point = owner.transform.position;
+                point.y = water == 1 ? level + .025f : owner.GetComponent<CharacterController>().bounds.min.y + .025f;
+                Show(owner.PlayerId, point, fast, owner.Role == PlayerRole.Seeker);
+            }
+            for (int i = rings.Count - 1; i >= 0; i--)
+            {
+                var ring = rings[i];
+                if (ring.Object == null) { Remove(i); continue; }
+                if (!ring.Contact && ring.Source == owner.PlayerId)
                 {
-                    ring.gameObject.SetActive(false);
-                    continue;
+                    if (round.UsesPoolAudio ? localMoving : clock.Moving) ring.StoppedAt = -1;
+                    else if (ring.StoppedAt < 0) ring.StoppedAt = Time.time;
+                    // Brief collision/network samples must not erase a ring in a single frame.
+                    if (ring.StoppedAt >= 0 && Time.time-ring.StoppedAt >= .12f) { Remove(i); continue; }
                 }
-
-                float expansion = 1f - (1f - t) * (1f - t);
-                float radius = Mathf.Lerp(0.03f, ring.radius, expansion);
-                ring.gameObject.transform.localScale = Vector3.one * radius;
-                float alpha = ringColor.a * (1f - t);
-                SetAlpha(ring, alpha);
+                float t = (Time.time - ring.Started) / ring.Lifetime;
+                if (t >= 1) { Remove(i); continue; }
+                if (ring.Expand)
+                    UpdateWave(ring.Mesh, ring.Vertices, ring.Paths, ring.Radius,
+                        Mathf.Lerp(.03f, ring.Radius, 1f - (1f-t)*(1f-t)), ring.Seeker);
+                Color color = ring.Tint;
+                float stopFade = ring.StoppedAt < 0 ? 1 : Mathf.Clamp01(1-(Time.time-ring.StoppedAt)/.12f);
+                ring.Properties.SetColor("_BaseColor", new Color(color.r, color.g, color.b, .8f * (1-t) * stopFade));
+                ring.Renderer.SetPropertyBlock(ring.Properties);
             }
         }
+        private static Color ringColor(bool seeker) => seeker ? new Color(.94f,.42f,.30f) : new Color(.50f,.91f,.88f);
+        public void Show(int source, Vector3 point, bool fast, bool seeker) =>
+            ShowInternal(source, point, fast, seeker, false);
 
-        private void EmitSwimming()
+        public void ShowContact(int source, Vector3 point, bool seeker, bool landing)
         {
-            var listener = Marco.Network.Player.NetworkPlayer.Local;
-            if (listener == null) return;
-            foreach (var swimmer in Marco.Network.Player.NetworkPlayer.All)
+            var ring = ShowInternal(source, point, landing, seeker, true);
+            if (ring != null) ring.Object.name = (landing ? "Landing Floor Pulse " : "Jump Floor Pulse ") + source;
+        }
+
+        // Shared with the incoming drowning warning; surface swimming is already emitted by
+        // the movement clock/server path, so do not add a second swimming emitter here.
+        public void EmitWaterPulse(Vector3 origin, float radius)
+        {
+            var ring = ShowInternal(int.MinValue, origin, true, false, true, radius);
+            if (ring != null) { ring.Lifetime = .8f; ring.Object.name = "Water Warning Pulse"; }
+        }
+
+        // Item callers share the new sound-wave renderer and pooled cleanup.
+        public void EmitSoundPulse(Vector3 origin, float radius, float duration) => ShowSound(origin, radius, duration);
+        public void ClearPulses() => Clear();
+
+        public void ShowSound(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
+        {
+            if (radius <= 0 || duration <= 0) return;
+            var ring = ShowInternal(int.MinValue, point, true, false, true, radius, true, voiceFromSeeker);
+            if (ring == null) return;
+            ring.Lifetime = duration;
+            ring.Object.name = "Sound Pulse";
+        }
+
+        private Ring ShowInternal(int source, Vector3 point, bool fast, bool seeker, bool contact,
+            float radiusOverride = 0, bool sound = false, bool? voiceFromSeeker = null)
+        {
+            if (owner == null || owner != NetworkPlayer.Local) return null;
+            // Walking floor marks are owner-only, including accidental remote calls.
+            // Contact rings have their own audible takeoff/landing audience.
+            if (!fast && !contact && source != owner.PlayerId) return null;
+            if (sound)
             {
-                Vector3 position = swimmer.transform.position;
-                int id = swimmer.PlayerId;
-                float level = 0;
-                bool surface = swimmer.Status == Marco.Network.Player.PlayerStatus.Alive && waterWorld.WaterState(swimmer, out level) == 1;
-                if (swimPositions.TryGetValue(id, out var previous) && surface)
-                {
-                    float delta = Vector3.ProjectOnPlane(position - previous, Vector3.up).magnitude;
-                    swimDistances.TryGetValue(id, out float distance);
-                    distance = delta > 2f ? 0 : distance + delta;
-                    if (distance >= 6f)
-                    {
-                        distance %= 6f;
-                        Vector3 origin = new Vector3(position.x, level + .025f, position.z);
-                        if (waterWorld.Hear(origin, listener, 6f, out var audiblePoint, out _, out _))
-                            SpawnRing(audiblePoint, 6f);
-                    }
-                    swimDistances[id] = distance;
-                }
-                else swimDistances[id] = 0;
-                swimPositions[id] = position;
+                int count = 0, oldest = -1;
+                for (int i = 0; i < rings.Count; i++)
+                    if (rings[i].Sound) { count++; if (oldest < 0) oldest = i; }
+                if (count >= (owner.IsEcho ? 8 : 16)) Remove(oldest);
             }
-        }
-
-        private void EmitWhileWalking()
-        {
-            var movement = controller != null ? controller.GetComponent<Marco.Network.Player.PlayerMovement>() : null;
-            if (movement != null && movement.IsSwimming) { trackingWalk = false; walkedDistanceSinceRing = 0; return; }
-            bool walkingOnGround = controller != null && controller.isGrounded
-                && Vector3.ProjectOnPlane(controller.velocity, Vector3.up).sqrMagnitude > 0.01f;
-            if (!walkingOnGround) { trackingWalk = false; walkedDistanceSinceRing = 0f; return; }
-            Vector3 position = controller.transform.position;
-            if (!trackingWalk)
+            else
+                for (int i = rings.Count-1; i >= 0; i--)
+                    if (!rings[i].Sound && rings[i].Source == source) Remove(i);
+            if (!sound && source != owner.PlayerId)
             {
-                trackingWalk = true;
-                lastRingPosition = position;
-                walkedDistanceSinceRing = 0f;
-                return;
+                int remote=0, oldest=-1;
+                for (int i=0; i<rings.Count; i++) if (!rings[i].Sound && rings[i].Source != owner.PlayerId) { remote++; if(oldest<0) oldest=i; }
+                if (remote >= 3) Remove(oldest);
             }
-            walkedDistanceSinceRing += Vector3.ProjectOnPlane(position - lastRingPosition, Vector3.up).magnitude;
-            lastRingPosition = position;
-            if (walkedDistanceSinceRing < walkingRingDistance) return;
-            walkedDistanceSinceRing %= walkingRingDistance;
-            SpawnRing(new Vector3(position.x, controller.bounds.min.y + 0.025f, position.z));
-        }
-
-        private void EnsurePool(int requiredCount)
-        {
-            if (ringMesh == null) ringMesh = CreateRingMesh();
             if (material == null)
             {
-                Shader shader = ringShader != null ? ringShader : Shader.Find("Marco/WalkingFootRing");
-                if (shader == null) return;
-                material = new Material(shader) { name = "Local Walking Foot Ring Material" };
-                material.renderQueue = (int)RenderQueue.Transparent;
+                var shader = ringShader != null ? ringShader : Shader.Find("Marco/WalkingFootRing");
+                if (shader == null) return null;
+                material = new Material(shader) { name = "Movement Floor Pulse" };
             }
-
-            while (rings.Count < requiredCount)
+            Ring ring;
+            if (pool.Count > 0)
             {
-                var ringObject = new GameObject("Local Walking Foot Ring");
-                ringObject.AddComponent<MeshFilter>().sharedMesh = ringMesh;
-                var ringRenderer = ringObject.AddComponent<MeshRenderer>();
-                ringRenderer.sharedMaterial = material;
-                ringRenderer.shadowCastingMode = ShadowCastingMode.Off;
-                ringRenderer.receiveShadows = false;
-                rings.Add(new Ring { gameObject = ringObject, renderer = ringRenderer, properties = new MaterialPropertyBlock() });
-                ringObject.SetActive(false);
+                ring = pool[pool.Count-1]; pool.RemoveAt(pool.Count-1);
             }
+            else
+            {
+                var go = new GameObject();
+                var renderer = go.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = ShadowCastingMode.Off; renderer.receiveShadows = false;
+                go.AddComponent<MeshFilter>();
+                ring = new Ring { Object = go, Renderer = renderer };
+            }
+            if (ring.Object == null)
+            {
+                if (ring.Mesh != null) Destroy(ring.Mesh);
+                return ShowInternal(source, point, fast, seeker, contact, radiusOverride, sound, voiceFromSeeker);
+            }
+            ring.Object.name = "Movement Floor Pulse " + source;
+            ring.Object.transform.position = point;
+            float radius = radiusOverride > 0 ? radiusOverride : fast ? 5f : 1.5f;
+            ring.Paths = sound ? BuildSoundPaths(point, radius, ring.Paths) : BuildPathsInto(point, radius, ring.Paths);
+            int vertexCount = (Segments+1)*2*(seeker ? 2 : 1);
+            if (ring.Mesh == null || ring.Vertices.Length != vertexCount)
+            {
+                if (ring.Mesh != null) Destroy(ring.Mesh);
+                ring.Mesh = CreateMesh(seeker); ring.Vertices = ring.Mesh.vertices;
+                ring.Object.GetComponent<MeshFilter>().sharedMesh = ring.Mesh;
+            }
+            ring.Started = Time.time; ring.Lifetime = fast ? .4f : .5f; ring.StoppedAt = -1;
+            ring.Source = source; ring.Seeker = seeker; ring.Contact = contact; ring.Radius = radius;
+            ring.Sound = sound;
+            ring.Expand = contact;
+            UpdateWave(ring.Mesh, ring.Vertices, ring.Paths, radius, ring.Expand ? .03f : radius, seeker);
+            ring.Tint = voiceFromSeeker switch
+            {
+                true => new Color(.30f, .63f, 1f),
+                false => new Color(1f, .87f, .20f),
+                null => ringColor(seeker)
+            };
+            var color = ring.Tint;
+            color.a = .8f;
+            ring.Properties.SetColor("_BaseColor", color); ring.Renderer.SetPropertyBlock(ring.Properties);
+            ring.Object.SetActive(true); rings.Add(ring);
+            return ring;
         }
+        private const int Segments = 64;
 
-        private static Mesh CreateRingMesh()
+        private Vector3[][] BuildSoundPaths(Vector3 origin, float radius, Vector3[][] paths)
         {
-            const float innerRadius = 0.9f;
-            var vertices = new Vector3[RingSegments * 2];
-            var normals = new Vector3[vertices.Length];
-            var uv = new Vector2[vertices.Length];
-            var triangles = new int[RingSegments * 6];
-            for (int i = 0; i < RingSegments; i++)
+            paths ??= new Vector3[Segments + 1][];
+            for (int i = 0; i < Segments; i++)
             {
-                float angle = i * Mathf.PI * 2f / RingSegments;
-                float x = Mathf.Cos(angle);
-                float z = Mathf.Sin(angle);
-                int inner = i * 2;
-                int outer = inner + 1;
-                vertices[inner] = new Vector3(x * innerRadius, 0f, z * innerRadius);
-                vertices[outer] = new Vector3(x, 0f, z);
-                normals[inner] = normals[outer] = Vector3.up;
-                uv[inner] = new Vector2(i / (float)RingSegments, 0f);
-                uv[outer] = new Vector2(i / (float)RingSegments, 1f);
-
-                int nextInner = ((i + 1) % RingSegments) * 2;
-                int nextOuter = nextInner + 1;
-                int ti = i * 6;
-                triangles[ti] = inner;
-                triangles[ti + 1] = outer;
-                triangles[ti + 2] = nextInner;
-                triangles[ti + 3] = outer;
-                triangles[ti + 4] = nextOuter;
-                triangles[ti + 5] = nextInner;
+                float angle = i * Mathf.PI * 2 / Segments;
+                var direction = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle));
+                if (paths[i] == null || paths[i].Length != 2) paths[i] = new Vector3[2];
+                paths[i][0] = Vector3.zero;
+                paths[i][1] = direction * world.VisualReach(origin + Vector3.up * .06f, direction, radius);
             }
-
-            var mesh = new Mesh { name = "Walking Foot Ring Annulus" };
-            mesh.vertices = vertices;
-            mesh.normals = normals;
-            mesh.uv = uv;
-            mesh.triangles = triangles;
-            mesh.RecalculateBounds();
+            paths[Segments] = paths[0];
+            return paths;
+        }
+        private Mesh BuildMesh(Vector3 origin, float radius, bool doubleEdge)
+        {
+            var mesh = CreateMesh(doubleEdge);
+            UpdateWave(mesh, mesh.vertices, BuildPaths(origin, radius), radius, radius, doubleEdge);
             return mesh;
         }
-
-        private void SetAlpha(Ring ring, float alpha)
+        private Vector3[][] BuildPaths(Vector3 origin, float radius) => BuildPathsInto(origin, radius, null);
+        private Vector3[][] BuildPathsInto(Vector3 origin, float radius, Vector3[][] paths)
         {
-            Color color = ringColor;
-            color.a = alpha;
-            ring.properties.SetColor(BaseColorId, color);
-            ring.renderer.SetPropertyBlock(ring.properties);
+            int samples = Mathf.CeilToInt(radius / .5f);
+            paths ??= new Vector3[Segments + 1][];
+            bool onFloor = world.VisualFloor(origin, out var floorOrigin);
+            if (!onFloor) floorOrigin = origin;
+            for (int i = 0; i < Segments; i++)
+            {
+                float angle = i * Mathf.PI * 2 / Segments;
+                var direction = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle));
+                var path = paths[i];
+                if (path == null || path.Length != samples+1) path = paths[i] = new Vector3[samples+1];
+                Vector3 previous = floorOrigin;
+                path[0] = previous - origin;
+                bool stopped = false;
+                for (int j = 1; j <= samples; j++)
+                {
+                    Vector3 next = origin + direction * (radius * j / samples);
+                    next.y = previous.y;
+                    if (!stopped && onFloor && !world.VisualFloor(next, out next)) stopped = true;
+                    if (!stopped)
+                    {
+                        Vector3 delta = next - previous;
+                        float length = delta.magnitude;
+                        if (length > .0001f)
+                        {
+                            float reach = world.VisualReach(previous + Vector3.up * .1f, delta / length, length);
+                            if (reach < length - .001f)
+                            {
+                                next = previous + delta / length * Mathf.Max(0, reach - .025f);
+                                stopped = true;
+                            }
+                        }
+                        previous = next;
+                    }
+                    path[j] = previous - origin;
+                }
+            }
+            paths[Segments] = paths[0]; // Reuse the seam, including its floor/occlusion samples.
+            return paths;
         }
-
+        private static Mesh CreateMesh(bool doubleEdge)
+        {
+            int bands = doubleEdge ? 2 : 1;
+            var triangles = new int[Segments * 6 * bands];
+            for (int band = 0; band < bands; band++) for (int i = 0; i < Segments; i++)
+            {
+                int v = band * (Segments+1)*2 + i*2;
+                int t = band*Segments*6+i*6;
+                triangles[t]=v; triangles[t+1]=v+1; triangles[t+2]=v+2;
+                triangles[t+3]=v+1; triangles[t+4]=v+3; triangles[t+5]=v+2;
+            }
+            var mesh = new Mesh { name = "Expanding Wall Clipped Floor Pulse" };
+            mesh.MarkDynamic();
+            mesh.vertices = new Vector3[(Segments+1)*2*bands];
+            mesh.triangles = triangles;
+            return mesh;
+        }
+        private static Vector3 PointAt(Vector3[] path, float distance, float radius)
+        {
+            float sample = Mathf.Clamp01(distance / radius) * (path.Length-1);
+            int index = Mathf.Min(Mathf.FloorToInt(sample), path.Length-2);
+            return Vector3.Lerp(path[index], path[index+1], sample-index);
+        }
+        private static void UpdateWave(Mesh mesh, Vector3[] vertices, Vector3[][] paths,
+            float radius, float current, bool doubleEdge)
+        {
+            int bands = doubleEdge ? 2 : 1;
+            for (int band=0; band<bands; band++) for (int i=0; i<=Segments; i++)
+            {
+                float outer = Mathf.Max(0,current-band*.13f);
+                int v=band*(Segments+1)*2+i*2;
+                vertices[v]=PointAt(paths[i],Mathf.Max(0,outer-.045f),radius);
+                vertices[v+1]=PointAt(paths[i],outer,radius);
+            }
+            mesh.vertices=vertices; mesh.RecalculateBounds();
+        }
+        private void Remove(int i)
+        {
+            var ring = rings[i]; rings.RemoveAt(i);
+            if (ring.Object == null)
+            {
+                if (ring.Mesh != null) Destroy(ring.Mesh);
+                return;
+            }
+            ring.Object.SetActive(false); pool.Add(ring);
+        }
+        private void Clear() { for(int i=rings.Count-1;i>=0;i--)Remove(i); }
+        private void OnDisable()=>Clear();
         private void OnDestroy()
         {
-            foreach (Ring ring in rings)
-                if (ring.gameObject != null)
-                {
-                    if (Application.isPlaying) Destroy(ring.gameObject);
-                    else DestroyImmediate(ring.gameObject);
-                }
-            if (material != null)
-            {
-                if (Application.isPlaying) Destroy(material);
-                else DestroyImmediate(material);
-            }
-            if (ringMesh != null)
-            {
-                if (Application.isPlaying) Destroy(ringMesh);
-                else DestroyImmediate(ringMesh);
-            }
+            Clear();
+            foreach (var ring in pool) { Destroy(ring.Object); if (ring.Mesh != null) Destroy(ring.Mesh); }
+            pool.Clear(); if (material != null) Destroy(material);
         }
     }
 }

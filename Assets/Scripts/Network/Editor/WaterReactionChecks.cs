@@ -67,7 +67,7 @@ namespace Marco.Network.Editor
                     movement.enabled = false;
                     player.GetComponent<PlayerInteractor>().enabled = false;
                     controller.height = .7f; controller.center = Vector3.zero;
-                    movement.Teleport(new Vector3(20, .6f, 47));
+                    movement.Teleport(new Vector3(20, 1.2f, 47));
                     Physics.SyncTransforms(); Present.Invoke(movement, null);
                     Require(Count == 0, "Spawn should not emit a splash");
                     previous = Time.time; until = now + 1; phase = 3; return;

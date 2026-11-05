@@ -213,7 +213,7 @@ namespace Marco.Network.Editor
                     var rings = player.GetComponentInChildren<WalkingFootRings>();
                     if (rings != null)
                         foreach (var ring in (IList)Field(rings, "rings"))
-                            if (((GameObject)Field(ring, "gameObject")).activeSelf) sawRing = true;
+                            if (((GameObject)Field(ring, "Object")).activeSelf) sawRing = true;
                     if (now < until) return;
                     Check(heard && sawRing, "Landing must produce audible and visible pulse");
                     Check(checkedLanding, "Predicted landing was not checked");

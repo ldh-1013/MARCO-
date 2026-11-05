@@ -26,6 +26,7 @@ namespace Marco.Network.Valves
         [SerializeField] private AudioClip jamClip;
 
         // Each part's pose relative to the pivot (unscaled), taken before any spin.
+        private AudioSource jamSource;
         private Vector3[] restOffsets;
         private Quaternion[] restRotations;
 
@@ -44,12 +45,20 @@ namespace Marco.Network.Valves
 
         public void PlayJam()
         {
+            if (jamClip == null && NetworkRound.Instance is { UsesPoolAudio: true })
+                jamClip = Resources.Load<AudioClip>("MarcoSound/ValveJam");
             if (jamClip == null)
             {
                 Debug.Log("[MARCO] 밸브 걸림음 (에셋 없음)");
                 return;
             }
-            AudioSource.PlayClipAtPoint(jamClip, transform.position);
+            if (jamSource == null)
+            {
+                jamSource = gameObject.AddComponent<AudioSource>();
+                jamSource.playOnAwake = false;
+                jamSource.spatialBlend = 0f;
+            }
+            jamSource.PlayOneShot(jamClip);
         }
 
         private void Awake()

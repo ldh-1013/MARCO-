@@ -101,6 +101,13 @@ namespace Marco.Core.WinCondition
             }
         }
 
+        public bool IsWorking(int playerId)
+        {
+            foreach (var valve in _valveBoard.Valves.Values)
+                if (valve.HasWorker(playerId)) return true;
+            return false;
+        }
+
         private bool IsAliveRunner(int playerId)
         {
             return _playerRoster.GetRole(playerId) == PlayerRole.Runner && _playerRoster.IsAlive(playerId);

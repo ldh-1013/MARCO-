@@ -9,19 +9,24 @@ using UnityEngine;
 
 namespace Marco.Network.Round
 {
-    // Audio-only bridge: existing actions and health remain authoritative in NetworkRound.
-    // No new abilities, visual pulses, role rules or round settings are introduced here.
+    // Routes effects and their presentation using the existing authoritative round actions.
     public sealed partial class NetworkRound
     {
         private sealed class SoundMotion
         {
             public float NextMoan;
             public bool Wounded;
+            public Vector3 BreathPosition;
+            public float StillSeconds, BreathMoved, BreathResetMoved, NextBreath;
         }
 
         private readonly Dictionary<int, SoundMotion> soundMotion = new();
         private readonly HashSet<ValveId> rotatingSounds = new();
+        private readonly Dictionary<(int, int), float> nextValvePulse = new();
         private readonly Dictionary<int, double> healingSoundTimes = new();
+        private readonly Dictionary<int, Marco.Network.Vision.MovementPulseClock> movementClocks = new();
+        private readonly Dictionary<int, Vector3> movementPositions = new();
+        private float nextMovementTick, movementTickAt;
         private float nextSoundTick;
         private bool soundWasRunning;
         private RoundAudioPlayback soundPlayback;
@@ -51,7 +56,9 @@ namespace Marco.Network.Round
         private void ResetAudioServer()
         {
             soundMotion.Clear();
+            movementClocks.Clear(); movementPositions.Clear(); nextMovementTick = movementTickAt = 0;
             rotatingSounds.Clear();
+            nextValvePulse.Clear();
             healingSoundTimes.Clear();
             nextSoundTick = 0;
             soundWasRunning = false;
@@ -68,8 +75,10 @@ namespace Marco.Network.Round
                 return;
             }
             soundWasRunning = true;
+            TickMovementRings();
             if (Time.time < nextSoundTick) return;
-            nextSoundTick = Time.time + 0.1f;
+            float soundDelta = nextSoundTick > 0 ? Mathf.Min(.5f, Time.time - nextSoundTick + .25f) : 0f;
+            nextSoundTick = Time.time + .25f;
             soundWorld ??= new SoundWorld();
 
             foreach (var player in NetworkPlayer.All)
@@ -77,7 +86,7 @@ namespace Marco.Network.Round
                 Vector3 position = player.transform.position;
                 if (!soundMotion.TryGetValue(player.PlayerId, out var motion))
                 {
-                    motion = new SoundMotion();
+                    motion = new SoundMotion { BreathPosition = position };
                     soundMotion.Add(player.PlayerId, motion);
                 }
                 if (player.Status != PlayerStatus.Alive || player.IsEcho)
@@ -85,22 +94,25 @@ namespace Marco.Network.Round
                     motion.Wounded = false;
                     continue;
                 }
+                TickBreath(player, motion, position, soundDelta);
                 int health = runnerHalves.TryGetValue(player.PlayerId, out int h) ? h : FullHalves;
                 bool wounded = player.Role == PlayerRole.Runner && health == WoundedHalves;
                 if (wounded && !motion.Wounded) motion.NextMoan = Time.time + 6f;
                 if (wounded && Time.time >= motion.NextMoan)
                 {
                     motion.NextMoan = Time.time + 6f;
-                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f);
+                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId);
                 }
                 motion.Wounded = wounded;
             }
 
             foreach (var id in rotatingSounds)
                 if (ValveView.TryGet(id, out var valve))
-                    EmitSound("Valve", valve.transform.position,
-                        id == ValveId.A ? 6f : 12f,
-                        0.5f, 0f, 100000 + (int)id, id == ValveId.B || id == ValveId.E);
+                    EmitSound(id == ValveId.B || id == ValveId.E ? "ValveUnderwater" : "Valve",
+                        valve.transform.position,
+                        12f,
+                        0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),
+                        100000 + (int)id, id == ValveId.B || id == ValveId.E);
 
             foreach (var pair in healingChannels)
             {
@@ -109,8 +121,72 @@ namespace Marco.Network.Round
                 if (healingSoundTimes.TryGetValue(pair.Key, out double next) && Time.realtimeSinceStartupAsDouble < next) continue;
                 healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? 2.0 : 2.25);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
-                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId);
+                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId);
             }
+        }
+
+        private void TickMovementRings()
+        {
+            if (Time.time < nextMovementTick) return;
+            float dt = movementTickAt > 0 ? Time.time - movementTickAt : .1f;
+            movementTickAt = Time.time;
+            nextMovementTick = Time.time + .1f;
+            soundWorld ??= new SoundWorld();
+            foreach (var source in NetworkPlayer.All)
+            {
+                int id = source.PlayerId;
+                if (!movementClocks.TryGetValue(id, out var clock))
+                    movementClocks[id] = clock = new Marco.Network.Vision.MovementPulseClock();
+                Vector3 position = source.transform.position;
+                float speed = movementPositions.TryGetValue(id, out var previous)
+                    ? Vector3.ProjectOnPlane(position-previous, Vector3.up).magnitude / Mathf.Max(dt,.0001f) : 0;
+                movementPositions[id] = position;
+                int water = soundWorld.WaterState(source, out float surface);
+                bool grounded = soundWorld.TryFloorNear(source, out var floor, .09f);
+                bool fast = Marco.Network.Vision.MovementPulseClock.IsFastMovement(source.Role, speed, water == 1);
+                bool alive = source.Status == PlayerStatus.Alive && !source.IsEcho;
+                bool step = clock.Advance(position, dt, alive && water != 2 && (grounded || water == 1),
+                    fast, out bool ring);
+                fast = clock.Fast;
+                if (!step) continue;
+                bool swimming = water == 1;
+                string material = swimming ? "" : soundWorld.Surface(floor, position);
+                int variants = SoundWorld.FootstepVariants(material);
+                if (!swimming && variants == 0) continue;
+                string clip = swimming ? "SurfaceSwim" : variants == 1
+                    ? material : material + "_" + Random.Range(0, variants);
+                Vector3 origin = position;
+                if (swimming) origin.y = surface;
+                Vector3 ringPoint = position;
+                ringPoint.y = swimming ? surface + .025f : source.GetComponent<CharacterController>().bounds.min.y + .025f;
+                float radius = (fast ? 6f : 2f) * (swimming ? 1f : soundWorld.SurfaceMultiplier(floor, position));
+                foreach (var listener in NetworkPlayer.All)
+                {
+                    if (listener == source || listener.Status != PlayerStatus.Alive || listener.IsEcho) continue;
+                    if (!soundWorld.Hear(origin, listener, radius, out var perceived, out float gain, out bool blocked)) continue;
+                    Vector3 visiblePoint = ringPoint;
+                    if (blocked)
+                    {
+                        visiblePoint = perceived;
+                        visiblePoint.y = listener.GetComponent<CharacterController>().bounds.min.y + .025f;
+                    }
+                    float duration = (fast ? .8f : .4f) * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),
+                        duration, blocked, ring && fast, visiblePoint, source.Role == PlayerRole.Seeker);
+                }
+            }
+        }
+
+        [TargetRpc]
+        private void MovementStepTarget(NetworkConnection connection, int source, string clip, Vector3 soundPoint,
+            float volume, float duration, bool blocked, bool showRing, Vector3 ringPoint, bool seeker)
+        {
+            var local = NetworkPlayer.Local;
+            if (local == null || local.PlayerId == source) return;
+            NotifyOtherSound();
+            soundPlayback?.Play(clip, soundPoint, volume, duration, -1, blocked, -1);
+            if (showRing)
+                local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.Show(source, ringPoint, true, seeker);
         }
 
         private void ValveAudio(ValveId id, ValveSoundEvent evt)
@@ -120,11 +196,13 @@ namespace Marco.Network.Round
             else if (evt == ValveSoundEvent.RotatingStopped)
             {
                 rotatingSounds.Remove(id);
-                StopAudioObservers(100000 + (int)id, false);
+                int key = 100000 + (int)id;
+                foreach (var listener in NetworkPlayer.All) nextValvePulse.Remove((key, listener.PlayerId));
+                StopAudioObservers(key, false);
             }
             else if (evt == ValveSoundEvent.ReflowRipple && ValveView.TryGet(id, out var valve))
                 EmitSound("Reflow", valve.transform.position, 12f,
-                    0.55f, 8f, -1, id == ValveId.B || id == ValveId.E);
+                    0.55f, DefaultConfig.GetValveRotationSeconds(id, reopen: false), -1, id == ValveId.B || id == ValveId.E);
         }
 
         private void StopHealingAudio(int actorId)
@@ -143,38 +221,106 @@ namespace Marco.Network.Round
         {
             var origin = player.transform.position;
             origin.y = surface + .1f;
-            EmitSound("Hurt", origin, 22f, 1f, 1.5f);
+            EmitSound("Hurt", origin, 22f, 1f, 1.5f, sourceId: player.PlayerId);
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
                 if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out _))
-                    DrowningPulseTarget(listener.Owner, point);
+                    DrowningPulseTarget(listener.Owner, point, player.PlayerId);
         }
 
         [TargetRpc]
-        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point)
+        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source)
         {
             var local = NetworkPlayer.Local;
-            if (local != null) local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
+            if (local == null) return;
+            if (source != local.PlayerId) NotifyOtherSound();
+            local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
+        }
+
+        private static bool IsSelfOnlySound(string clip) => clip == "Breath" || clip.StartsWith("Breath_");
+        private static bool CanReceiveSound(string clip, int sourceId, int listenerId) =>
+            !IsSelfOnlySound(clip) || sourceId == listenerId;
+
+        private void TickBreath(NetworkPlayer player, SoundMotion motion, Vector3 position, float dt)
+        {
+            float distance = Vector3.Distance(position, motion.BreathPosition);
+            motion.BreathPosition = position;
+            if (IsStartLocked(player.Role) || soundWorld.WaterState(player, out _) == 2 ||
+                (player.Role == PlayerRole.Runner && valves != null && valves.IsWorking(player.PlayerId)))
+                return;
+            motion.BreathMoved += distance;
+            motion.BreathResetMoved += distance;
+            if ((motion.BreathMoved >= 3f && motion.NextBreath == 0f) || motion.BreathResetMoved >= 5f)
+            {
+                motion.StillSeconds = motion.BreathMoved = motion.BreathResetMoved = motion.NextBreath = 0;
+                return;
+            }
+            motion.StillSeconds += dt;
+            if (motion.StillSeconds < Mathf.Max(20f, motion.NextBreath)) return;
+            motion.NextBreath = motion.StillSeconds + 15f;
+            string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
+            EmitSound(clip, position, 0f, .65f, .6f, sourceId: player.PlayerId);
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
-            int loopKey = -1, bool underwater = false, int actionId = -1)
+            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1)
         {
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
             {
-                if (listener.Status != PlayerStatus.Alive || listener.IsEcho) continue;
-                if (!soundWorld.Hear(origin, listener, radius, out var point, out float gain, out bool blocked)) continue;
-                SoundTarget(listener.Owner, clip, point, volume * gain, duration, loopKey, underwater || blocked, actionId);
+                if (listener.Status != PlayerStatus.Alive && !listener.IsEcho) continue;
+                if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
+                if (IsSelfOnlySound(clip))
+                {
+                    SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f);
+                    continue;
+                }
+                bool own = sourceId == listener.PlayerId;
+                if (!soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
+                    out bool blocked, out float perceivedRadius) && !own) continue;
+                if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
+                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.IsEcho ? 1.5f : 1f;
+                float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
+                bool showPulse = !blocked && (clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
+                    clip == "Treat" || clip.StartsWith("Moan_"));
+                if (showPulse && loopKey >= 0)
+                {
+                    var key = (loopKey, listener.PlayerId);
+                    showPulse = !nextValvePulse.TryGetValue(key, out float next) || Time.time >= next;
+                    if (showPulse) nextValvePulse[key] = underwater ? Time.time + 2.5f : float.PositiveInfinity;
+                }
+                if (listener.IsEcho) { if (showPulse) pulseSeconds = 3f; }
+                else pulseSeconds *= durationScale;
+                SoundTarget(listener.Owner, clip, point, volume * gain, duration * durationScale, loopKey,
+                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds);
             }
         }
 
         [TargetRpc]
         private void SoundTarget(NetworkConnection connection, string clip, Vector3 point, float volume,
-            float duration, int loopKey, bool muffled, int actionId)
+            float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds)
         {
-            if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId);
+            if (fromOther) NotifyOtherSound();
+            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);
+            if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local);
         }
+
+        internal bool UsesPoolAudio => SoundMap;
+
+        internal bool TryHearPoolVoice(Vector3 origin, NetworkPlayer listener, float radius,
+            out Vector3 point, out float gain, out bool blocked, out float perceivedRadius)
+        {
+            soundWorld ??= new SoundWorld();
+            return soundWorld.HearResolved(origin, listener, radius, out point, out gain, out blocked, out perceivedRadius);
+        }
+
+        internal void ShowSoundPulse(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
+        {
+            var rings = NetworkPlayer.Local?.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>();
+            rings?.ShowSound(point, radius, duration, voiceFromSeeker);
+        }
+
+        internal void NotifyOtherSound() => soundPlayback?.NotifyOtherSound();
 
         [TargetRpc]
         private void HurtAudioTarget(NetworkConnection connection)

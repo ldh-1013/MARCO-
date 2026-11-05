@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 
 
@@ -220,7 +220,7 @@ namespace Suimono.Core
 						
 							// add vertical force to buoyancy while underwater
 							forceMod = (buoyancyFactor * (buoyancy * rigidbodyComponent.mass) * (underwaterLevel) * splitFac * (isUnderwater ? 1f : 0f) );
-							if (rigidbodyComponent.linearVelocity.y < maxVerticalSpeed){	
+							if (rigidbodyComponent.linearVelocity.y < maxVerticalSpeed){
 								rigidbodyComponent.AddForceAtPosition(new Vector3(0f,1f,0f) * forceMod, transform.position);
 							}
 

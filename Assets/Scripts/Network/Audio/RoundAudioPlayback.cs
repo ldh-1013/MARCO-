@@ -2,12 +2,15 @@ using System.Collections.Generic;
 using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Character;
+
 using Marco.Network.Round;
+using Marco.Network.Vision;
 using UnityEngine;
 
 namespace Marco.Network.Audio
 {
     // Added only by NetworkPool_v1_2's round object. All clips are explicitly named resources.
+    [DefaultExecutionOrder(100)]
     public sealed class RoundAudioPlayback : MonoBehaviour
     {
         public NetworkRound Round { get; set; }
@@ -21,23 +24,111 @@ namespace Marco.Network.Audio
         }
         private readonly List<Voice> voices = new();
         private readonly Dictionary<string, AudioClip> clips = new();
-        private AudioSource heartbeat, seekerDrone;
+        private AudioSource heartbeat, seekerDrone, diveAmbience;
+        private double quietSince = double.NaN, fadeStartedAt = -1;
+        private float droneFadeStart, droneEnvelope;
+        private const float SeekerDroneMaxVolume = .15f;
+
+        public void NotifyOtherSound()
+        {
+            if (double.IsNaN(quietSince)) return;
+            double now = Time.timeAsDouble;
+            if (droneEnvelope > 0 && fadeStartedAt < 0)
+            {
+                fadeStartedAt = now;
+                droneFadeStart = droneEnvelope;
+            }
+            quietSince = now;
+        }
+
+        private void ResetSeekerDrone()
+        {
+            quietSince = double.NaN;
+            fadeStartedAt = -1;
+            droneFadeStart = droneEnvelope = 0;
+            StopBed(seekerDrone);
+        }
+
+        private void TickSeekerDrone(bool eligible)
+        {
+            if (!eligible)
+            {
+                ResetSeekerDrone();
+                return;
+            }
+
+            float handoff = Round.EndDroneBlend;
+            if (Round.IsEndDronePhase)
+            {
+                quietSince = double.NaN;
+                SetSeekerDroneVolume(droneEnvelope * (1f - handoff));
+                return;
+            }
+
+            double now = Time.timeAsDouble;
+            if (double.IsNaN(quietSince))
+            {
+                quietSince = now;
+                droneFadeStart = 0;
+            }
+            float quiet = (float)(now - quietSince);
+            if (fadeStartedAt >= 0)
+            {
+                float fade = Mathf.Clamp01((float)(now - fadeStartedAt) / .2f);
+                droneEnvelope = droneFadeStart * (1f - fade);
+                if (fade >= 1f) fadeStartedAt = -1;
+            }
+            else
+            {
+                droneEnvelope = quiet < 30f
+                    ? .6f * Mathf.InverseLerp(20f, 30f, quiet)
+                    : Mathf.Lerp(.6f, 1f, Mathf.InverseLerp(30f, 60f, quiet));
+            }
+            SetSeekerDroneVolume(droneEnvelope);
+        }
+
+        private void SetSeekerDroneVolume(float envelope)
+        {
+            if (envelope <= 0)
+            {
+                StopBed(seekerDrone);
+                return;
+            }
+            if (seekerDrone == null)
+            {
+                var clip = Clip("SeekerDrone");
+                if (clip == null) return;
+                seekerDrone = CreateSource("SeekerDrone", true);
+                seekerDrone.clip = clip;
+                seekerDrone.loop = true;
+            }
+            seekerDrone.volume = envelope * SeekerDroneMaxVolume;
+            if (!seekerDrone.isPlaying) seekerDrone.Play();
+        }
         private readonly List<AudioClip> ownedLoops = new();
 
         private AudioClip Clip(string name)
         {
             if (clips.TryGetValue(name, out var result)) return result;
             result = Resources.Load<AudioClip>("MarcoSound/" + name);
-            if (result != null && (name == "SeekerDrone" || name == "SurfaceSwim"))
+            if (result != null && (name is "SeekerDrone" or "SurfaceSwim" or "DiveAmbience" or "ValveUnderwater"))
             {
                 var original = result;
-                result = LoopClip.Prepare(original, name == "SeekerDrone" ? .75f : .2f);
+                result = name == "SeekerDrone" ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
+                if (result != original) ownedLoops.Add(result);
+            }
+            if (result != null && (name is "Carpet" or "Mat" or "Metal" or "MetalStairs" || IsBreathClip(name)))
+            {
+                var original = result;
+                result = LoopClip.TrimCue(original, IsBreathClip(name) ? .6f : .34f);
                 if (result != original) ownedLoops.Add(result);
             }
             clips.Add(name, result);
             if (result == null) Debug.LogWarning("[MARCO][Audio] Missing clip: " + name, this);
             return result;
         }
+
+        private static bool IsBreathClip(string name) => name is "Breath_Seeker" or "Breath_Runner";
 
         private AudioSource CreateSource(string label, bool local)
         {
@@ -60,6 +151,8 @@ namespace Marco.Network.Audio
         {
             var clip = Clip(name);
             if (clip == null) return;
+            // The stair recording is hotter than the other footstep clips.
+            if (name == "MetalStairs") volume *= .55f;
             Voice voice = null;
             if (loopKey >= 0)
                 foreach (var candidate in voices)
@@ -80,8 +173,7 @@ namespace Marco.Network.Audio
                 ? Mathf.MoveTowards(voice.Source.volume, Mathf.Clamp01(volume), Time.deltaTime * 4f)
                 : Mathf.Clamp01(volume);
             voice.Muffled = muffled;
-            voice.Filter.enabled = muffled;
-            voice.Filter.cutoffFrequency = 1000f;
+            ApplyVoiceFilter(voice);
             voice.Until = Time.time + (loopKey >= 0 ? 0.4f : Mathf.Min(duration > 0 ? duration : clip.length, clip.length));
             if (!voice.Source.isPlaying)
             {
@@ -90,6 +182,14 @@ namespace Marco.Network.Audio
                 if (name == "SurfaceSwim") voice.Source.volume = 0;
                 voice.Source.Play();
             }
+        }
+
+        private static void ApplyVoiceFilter(Voice voice)
+        {
+            var local = NetworkPlayer.Local;
+            bool diving = local != null && local.GetComponent<PlayerMovement>() is { IsDiving: true };
+            voice.Filter.enabled = voice.Muffled || diving;
+            voice.Filter.cutoffFrequency = diving ? 650f : 1000f;
         }
 
         public void Stop(int key, bool healing)
@@ -108,7 +208,7 @@ namespace Marco.Network.Audio
         public void Clear()
         {
             for (int i = voices.Count - 1; i >= 0; i--) Remove(i);
-            StopBed(heartbeat); StopBed(seekerDrone); steps.Clear();
+            StopBed(heartbeat); StopBed(diveAmbience); ResetSeekerDrone(); steps.Clear();
         }
 
         private static void StopBed(AudioSource source)
@@ -132,7 +232,7 @@ namespace Marco.Network.Audio
             else if (target <= 0 && source.volume < .001f) StopBed(source);
         }
 
-        private void Update()
+        private void LateUpdate()
         {
             if (Round == null || !Round.IsClientInitialized || Round.Mode == RoundMode.NotStarted ||
                 Round.Result != RoundResult.InProgress || NetworkPlayer.Local == null)
@@ -141,9 +241,7 @@ namespace Marco.Network.Audio
             }
             for (int i = voices.Count - 1; i >= 0; i--)
             {
-                var swimmer = NetworkPlayer.Local.GetComponent<PlayerMovement>();
-                voices[i].Filter.enabled = voices[i].Muffled || (swimmer != null && swimmer.IsDiving);
-                voices[i].Filter.cutoffFrequency = swimmer != null && swimmer.IsDiving ? 650f : 1000f;
+                ApplyVoiceFilter(voices[i]);
                 float remaining = voices[i].Until - Time.time;
                 if (voices[i].Source.clip != null && voices[i].Source.clip.name.StartsWith("SurfaceSwim") && voices[i].LoopKey < 0)
                     voices[i].Source.volume = voices[i].Gain * Mathf.Clamp01((Time.time - voices[i].Started)/.02f) * Mathf.Clamp01(remaining/.04f);
@@ -163,22 +261,24 @@ namespace Marco.Network.Audio
             bool breathWarning = alive && swim != null && swim.IsDiving && swim.BreathSeconds <= 3f;
             if (breathWarning) heart = Mathf.Max(heart, swim.BreathSeconds <= 1f ? .65f : .4f);
             Bed(ref heartbeat, "Heartbeat", heart, 1f);
+            Bed(ref diveAmbience, "DiveAmbience", alive && swim != null && swim.IsDiving ? .16f : 0f, .4f);
             if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f : 1f;
-            Bed(ref seekerDrone, "SeekerDrone", alive && local.Role == PlayerRole.Seeker ? .15f : 0f, 2f);
+            TickSeekerDrone(alive && local.Role == PlayerRole.Seeker && Round.StartPhase == RoundStartPhase.Released);
         }
 
         private sealed class StepState
         {
             public Vector3 Position;
-            public int Index;
+            public readonly MovementPulseClock Clock = new();
             public int LastTile = -1, LastConcrete = -1;
-            public bool Running;
             public bool Grounded, InAir, JumpPlayed;
             public float AirStarted, PeakHeight, SuppressStepsUntil;
             public string GroundSurface = "";
             public int GroundWater;
             public int PreviousWater;
-            public float MovedAt, Timer, LastWaterStep = -10f;
+            public int LastFootstepIndex;
+            public float FallbackStepDistance;
+
         }
         private readonly Dictionary<NetworkPlayer, StepState> steps = new();
         private readonly SoundWorld footWorld = new();
@@ -188,13 +288,13 @@ namespace Marco.Network.Audio
             foreach (var player in NetworkPlayer.All)
             {
                 var position = player.transform.position;
-                var motion = player.GetComponent<CharacterMotion>();
-                bool animated = motion != null && motion.HasFootstepCycle;
-                int index = animated ? motion.FootstepIndex : 0;
-                bool running = animated && motion.FootstepRunning;
+
                 if (!steps.TryGetValue(player, out var state))
                 {
-                    var initial = new StepState { Position = position, Index = index, Running = running };
+                    var initial = new StepState { Position = position };
+                    if (player == listener && player.TryGetComponent<CharacterMotion>(out var initialMotion))
+                        initial.LastFootstepIndex = initialMotion.FootstepIndex;
+                    initial.Clock.Advance(position, Time.deltaTime, false, false, out _);
                     initial.Grounded = footWorld.TryFloorNear(player, out var initialFloor, .09f);
                     if (initial.Grounded) initial.GroundSurface = footWorld.Surface(initialFloor, position);
                     initial.GroundWater = footWorld.WaterState(player, out _);
@@ -205,19 +305,7 @@ namespace Marco.Network.Audio
                 Vector3 offset = position - state.Position;
                 state.Position = position;
                 float distance = new Vector2(offset.x, offset.z).magnitude;
-                bool eligible = player.Status == PlayerStatus.Alive && !player.IsEcho &&
-                    distance < 15f * Mathf.Max(Time.deltaTime, .02f) && Mathf.Abs(offset.y) < .4f;
-                if (eligible && distance / Mathf.Max(Time.deltaTime, .0001f) > .05f) state.MovedAt = Time.time;
-                bool moving = eligible && Time.time - state.MovedAt < .15f;
-                bool step = moving && animated && index != state.Index && running == state.Running;
-                state.Index = index; state.Running = running;
-                if (!animated && moving)
-                {
-                    state.Timer += Time.deltaTime;
-                    float interval = player.GetComponent<PlayerMovement>() is { IsSprinting: true } ? .3f : .5f;
-                    if (state.Timer >= interval) { state.Timer %= interval; step = true; }
-                }
-                else if (!moving) state.Timer = 0;
+
                 int water = footWorld.WaterState(player, out float waterLevel);
                 bool onGround = footWorld.TryFloorNear(player, out var contactFloor, .09f);
                 bool alive = player.Status == PlayerStatus.Alive && !player.IsEcho;
@@ -230,6 +318,7 @@ namespace Marco.Network.Audio
                     if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))
                     {
                         float strength = Mathf.Clamp(.5f + Mathf.Max(0, -offset.y) / Mathf.Max(Time.deltaTime, .001f) * .08f, .5f, 1f);
+                        if (player != listener && splashGain > 0) NotifyOtherSound();
                         Play("WaterEntry", splashPoint, strength * splashGain, 0, -1, splashBlocked, -1);
                     }
                     state.InAir = state.JumpPlayed = false;
@@ -269,31 +358,50 @@ namespace Marco.Network.Audio
                     state.GroundSurface = footWorld.Surface(contactFloor, position);
                     state.GroundWater = water;
                 }
-                if (!alive || !onGround || Time.time < state.SuppressStepsUntil) step = false;
-                int waterKey = 200000 + player.PlayerId;
-                if (step) state.LastWaterStep = Time.time;
-                if (water == 1 && moving && footWorld.Hear(new Vector3(position.x, waterLevel, position.z), listener,
-                    6f, out var waterPoint, out float waterGain, out bool waterBlocked))
+                // Remote regular steps use the same server event as the shared movement ring.
+                if (player != listener) continue;
+                float horizontalSpeed = distance / Mathf.Max(Time.deltaTime, .0001f);
+                bool fast = MovementPulseClock.IsFastMovement(player.Role, horizontalSpeed, water == 1);
+                bool step = state.Clock.Advance(position, Time.deltaTime,
+                    alive && !teleported && water != 2 && (onGround || water == 1), fast, out bool ring);
+                if (Time.time < state.SuppressStepsUntil) { step = false; ring = false; }
+                bool fastGrade = state.Clock.Fast;
+                var rings = listener.GetComponentInChildren<WalkingFootRings>();
+                if (rings != null)
                 {
-                    // Continuous recording with gentle step accents, never hard-cut every 0.4s.
-                    float strength = .38f + .17f * Mathf.Exp(-(Time.time-state.LastWaterStep)*8f);
-                    Play("SurfaceSwim", waterPoint, strength * waterGain, 0, waterKey, waterBlocked, -1);
+                    rings.SetLocalMoving(state.Clock.Moving);
+                    if (ring)
+                    {
+                        var ringPoint = position;
+                        ringPoint.y = water == 1 ? waterLevel + .025f :
+                            player.GetComponent<CharacterController>().bounds.min.y + .025f;
+                        rings.Show(player.PlayerId, ringPoint, fastGrade, player.Role == PlayerRole.Seeker);
+                    }
+                }
+                if (water == 1 && step)
+                    Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);
+                bool groundedStep = water == 0 && alive && !teleported && onGround &&
+                    Time.time >= state.SuppressStepsUntil;
+                bool footContact;
+                if (player.TryGetComponent<CharacterMotion>(out var motion) && motion.HasFootstepCycle)
+                {
+                    int index = motion.FootstepIndex;
+                    footContact = groundedStep && distance > .0001f && index > state.LastFootstepIndex;
+                    state.LastFootstepIndex = index;
+                    state.FallbackStepDistance = 0f;
                 }
                 else
-                    foreach (var voice in voices)
-                        if (voice.LoopKey == waterKey) voice.Until = Mathf.Min(voice.Until, Time.time + .08f);
-                // Water replaces dry footsteps, including when fully submerged (silent).
-                if (water != 0 || !step || !footWorld.TryFloor(player, out var floor)) continue;
-                string surface = footWorld.Surface(floor, position);
-                if (surface != "Tile" && surface != "Concrete") continue;
-                if (!footWorld.Hear(position, listener, (running ? 6f : 2f) * (surface == "Tile" ? 1.3f : 1f),
-                    out var point, out float gain, out bool blocked)) continue;
-                int count = surface == "Tile" ? 3 : 4;
-                int previous = surface == "Tile" ? state.LastTile : state.LastConcrete;
-                int choice = Random.Range(0, previous < 0 ? count : count - 1);
-                if (previous >= 0 && choice >= previous) choice++;
-                if (surface == "Tile") state.LastTile = choice; else state.LastConcrete = choice;
-                Play(surface + "_" + choice, point, .7f * gain, .38f, -1, blocked, -1);
+                {
+                    if (!groundedStep || !state.Clock.Moving) state.FallbackStepDistance = 0f;
+                    else state.FallbackStepDistance += distance;
+                    footContact = state.FallbackStepDistance >= 2f;
+                    if (footContact) state.FallbackStepDistance %= 2f;
+                }
+                if (!footContact || contactFloor == null) continue;
+                string surface = footWorld.Surface(contactFloor, position);
+                var clip = FootstepClip(surface, state);
+                if (clip != null)
+                    Play(clip, position, .7f, fastGrade ? .8f : .4f, -1, false, -1);
             }
         }
 
@@ -302,24 +410,35 @@ namespace Marco.Network.Audio
         {
             if (water == 2) return;
             bool wet = water == 1;
-            if (!wet && surface != "Tile" && surface != "Concrete") return;
+            string name = wet ? "SurfaceSwim" : FootstepClip(surface, state);
+            if (name == null) return;
             float radius = landing ? 6f : 3f;
             if (!footWorld.Hear(position, listener, radius, out var point, out float gain, out bool blocked)) return;
-            string name;
-            if (wet) name = "SurfaceSwim";
-            else
+            if (player != listener && gain > 0) NotifyOtherSound();
+            var rings = listener.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>();
+            if (rings != null)
             {
-                int count = surface == "Tile" ? 3 : 4;
-                int previous = surface == "Tile" ? state.LastTile : state.LastConcrete;
-                int choice = Random.Range(0, previous < 0 ? count : count - 1);
-                if (previous >= 0 && choice >= previous) choice++;
-                if (surface == "Tile") state.LastTile = choice; else state.LastConcrete = choice;
-                name = surface + "_" + choice;
+                var ringPoint = point;
+                var body = (blocked ? listener : player).GetComponent<CharacterController>();
+                ringPoint.y = body.bounds.min.y + .025f;
+                rings.ShowContact(player.PlayerId, ringPoint, player.Role == PlayerRole.Seeker, landing);
             }
+
             int previousVoices = voices.Count;
             Play(name, point, (landing ? .9f : .7f) * gain, wet ? .4f : .38f, -1, blocked, -1, false, wet ? .08f : 0f);
             // Useful distinction in the hierarchy without changing the clip or adding an asset.
             if (voices.Count > previousVoices) voices[voices.Count-1].Source.name = (landing ? "Landing " : "Jump ") + player.PlayerId;
+        }
+
+        private static string FootstepClip(string surface, StepState state)
+        {
+            int count = SoundWorld.FootstepVariants(surface);
+            if (count <= 1) return count == 1 ? surface : null;
+            int previous = surface == "Tile" ? state.LastTile : state.LastConcrete;
+            int choice = Random.Range(0, previous < 0 ? count : count - 1);
+            if (previous >= 0 && choice >= previous) choice++;
+            if (surface == "Tile") state.LastTile = choice; else state.LastConcrete = choice;
+            return surface + "_" + choice;
         }
 
         private void OnDisable() => Clear();
@@ -328,6 +447,7 @@ namespace Marco.Network.Audio
             Clear();
             if (heartbeat != null) Destroy(heartbeat.gameObject);
             if (seekerDrone != null) Destroy(seekerDrone.gameObject);
+            if (diveAmbience != null) Destroy(diveAmbience.gameObject);
             foreach (var clip in ownedLoops) Destroy(clip);
             ownedLoops.Clear();
         }
