@@ -28,6 +28,9 @@ namespace Marco.Network.Vision
         private float[] microphoneReadBuffer;
         // Raw 20 ms microphone frame and its loudness grade, only while speech is detected (voice chat, step 5).
         public event Action<float[], VoiceGrade> VoiceSamplesReady;
+        // Consumed synchronously; this buffer is reused. No callback is raised while muted.
+        public event Action<float[]> MicrophoneSamplesReady;
+        public bool HasMicrophoneInput => microphoneClip != null && !string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice);
 
         [Header("Brightness implementation")]
         [SerializeField] private BrightnessMode brightnessMode = BrightnessMode.MarcoMinus;
@@ -263,6 +266,7 @@ namespace Marco.Network.Vision
                     monoSample += microphoneReadBuffer[i * channels + channel];
                 sampleBuffer[i] = monoSample / channels;
             }
+            MicrophoneSamplesReady?.Invoke(sampleBuffer);
             double squares = 0; for (var i = 0; i < sampleBuffer.Length; i++) squares += sampleBuffer[i] * sampleBuffer[i];
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs > silenceDb ? 1 : 0;

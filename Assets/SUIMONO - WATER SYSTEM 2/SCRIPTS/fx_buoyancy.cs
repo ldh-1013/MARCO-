@@ -220,7 +220,7 @@ namespace Suimono.Core
 						
 							// add vertical force to buoyancy while underwater
 							forceMod = (buoyancyFactor * (buoyancy * rigidbodyComponent.mass) * (underwaterLevel) * splitFac * (isUnderwater ? 1f : 0f) );
-							if (rigidbodyComponent.velocity.y < maxVerticalSpeed){	
+							if (rigidbodyComponent.linearVelocity.y < maxVerticalSpeed){	
 								rigidbodyComponent.AddForceAtPosition(new Vector3(0f,1f,0f) * forceMod, transform.position);
 							}
 
@@ -230,11 +230,11 @@ namespace Suimono.Core
 							
 							// slow down vertical velocity as it reaches water surface or wave zenith
 							modTime = (this.transform.position.y+buoyancyOffset-0.5f) / (waveHeight+buyRand.Next(0f,0.25f) * (isUnderwater ? 1f : 0f));
-							if (rigidbodyComponent.velocity.y > 0f){
-								rigidbodyComponent.velocity = new Vector3(
-									rigidbodyComponent.velocity.x,
-									Mathf.SmoothStep(rigidbodyComponent.velocity.y,0f,modTime),
-									rigidbodyComponent.velocity.z);
+							if (rigidbodyComponent.linearVelocity.y > 0f){
+								rigidbodyComponent.linearVelocity = new Vector3(
+									rigidbodyComponent.linearVelocity.x,
+									Mathf.SmoothStep(rigidbodyComponent.linearVelocity.y,0f,modTime),
+									rigidbodyComponent.linearVelocity.z);
 							}
 						}
 					

@@ -19,6 +19,7 @@ namespace Marco.Network.Vision
             public MaterialPropertyBlock properties;
             public float createdAt;
             public float radius;
+            public float duration;
         }
 
         private readonly List<Ring> rings = new();
@@ -38,6 +39,12 @@ namespace Marco.Network.Vision
         private readonly Dictionary<int, float> swimDistances = new();
         private readonly Marco.Network.Audio.SoundWorld waterWorld = new();
         public void EmitWaterPulse(Vector3 origin, float radius) => SpawnRing(origin, radius);
+        public void EmitSoundPulse(Vector3 origin, float radius, float duration) => SpawnRing(origin, radius, duration);
+
+        public void ClearPulses()
+        {
+            foreach (var ring in rings) if (ring.gameObject != null) ring.gameObject.SetActive(false);
+        }
 
         public Shader RingShader => ringShader;
 
@@ -47,7 +54,7 @@ namespace Marco.Network.Vision
             EnsurePool(8);
         }
 
-        private void SpawnRing(Vector3 worldPosition, float radius = -1f)
+        private void SpawnRing(Vector3 worldPosition, float radius = -1f, float duration = -1f)
         {
             EnsurePool(rings.Count == 0 ? 1 : rings.Count);
             if (rings.Count == 0) return;
@@ -63,6 +70,7 @@ namespace Marco.Network.Vision
             }
 
             ring.radius = radius > 0 ? radius : maxRadius;
+            ring.duration = duration > 0 ? duration : lifetime;
             ring.createdAt = Time.unscaledTime;
             ring.gameObject.transform.position = worldPosition;
             ring.gameObject.transform.localScale = Vector3.one * 0.03f;
@@ -78,7 +86,7 @@ namespace Marco.Network.Vision
             foreach (Ring ring in rings)
             {
                 if (!ring.gameObject.activeSelf) continue;
-                float t = (now - ring.createdAt) / lifetime;
+                float t = (now - ring.createdAt) / ring.duration;
                 if (t >= 1f)
                 {
                     ring.gameObject.SetActive(false);

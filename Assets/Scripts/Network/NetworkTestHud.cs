@@ -136,8 +136,8 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
             GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
-            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 붕대·찰칵이 줍기", help);
-            GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2: 아이템 선택 · G: 사용 (붕대는 홀드)", help);
+            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
+            GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
         }
 
         private static void DrawBreath()
@@ -255,12 +255,12 @@ namespace Marco.Network
             var player = NetworkPlayer.Local;
             if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
 
-            const float width = 204, height = 144;
+            const float width = 404, height = 160;
             var panel = new Rect(TestHudSkin.Width - TestHudSkin.Margin - width,
                 TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
             TestHudSkin.Panel(panel);
             GUI.Label(new Rect(panel.x + 8, panel.y + 3, panel.width - 16, 22),
-                "아이템 · 1/2 슬롯", TestHudSkin.Text(18, FontStyle.Bold));
+                "아이템 · 1/2/3/4 슬롯", TestHudSkin.Text(18, FontStyle.Bold));
 
             int selectedSlot = player.TryGetComponent(out PlayerInteractor interactor)
                 ? interactor.SelectedItemSlot
@@ -274,8 +274,40 @@ namespace Marco.Network
             GUI.Label(new Rect(panel.x + 108, panel.y + 26, 88, 20), "2 · 찰칵", clickerLabel);
             DrawBandageSlot(new Rect(panel.x + 20, panel.y + 47, 64, 64), player.BandageCount, selectedSlot == 1);
             DrawClickerSlot(new Rect(panel.x + 120, panel.y + 47, 64, 64), player.ClickerCount, selectedSlot == 2);
-            GUI.Label(new Rect(panel.x + 8, panel.y + 115, panel.width - 16, 20),
-                "찰칵 Q/우클릭 · 붕대 G 홀드", TestHudSkin.Text(15, FontStyle.Normal, TextAnchor.MiddleCenter));
+            var decoyLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
+            decoyLabel.normal.textColor = selectedSlot == 3 ? new Color(1f, .72f, .3f) : Color.white;
+            GUI.Label(new Rect(panel.x + 208, panel.y + 26, 88, 20), "3 · 오리", decoyLabel);
+            var decoyRect = new Rect(panel.x + 220, panel.y + 47, 64, 64);
+            TestHudSkin.Fill(decoyRect, selectedSlot == 3 ? new Color(.4f, .25f, .08f, .9f) : new Color(0, 0, 0, .42f));
+            GUI.Label(decoyRect, $"◉\n{player.DecoyCount}", TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
+            var canLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
+            canLabel.normal.textColor = selectedSlot == 4 ? new Color(1f, .72f, .3f) : Color.white;
+            GUI.Label(new Rect(panel.x + 308, panel.y + 26, 88, 20), "4 · 소리통", canLabel);
+            var canRect = new Rect(panel.x + 320, panel.y + 47, 64, 64);
+            TestHudSkin.Fill(canRect, selectedSlot == 4 ? new Color(.4f, .25f, .08f, .9f) : new Color(0, 0, 0, .42f));
+            string canStatus = player.SoundCanStage switch
+            {
+                SoundCanStage.Empty => "녹음 전", SoundCanStage.Recording => $"{player.SoundCanRecordingProgress:P0}",
+                SoundCanStage.Recorded => "설치 전", SoundCanStage.Placing => "설치 중", SoundCanStage.Placed => "리모컨", SoundCanStage.Playing => "재생 중", _ => "없음"
+            };
+            GUI.Label(canRect, canStatus, TestHudSkin.Text(14, FontStyle.Bold, TextAnchor.MiddleCenter));
+            string usage = selectedSlot switch
+            {
+                1 => "G 홀드: 붕대 사용", 2 => "Q/우클릭: 찰칵이 사용", 3 => "G 홀드: 궤도 · 떼면 투척",
+                _ => player.SoundCanStage switch
+                {
+                    SoundCanStage.Empty => "G: 목소리 3초 녹음",
+                    SoundCanStage.Recording => $"녹음 {player.SoundCanRecordingProgress * 3f:F1}/3초 · G: 취소",
+                    SoundCanStage.Recorded => "G: 앞쪽 바닥에 설치", SoundCanStage.Placed => "G: 설치한 소리통 원격 재생",
+                    SoundCanStage.Placing => $"소리통 설치 {player.SoundCanRecordingProgress:P0} · G/Esc: 취소",
+                    SoundCanStage.Playing => "녹음된 목소리 재생 중", _ => "E: 소리통 줍기"
+                }
+            };
+            GUI.Label(new Rect(panel.x + 8, panel.y + 115, panel.width - 16, 20), usage,
+                TestHudSkin.Text(14, FontStyle.Normal, TextAnchor.MiddleCenter));
+            if (selectedSlot == 4 && interactor != null && !string.IsNullOrEmpty(interactor.SoundCanHint))
+                GUI.Label(new Rect(panel.x + 8, panel.y + 136, panel.width - 16, 20), interactor.SoundCanHint,
+                    TestHudSkin.Text(12, FontStyle.Normal, TextAnchor.MiddleCenter));
         }
 
         private static void DrawBandageSlot(Rect rect, int count, bool selected)

@@ -4,6 +4,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Marco.Core.WinCondition;
 using Marco.Network.Character;
+using Marco.Network.Round;
 using UnityEngine;
 
 namespace Marco.Network.Player
@@ -36,6 +37,9 @@ namespace Marco.Network.Player
         private readonly SyncVar<bool> crouching = new();
         private readonly SyncVar<bool> treatmentLocked = new();
         private readonly SyncVar<bool> needsTreatment = new();
+        private readonly SyncVar<bool> placingSoundCan = new();
+        private readonly SyncVar<Vector3> soundCanPlacementPoint = new();
+        private readonly SyncVar<float> soundCanPlacementProgress = new();
         // Lobby (ported from RoomSessionPrototype): nickname and whether this is the room's host.
         private readonly SyncVar<string> nickname = new();
         private readonly SyncVar<bool> roomHost = new();
@@ -50,6 +54,9 @@ namespace Marco.Network.Player
         public bool IsCrouching => crouching.Value;
         public bool IsTreatmentLocked => treatmentLocked.Value;
         public bool NeedsTreatment => needsTreatment.Value;
+        public bool IsPlacingSoundCan => placingSoundCan.Value;
+        public Vector3 SoundCanPlacementPoint => soundCanPlacementPoint.Value;
+        public float SoundCanPlacementProgress => soundCanPlacementProgress.Value;
         public bool IsEcho => status.Value == PlayerStatus.Tagged;
         public string Nickname => nickname.Value;
         public bool IsRoomHost => roomHost.Value;
@@ -57,6 +64,10 @@ namespace Marco.Network.Player
         public int HealthHalves { get; private set; } = -1;
         public int BandageCount { get; private set; }
         public int ClickerCount { get; private set; }
+        public int DecoyCount { get; private set; }
+        public SoundCanStage SoundCanStage { get; private set; }
+        public int SoundCanToken { get; private set; }
+        public float SoundCanRecordingProgress { get; private set; }
         public bool HasHealingAction { get; private set; }
         public bool HealingActionIsBandage { get; private set; }
         public float HealingActionProgress { get; private set; }
@@ -130,6 +141,14 @@ namespace Marco.Network.Player
         public void SetTreatmentLocked(bool value) => treatmentLocked.Value = value;
 
         [Server]
+        public void SetSoundCanPlacement(bool active, Vector3 point, float progress)
+        {
+            soundCanPlacementPoint.Value = point;
+            soundCanPlacementProgress.Value = Mathf.Clamp01(progress);
+            placingSoundCan.Value = active;
+        }
+
+        [Server]
         public void SetNeedsTreatment(bool value) => needsTreatment.Value = value;
 
         // Movement is client-authoritative, so the server asks the owning client to move itself.
@@ -144,6 +163,19 @@ namespace Marco.Network.Player
 
         [Server]
         public void SendClickerCount(int count) => ClickerCountTarget(Owner, count);
+
+        [Server]
+        public void SendDecoyCount(int count) => DecoyCountTarget(Owner, count);
+
+        [Server]
+        public void SendSoundCanState(SoundCanStage stage, int token, float progress) => SoundCanStateTarget(Owner, stage, token, progress);
+
+        [TargetRpc]
+        private void SoundCanStateTarget(NetworkConnection conn, SoundCanStage stage, int token, float progress)
+        { SoundCanStage = stage; SoundCanToken = token; SoundCanRecordingProgress = Mathf.Clamp01(progress); }
+
+        [TargetRpc]
+        private void DecoyCountTarget(NetworkConnection conn, int count) => DecoyCount = count;
 
         [Server]
         public void SendHealingProgress(bool active, bool isBandage, float progress) =>

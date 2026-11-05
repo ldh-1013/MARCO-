@@ -38,6 +38,7 @@ namespace Marco.Network.Player
         private bool serverWantsSprint;
         private bool lastReportedSprintIntent;
         private bool hasReportedSprintIntent;
+        private float placementLookDown;
 
         public bool IsSprinting { get; private set; }
         public bool IsCrouching => crouching;
@@ -146,12 +147,14 @@ namespace Marco.Network.Player
                 Cursor.lockState = CursorLockMode.Locked;
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
+            placementLookDown = Mathf.MoveTowards(placementLookDown,
+                player.IsPlacingSoundCan ? Mathf.Max(0f, SoundCanConfig.PlacementLookDown - pitch) : 0f, Time.deltaTime * 120f);
             if (locked)
             {
                 transform.Rotate(0, Input.GetAxis("Mouse X") * mouseSensitivity, 0);
                 pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 85);
-                if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(pitch, 0, 0);
             }
+            if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(Mathf.Clamp(pitch + placementLookDown, -70, 85), 0, 0);
 
             if (player.IsEcho)
             {
@@ -321,6 +324,6 @@ namespace Marco.Network.Player
         }
 
         [ServerRpc]
-        private void SetCrouchServer(bool value) => player.SetCrouching(value);
+        private void SetCrouchServer(bool value) { if (!player.IsPlacingSoundCan) player.SetCrouching(value); }
     }
 }

@@ -5,6 +5,7 @@ using Marco.Network.Character;
 using Marco.Network.Escape;
 using Marco.Network.Round;
 using Marco.Network.Valves;
+using Marco.Network.Vision;
 using UnityEngine;
 
 namespace Marco.Network.Player
@@ -14,7 +15,7 @@ namespace Marco.Network.Player
     // E: Runner pickup/treatment, exit, drain hatch or valve. G starts a bandage channel; Q/right-click uses Clicker.
     // Left click: swing (Seeker); the server decides the tag and all clients play the attack.
     [RequireComponent(typeof(NetworkPlayer))]
-    public sealed class PlayerInteractor : NetworkBehaviour
+    public sealed partial class PlayerInteractor : NetworkBehaviour
     {
         private NetworkPlayer player;
         private ValveId? workingValve;
@@ -22,6 +23,8 @@ namespace Marco.Network.Player
         private bool workingTreatment;
         private bool workingBandage;
         private int selectedItemSlot = 1;
+        private bool aimingDecoy;
+        private DecoyTrajectoryPreview decoyPreview;
         // Owner-side swing cooldown. It starts when the server's answer arrives, so it always ends
         // after the server's own cooldown and never sends a request the server would reject.
         private bool swingPending;
@@ -30,6 +33,7 @@ namespace Marco.Network.Player
         // Seeker only: seconds left on the swing cooldown, for the HUD.
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
         public int SelectedItemSlot => selectedItemSlot;
+        public bool IsAimingDecoy => aimingDecoy;
 
         public bool CanTreatNearbyRunner
         {
@@ -38,6 +42,8 @@ namespace Marco.Network.Player
                 var round = NetworkRound.Instance;
                 return IsOwner && player != null && player.Role == PlayerRole.Runner &&
                     player.Status == PlayerStatus.Alive && !player.HasHealingAction && round != null &&
+                    (player.SoundCanStage != SoundCanStage.None || !round.TryFindSoundCanPickup(transform.position, out _)) &&
+                    (player.DecoyCount > 0 || !round.TryFindDecoyPickup(transform.position, out _)) &&
                     (player.ClickerCount > 0 || !round.TryFindClickerPickup(transform.position, round.ClickerInteractRange, out _)) &&
                     (!round.HasBandageCapacity(player) || !round.TryFindBandagePickup(transform.position, round.InteractRange, out _)) &&
                     round.TryFindInjuredRunner(player, round.InteractRange, out _);
@@ -50,7 +56,7 @@ namespace Marco.Network.Player
         {
             if (!IsOwner) return;
             var round = NetworkRound.Instance;
-            if (round == null) return;
+            if (round == null) { aimingDecoy = false; return; }
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
             bool held = Input.GetKey(KeyCode.E) && locked;
@@ -60,6 +66,8 @@ namespace Marco.Network.Player
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1)) selectedItemSlot = 1;
                 else if (Input.GetKeyDown(KeyCode.Alpha2)) selectedItemSlot = 2;
+                else if (Input.GetKeyDown(KeyCode.Alpha3)) selectedItemSlot = 3;
+                else if (Input.GetKeyDown(KeyCode.Alpha4)) selectedItemSlot = 4;
             }
 
             if (workingBandage)
@@ -107,7 +115,7 @@ namespace Marco.Network.Player
                     workingTreatment = false;
                 }
             }
-            else if (Input.GetKeyDown(KeyCode.E) && held && player.Status == PlayerStatus.Alive)
+            else if (Input.GetKeyDown(KeyCode.E) && held && player.Status == PlayerStatus.Alive && !player.IsPlacingSoundCan)
             {
                 // Only on a fresh press: an opened valve drops its workers, and INTERFACES.md §4
                 // expects a new TryBeginWork (release and press again) to rework it.
@@ -116,10 +124,49 @@ namespace Marco.Network.Player
 
             if (locked && Input.GetMouseButtonDown(0) && player.Role == PlayerRole.Seeker) Swing(round);
             bool useClickerPressed = Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Q);
+            HandleDecoyThrow(round, locked, Input.GetKeyDown(KeyCode.G), Input.GetKeyUp(KeyCode.G));
+            TickSoundCanInput(round, locked);
             if (locked && useClickerPressed && !workingBandage && player.Role == PlayerRole.Runner &&
-                player.Status == PlayerStatus.Alive && player.ClickerCount > 0)
+                player.Status == PlayerStatus.Alive && player.ClickerCount > 0 && !player.IsPlacingSoundCan)
                 UseClickerServer();
         }
+
+        private bool CanAimDecoy(NetworkRound round, bool locked) => locked && selectedItemSlot == 3 &&
+            !workingBandage && !workingTreatment && workingValve == null && workingDrain == null &&
+            player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && player.DecoyCount > 0 &&
+            !player.HasHealingAction && !player.IsTreatmentLocked &&
+            round.Mode != RoundMode.NotStarted && round.Result == RoundResult.InProgress &&
+            !round.IsStartLocked(player.Role) && !GetComponent<PlayerMovement>().IsSwimming;
+
+        private void HandleDecoyThrow(NetworkRound round, bool locked, bool pressed, bool released)
+        {
+            // Losing eligibility cancels without consuming an item or sending a throw request.
+            if (!CanAimDecoy(round, locked)) { aimingDecoy = false; return; }
+            if (pressed) aimingDecoy = true;
+            if (!released || !aimingDecoy) return;
+            aimingDecoy = false;
+            var camera = GetComponentInChildren<Camera>();
+            if (camera != null) ThrowDecoyServer(camera.transform.forward);
+        }
+
+        private void LateUpdate()
+        {
+            if (!IsOwner || !aimingDecoy) return;
+            var round = NetworkRound.Instance;
+            if (round == null || !CanAimDecoy(round, Cursor.lockState == CursorLockMode.Locked))
+            { aimingDecoy = false; return; }
+            var camera = GetComponentInChildren<Camera>();
+            var rings = GetComponentInChildren<WalkingFootRings>();
+            if (camera == null || rings == null) return;
+            decoyPreview ??= new DecoyTrajectoryPreview();
+            decoyPreview.Draw(camera, DecoyBallistics.Origin(transform.position, player.IsCrouching),
+                camera.transform.forward, rings.RingShader);
+        }
+
+        private void OnApplicationFocus(bool focused) { if (!focused) { aimingDecoy = false; CancelSoundCanCapture(); } }
+        private void OnApplicationPause(bool paused) { if (paused) { aimingDecoy = false; CancelSoundCanCapture(); } }
+        private void OnDisable() { aimingDecoy = false; decoyPreview?.Dispose(); decoyPreview = null; CancelSoundCanCapture(); }
+        private void OnDestroy() { decoyPreview?.Dispose(); decoyPreview = null; StopSoundCanCapture(); }
 
         // Clicks during the cooldown (or while the last swing is unanswered) send nothing (기획서 3.1-2).
         private void Swing(NetworkRound round)
@@ -131,7 +178,17 @@ namespace Marco.Network.Player
 
         private void BeginInteraction(NetworkRound round, float range)
         {
-            if (player.Role == PlayerRole.Runner && player.ClickerCount == 0 &&
+            if (player.Role == PlayerRole.Runner && player.SoundCanStage == SoundCanStage.None &&
+                round.TryFindSoundCanPickup(transform.position, out int soundCanIndex))
+            {
+                PickupSoundCanServer(soundCanIndex);
+            }
+            else if (player.Role == PlayerRole.Runner && player.DecoyCount == 0 &&
+                round.TryFindDecoyPickup(transform.position, out int decoyIndex))
+            {
+                PickupDecoyServer(decoyIndex);
+            }
+            else if (player.Role == PlayerRole.Runner && player.ClickerCount == 0 &&
                 round.TryFindClickerPickup(transform.position, round.ClickerInteractRange, out int clickerIndex))
             {
                 PickupClickerServer(clickerIndex);
@@ -165,12 +222,16 @@ namespace Marco.Network.Player
 
         public override void OnStopClient()
         {
+            StopSoundCanCapture();
             base.OnStopClient();
             workingValve = null;
             workingDrain = null;
             workingTreatment = false;
             workingBandage = false;
             swingPending = false;
+            aimingDecoy = false;
+            decoyPreview?.Dispose();
+            decoyPreview = null;
         }
 
         private bool TryFindNearestValve(float range, out ValveId nearest)
@@ -227,6 +288,12 @@ namespace Marco.Network.Player
 
         [ServerRpc]
         private void UseClickerServer() => NetworkRound.Instance?.TryUseClicker(OwnerId);
+
+        [ServerRpc]
+        private void PickupDecoyServer(int index) => NetworkRound.Instance?.TryPickupDecoy(OwnerId, index);
+
+        [ServerRpc]
+        private void ThrowDecoyServer(Vector3 aim) => NetworkRound.Instance?.TryThrowDecoy(OwnerId, aim);
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public void RequestClickerFlashTest() => ClickerFlashTestServer();
