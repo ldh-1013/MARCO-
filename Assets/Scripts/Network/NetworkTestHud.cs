@@ -7,7 +7,8 @@ namespace Marco.Network
 {
     // Temporary IMGUI HUD for the test scenes once the round has started: round timer and gate
     // (top center), valves (left), players (right), result (center). Before that, LobbyMenu covers
-    // the screen. The host also gets restart here; RoundCheats (Tab, dev builds only) repeats it with the cheats.
+    // the screen. The host gets restart here in ValvesOnly mode; a decided round goes to the result
+    // screen's rematch vote. RoundCheats (Tab, dev builds only) keeps its own restart with the cheats.
     [RequireComponent(typeof(LanConnector))]
     public sealed class NetworkTestHud : MonoBehaviour
     {
@@ -18,6 +19,9 @@ namespace Marco.Network
         private static readonly Color MutedColor = new(0.6f, 0.6f, 0.6f);
         private static readonly Color OpenColor = new(0.3f, 0.85f, 0.4f);
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
+        // Result banner: winning side's color (기획서 12.5 — Runners cyan, Seeker red).
+        private static readonly Color RunnersWinColor = new(0.2f, 0.9f, 1f);
+        private static readonly Color SeekersWinColor = new(0.95f, 0.2f, 0.2f);
 
         private LanConnector connector;
 
@@ -76,8 +80,9 @@ namespace Marco.Network
         {
             const float width = 640, buttonHeight = 52;
             bool lastSurvivor = round.InLastSurvivorPhase;
-            // ValvesOnly never decides a result, so the host can restart it at any time.
-            bool hostButton = connector.IsHost && (round.Result != RoundResult.InProgress || round.Mode == RoundMode.ValvesOnly);
+            // ValvesOnly never decides a result, so the host can restart it at any time. A decided Full
+            // round restarts through the result screen's rematch vote instead (기획서 12.5).
+            bool hostButton = connector.IsHost && round.Mode == RoundMode.ValvesOnly;
             float height = (lastSurvivor ? 220 : 130) + (hostButton ? buttonHeight + 12 : 0);
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Margin, width, height);
             TestHudSkin.Panel(rect);
@@ -361,23 +366,54 @@ namespace Marco.Network
             return "";
         }
 
-        // Center (slightly high, clear of the cheat panel at the bottom): the decided result, large.
+        // Center: result screen (기획서 12.5) — banner, three award cards, rematch vote. It only reads
+        // NetworkRound's display values, so the real UI can replace it as is. The sound map time-lapse
+        // and clip saving are post-MVP and not drawn.
         private static void DrawResult(NetworkRound round)
         {
-            if (round.Result == RoundResult.InProgress) return;
+            if (!round.IsResultScreenShown) return;
 
-            const float width = 900, height = 220;
-            var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.4f - height / 2, width, height);
+            const float width = 1100, height = 560;
+            var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.45f - height / 2, width, height);
             TestHudSkin.Panel(rect);
-            var style = new GUIStyle(TestHudSkin.Text(110, FontStyle.Bold, TextAnchor.MiddleCenter));
-            style.normal.textColor = round.Result switch
+            var inner = Inset(rect);
+
+            var banner = new GUIStyle(TestHudSkin.Text(96, FontStyle.Bold, TextAnchor.MiddleCenter));
+            banner.normal.textColor = round.Result switch
             {
-                RoundResult.RunnersWin => RunnerColor,
-                RoundResult.SeekersWin => SeekerColor,
+                RoundResult.RunnersWin => RunnersWinColor,
+                RoundResult.SeekersWin => SeekersWinColor,
                 _ => MutedColor,
             };
-            GUI.Label(rect, ResultLabel(round.Result), style);
+            GUI.Label(new Rect(inner.x, inner.y, inner.width, 140), ResultLabel(round.Result), banner);
+
+            // Award logic (기획서 8.1~8.3) is not built yet: empty cards hold the places.
+            const float cardWidth = 300, cardHeight = 150, cardGap = 40;
+            float cardX = inner.x + (inner.width - (cardWidth * 3 + cardGap * 2)) / 2, cardY = inner.y + 170;
+            for (int i = 0; i < AwardTitles.Length; i++)
+            {
+                var card = new Rect(cardX + i * (cardWidth + cardGap), cardY, cardWidth, cardHeight);
+                TestHudSkin.Fill(card, new Color(1f, 1f, 1f, 0.08f));
+                GUI.Label(new Rect(card.x, card.y + 22, card.width, 40), AwardTitles[i], TestHudSkin.Text(28, FontStyle.Bold, TextAnchor.MiddleCenter));
+                GUI.Label(new Rect(card.x, card.y + 82, card.width, 44), "—", TestHudSkin.Text(32, FontStyle.Normal, TextAnchor.MiddleCenter));
+            }
+
+            // Rematch: "리매치? (yes/total)  N초  [찬성]".
+            float voteY = inner.yMax - 70;
+            int seconds = Mathf.Max(0, Mathf.CeilToInt(round.RematchRemainingSeconds));
+            GUI.Label(new Rect(inner.x + 110, voteY, 520, 60), $"리매치? ({round.RematchYesCount}/{round.RematchVoterCount})",
+                TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleRight));
+            GUI.Label(new Rect(inner.x + 650, voteY, 110, 60), $"{seconds}초", TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
+
+            bool previousEnabled = GUI.enabled;
+            GUI.enabled = round.CanRequestRematch;
+            var button = new GUIStyle(TestHudSkin.Button(30)) { alignment = TextAnchor.MiddleCenter };
+            if (GUI.Button(new Rect(inner.x + 780, voteY, 200, 60), round.HasRequestedRematch ? "찬성함" : "찬성", button))
+                round.RequestRematch();
+            GUI.enabled = previousEnabled;
         }
+
+        private static readonly string[] AwardTitles = { "최다 비명상", "무성 생존상", "최고의 거짓말상" };
 
         private static Rect Inset(Rect rect) => new(rect.x + TestHudSkin.Padding, rect.y + TestHudSkin.Padding,
             rect.width - TestHudSkin.Padding * 2, rect.height - TestHudSkin.Padding * 2);
@@ -405,8 +441,8 @@ namespace Marco.Network
 
         private static string ResultLabel(RoundResult result) => result switch
         {
-            RoundResult.RunnersWin => "도망자 승",
-            RoundResult.SeekersWin => "술래 승",
+            RoundResult.RunnersWin => "도망자 승리",
+            RoundResult.SeekersWin => "술래 승리",
             RoundResult.Void => "무효",
             _ => "진행 중",
         };

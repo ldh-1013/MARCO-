@@ -300,6 +300,7 @@ namespace Marco.Network.Round
             }
             if (!clientStarted) return;
             UpdateSuddenDeathDrone();
+            UpdateResultScreenClient();
             EnsureBandageViews();
             EnsureClickerViews();
             for (int i = 0; i < bandageViews.Count; i++)
@@ -344,6 +345,8 @@ namespace Marco.Network.Round
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             TimeManager.OnTick -= OnServerTick;
+            TimeManager.OnTick -= OnRematchTick;
+            rematchVote = null;
             ClearCore();
         }
 
@@ -430,7 +433,8 @@ namespace Marco.Network.Round
             }
         }
 
-        // Host's "다시 시작": throw the finished Core objects away and assemble a fresh round.
+        // Rematch vote passed (or the host's ValvesOnly "다시 시작"): throw the finished Core objects away
+        // and assemble a fresh round with roles drawn again.
         [Server]
         public void RestartRound()
         {
@@ -444,6 +448,7 @@ namespace Marco.Network.Round
             ResetAudioServer();
             CancelAllHealingActions();
             TimeManager.OnTick -= OnServerTick;
+            EndRematchVote();
             ClearCore();
             nextTagTimes.Clear();
             ResetLives();
@@ -564,7 +569,10 @@ namespace Marco.Network.Round
             if (round == null) return;
             remainingSeconds.Value = round.RemainingSeconds;
             SyncLastSurvivorPhase(round.LastSurvivorPhase);
-            if (round.Result != RoundResult.InProgress) TimeManager.OnTick -= OnServerTick;
+            if (round.Result == RoundResult.InProgress) return;
+            // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
+            TimeManager.OnTick -= OnServerTick;
+            BeginRematchVote();
         }
 
         private void SyncStartPhase()
