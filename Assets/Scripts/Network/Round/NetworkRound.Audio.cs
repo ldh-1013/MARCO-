@@ -225,7 +225,8 @@ namespace Marco.Network.Round
             EmitSound("Hurt", origin, 22f, 1f, 1.5f, sourceId: player.PlayerId);
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
-                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out _))
+                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
+                    !(RippleServerFeatures.DrowningOcclusion && blocked))
                     DrowningPulseTarget(listener.Owner, point, player.PlayerId);
         }
 
