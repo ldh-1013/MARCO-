@@ -249,6 +249,8 @@ namespace Marco.Network.Round
             if (IsStartLocked(player.Role) || soundWorld.WaterState(player, out _) == 2 ||
                 (player.Role == PlayerRole.Runner && valves != null && valves.IsWorking(player.PlayerId)))
                 return;
+            // S11: a player the server holds in place (treatment lock) is not camping — the timer stops.
+            if (RippleServerFeatures.BreathPauseWhenLocked && player.IsTreatmentLocked) return;
             motion.BreathMoved += distance;
             motion.BreathResetMoved += distance;
             if ((motion.BreathMoved >= 3f && motion.NextBreath == 0f) || motion.BreathResetMoved >= 5f)
