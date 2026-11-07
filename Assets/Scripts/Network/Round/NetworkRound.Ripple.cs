@@ -58,6 +58,37 @@ namespace Marco.Network.Round
             });
         }
 
+        // S7: while the active drain hatch is being worked it pulses like an underwater valve, 12m every
+        // 2.5s (§6.5-3 · §6.1); the water surface halves it for listeners above (SoundWorld).
+        private float nextDrainPulse;
+        private void TickDrainWorkPulse()
+        {
+            if (!RippleServerFeatures.DrainWorkPulse) return;
+            RippleSafe("DrainWorkTick", () =>
+            {
+                var phase = round?.LastSurvivorPhase;
+                if (phase == null || !(phase.ActiveDrainHatchId is DrainHatchId id) || phase.GetDrainHatch(id).WorkerCount == 0)
+                {
+                    nextDrainPulse = 0;
+                    return;
+                }
+                if (Time.time < nextDrainPulse) return;
+                nextDrainPulse = Time.time + PulseSpec.DrainWorkPeriod;
+                EmitDrainWorkPulse(id);
+            });
+        }
+
+        private void EmitDrainWorkPulse(DrainHatchId id)
+        {
+            if (!RippleServerFeatures.DrainWorkPulse) return;
+            RippleSafe("DrainWorkPulse", () =>
+            {
+                if (DrainHatchView.TryGet(id, out var hatch) && hatch != null)
+                    EmitSound("DrainWork", hatch.transform.position, PulseSpec.DrainWork, 0f, PulseSpec.DrainWorkPeriod,
+                        underwater: true, playAudio: false, forcePulse: true);
+            });
+        }
+
         // ITEMS
     }
 }

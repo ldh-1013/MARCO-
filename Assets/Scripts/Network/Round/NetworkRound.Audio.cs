@@ -124,6 +124,7 @@ namespace Marco.Network.Round
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
                     channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId);
             }
+            TickDrainWorkPulse();
         }
 
         private void TickMovementRings()
