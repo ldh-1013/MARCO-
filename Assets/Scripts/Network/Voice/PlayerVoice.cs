@@ -4,6 +4,7 @@ using FishNet.Object;
 using FishNet.Transporting;
 using Marco.Core.WinCondition;
 using Marco.Network.Player;
+using Marco.Network.Round;
 using Marco.Network.Vision;
 using UnityEngine;
 
@@ -17,7 +18,7 @@ namespace Marco.Network.Voice
     public sealed class PlayerVoice : NetworkBehaviour
     {
         private const int AudioQueueCapacity = VoiceCodec.SampleRate; // 1 s
-        private const int AudioPrebufferSamples = VoiceCodec.SampleRate / 25; // 40 ms absorbs packet jitter.
+        private const int AudioPrebufferSamples = VoiceCodec.SampleRate / 10; // 100 ms absorbs transport and frame scheduling jitter.
 
         [SerializeField] private VoiceRouting routing = new();
         // Mouth height above the player pivot.
@@ -33,6 +34,23 @@ namespace Marco.Network.Voice
         private MicrophoneVisionController microphone;
         private AudioSource voiceSource;
         private AudioClip voiceClip;
+        private AudioLowPassFilter voiceFilter;
+        private float nextLocalPulse, nextServerPulse;
+        private VoiceGrade lastLocalPulse, lastServerPulse;
+
+        private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
+        {
+            VoiceGrade.Whisper => (4f, .6f),
+            VoiceGrade.Talk => (9f, 1.2f),
+            _ => (22f, 2.5f)
+        };
+
+        private Vector3 VoiceOrigin()
+        {
+            Vector3 origin = transform.position + Vector3.up * mouthHeight;
+            if (TryGetComponent<PlayerMovement>(out var movement)) origin.y = movement.WaterEyeHeight;
+            return origin;
+        }
 
         private void Awake() => player = GetComponent<NetworkPlayer>();
 
@@ -62,29 +80,68 @@ namespace Marco.Network.Voice
         private void OnVoiceSamplesReady(float[] samples, VoiceGrade grade)
         {
             var packet = VoiceCodec.Encode(samples);
-            if (packet != null) SendVoiceServer(packet, grade, Channel.Unreliable);
+            if (packet == null) return;
+            var round = NetworkRound.Instance;
+            if (round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
+                (Time.time >= nextLocalPulse || grade > lastLocalPulse))
+            {
+                var (radius, duration) = PulseSpec(grade);
+                nextLocalPulse = Time.time + duration;
+                lastLocalPulse = grade;
+                round.ShowSoundPulse(VoiceOrigin(), radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
+            }
+            SendVoiceServer(packet, grade, Channel.Reliable);
         }
 
-        // Unreliable: a late voice frame is worse than a lost one.
         [ServerRpc]
-        private void SendVoiceServer(byte[] packet, VoiceGrade grade, Channel channel = Channel.Unreliable)
+        private void SendVoiceServer(byte[] packet, VoiceGrade grade, Channel channel = Channel.Reliable)
         {
             if (packet == null || packet.Length != VoiceCodec.SamplesPerPacket) return;
+            if ((byte)grade > (byte)VoiceGrade.Shout) return;
+            var round = NetworkRound.Instance;
+            bool inGameVoice = round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game;
+            var (baseRadius, duration) = PulseSpec(grade);
+            Vector3 origin = VoiceOrigin();
+            bool pulse = inGameVoice && (Time.time >= nextServerPulse || grade > lastServerPulse);
+            if (pulse) { nextServerPulse = Time.time + duration; lastServerPulse = grade; }
             foreach (var listener in NetworkPlayer.All)
             {
-                if (listener == player || !routing.TryGetHearing(player, listener, grade, out float radius)) continue;
-                PlayVoiceTarget(listener.Owner, packet, radius, Channel.Unreliable);
+                if (listener == player) continue;
+                if (inGameVoice)
+                {
+                    if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.IsEcho) continue;
+                    if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
+                        out bool blocked, out float radius)) continue;
+                    float life = listener.IsEcho ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    if (pulse && !blocked) VoicePulseTarget(listener.Owner, point, radius, life);
+                    if (!listener.IsEcho) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
+                }
+                else if (routing.TryGetHearing(player, listener, grade, out float radius))
+                    PlayVoiceTarget(listener.Owner, packet, radius, origin, 1f, false, false, Channel.Reliable);
             }
         }
 
         [TargetRpc]
-        private void PlayVoiceTarget(NetworkConnection conn, byte[] packet, float radius, Channel channel = Channel.Unreliable)
+        private void VoicePulseTarget(NetworkConnection conn, Vector3 point, float radius, float duration)
+        {
+            NetworkRound.Instance?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
+            NetworkRound.Instance?.NotifyOtherSound();
+        }
+
+        [TargetRpc]
+        private void PlayVoiceTarget(NetworkConnection conn, byte[] packet, float radius, Vector3 point,
+            float gain, bool blocked, bool serverGain, Channel channel = Channel.Reliable)
         {
             if (IsOwner || packet == null) return;
+            NetworkRound.Instance?.NotifyOtherSound();
             EnsureVoiceSource();
             // Proximity voice fades out over the radius the server allowed; channel-wide voice is flat.
             voiceSource.spatialBlend = radius > 0 ? 1f : 0f;
             if (radius > 0) voiceSource.maxDistance = radius;
+            voiceSource.transform.position = point;
+            voiceSource.volume = gain;
+            voiceSource.rolloffMode = serverGain ? AudioRolloffMode.Custom : AudioRolloffMode.Linear;
+            voiceFilter.enabled = blocked;
 
             lock (audioQueueLock)
             {
@@ -116,6 +173,10 @@ namespace Marco.Network.Voice
             voiceSource.dopplerLevel = 0f;
             voiceSource.rolloffMode = AudioRolloffMode.Linear;
             voiceSource.minDistance = 0.25f;
+            voiceSource.SetCustomCurve(AudioSourceCurveType.CustomRolloff, AnimationCurve.Constant(0f, 1f, 1f));
+            voiceFilter = audioObject.AddComponent<AudioLowPassFilter>();
+            voiceFilter.cutoffFrequency = 1000f;
+            voiceFilter.enabled = false;
             voiceClip = AudioClip.Create("Voice Stream", VoiceCodec.SampleRate, 1, VoiceCodec.SampleRate, true, ReadVoiceAudio);
             voiceSource.clip = voiceClip;
             voiceSource.Play();
@@ -141,7 +202,6 @@ namespace Marco.Network.Voice
                     if (audioBufferedSamples == 0)
                     {
                         output[i] = 0f;
-                        audioPlaybackStarted = false;
                     }
                     else
                     {

@@ -12,10 +12,10 @@ namespace Marco.Network.Character
     // Pitch comes from the camera pivot; remote pivots are not synced, so they look level.
     [DefaultExecutionOrder(50)]
     [RequireComponent(typeof(CharacterBody))]
-    public sealed class CharacterMotion : MonoBehaviour
+    public sealed partial class CharacterMotion : MonoBehaviour
     {
         // The Runner's sprint speed blends the run clip in above this threshold.
-        [SerializeField] private float runSpeed = 6f;
+        [SerializeField] private float runSpeed = 5f;
 
         private CharacterBody body;
         private CharacterAsset asset;
@@ -28,32 +28,35 @@ namespace Marco.Network.Character
         private readonly Dictionary<Transform, Quaternion> unmodifiedRotations = new();
         private readonly Dictionary<Transform, Vector3> unmodifiedPositions = new();
         private Vector3 previousPosition;
-        private float clock, walkClock, walkWeight, runWeight, crouchWeight, treatmentPoseWeight;
+        private float clock, walkWeight, runWeight, crouchWeight, treatmentPoseWeight;
+        private double gaitCycles;
         private float attackStart, attackDuration, attackSourceDuration, interactionStart, interactionDuration;
         private bool attacking, interacting;
+        private float swimWeight, swimClock, swimTravel;
+        private PlayerMovement movement;
 
         public float LookPitch { get; private set; }
         public float Speed { get; private set; }
         public bool IsAttacking => attacking;
         // Two alternating footfalls per visible locomotion cycle; audio reads this same clock.
         public bool HasFootstepCycle => graph.IsValid() && asset != null && sources[1] != null;
-        public bool FootstepRunning => runWeight > 0.5f;
-        public int FootstepIndex
-        {
-            get
-            {
-                if (!HasFootstepCycle) return 0;
-                float period = FootstepRunning ? Mathf.Max(.01f, sources[2].length) :
-                    Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
-                float rate = FootstepRunning && asset.runClip == null ? 1.6f : 1f;
-                return Mathf.FloorToInt(walkClock * rate / period * 2f);
-            }
-        }
+        // Movement is sampled from replicated positions; leave a small tolerance so 5.0 m/s
+        // walking noise never crosses into the sprint sound tier.
+        public bool FootstepRunning => Speed > runSpeed + 0.05f;
+        private float WalkPeriod => Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
+        private float RunPeriod => asset.runClip != null ? Mathf.Max(.01f,sources[2].length) : WalkPeriod;
+        // Scale visible strides with actual movement, including slow stairs/crouching.
+        private float GaitPlaybackRate => Mathf.Clamp(Speed /
+            (FootstepRunning && asset.runClip != null ? runSpeed * 1.5f : runSpeed), .15f, 1.6f);
+        public float GaitPhase => (float)(gaitCycles - System.Math.Floor(gaitCycles));
+        // One monotonic phase drives both visible feet and sound. Changing gait cannot jump indices.
+        public int FootstepIndex => HasFootstepCycle ? (int)System.Math.Floor(gaitCycles * 2d) : 0;
 
         private void Awake()
         {
             body = GetComponent<CharacterBody>();
             player = GetComponent<NetworkPlayer>();
+            movement = GetComponent<PlayerMovement>();
             view = GetComponentInChildren<Camera>(true).transform;
             body.Rebuilt += BuildGraph;
         }
@@ -63,6 +66,8 @@ namespace Marco.Network.Character
             if (graph.IsValid()) graph.Destroy();
             unmodifiedRotations.Clear(); unmodifiedPositions.Clear();
             attacking = interacting = false;
+            gaitCycles = 0;
+            swimWeight = swimTravel = 0f;
             treatmentPoseWeight = 0f;
             asset = body.Definition;
             var animator = body.BodyAnimator;
@@ -113,25 +118,39 @@ namespace Marco.Network.Character
 
         private void LateUpdate()
         {
-            if (!graph.IsValid() || !body.BodyRoot.gameObject.activeInHierarchy) return;
+            if (!graph.IsValid() || body.BodyRoot == null || !body.BodyRoot.gameObject.activeInHierarchy)
+            {
+                if (placementProp != null) placementProp.SetActive(false);
+                placementWeight = 0;
+                return;
+            }
+            // Swimming rotates the entire model around the head. Restore the model anchor
+            // before sampling the next frame so the lean never accumulates.
+            body.BodyRoot.localPosition = asset.modelOffset;
+            body.BodyRoot.localRotation = Quaternion.identity;
             // Remove last frame's additive pose even when an imported clip omits a bone track.
             foreach (var pair in unmodifiedRotations) if (pair.Key != null) pair.Key.localRotation = pair.Value;
             foreach (var pair in unmodifiedPositions) if (pair.Key != null) pair.Key.localPosition = pair.Value;
             unmodifiedRotations.Clear(); unmodifiedPositions.Clear();
 
             float dt = Time.deltaTime;
+            swimWeight = Mathf.MoveTowards(swimWeight, movement != null && movement.IsSwimming ? 1f : 0f, dt * 4f);
+            swimClock += dt;
             crouchWeight = Mathf.MoveTowards(crouchWeight, player != null && player.IsCrouching ? 1f : 0f, dt * 8f);
             treatmentPoseWeight = Mathf.MoveTowards(treatmentPoseWeight, interacting ? 1f : 0f, dt * 7f);
             Speed = Vector3.ProjectOnPlane(transform.position - previousPosition, Vector3.up).magnitude / Mathf.Max(dt, 0.0001f);
+            swimTravel = Mathf.MoveTowards(swimTravel, Mathf.Clamp01(Speed / 2f), dt * 3f);
             previousPosition = transform.position;
             LookPitch = Mathf.Clamp(Mathf.DeltaAngle(0, (Quaternion.Inverse(transform.rotation) * view.rotation).eulerAngles.x), -70, 85);
             bool moving = Speed > 0.05f;
-            walkWeight = Mathf.MoveTowards(walkWeight, moving ? 1 : 0, dt * 10);
-            runWeight = Mathf.MoveTowards(runWeight, moving && Speed > runSpeed ? 1 : 0, dt * 8);
-            clock += dt; if (moving) walkClock += dt;
+            walkWeight = Mathf.MoveTowards(walkWeight, moving && swimWeight < .01f ? 1 : 0, dt * 10);
+            runWeight = Mathf.MoveTowards(runWeight, moving && FootstepRunning ? 1 : 0, dt * 8);
+            clock += dt;
+            if (moving) gaitCycles += dt * GaitPlaybackRate / (FootstepRunning ? RunPeriod : WalkPeriod);
             clips[0].SetTime(Mathf.Repeat(clock, Mathf.Max(.01f, sources[0].length)));
-            clips[1].SetTime(Mathf.Repeat(walkClock, Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length))));
-            clips[2].SetTime(Mathf.Repeat(walkClock * (asset.runClip == null ? 1.6f : 1), Mathf.Max(.01f, sources[2].length)));
+            // The fallback run reuses the same complete walk window, not the entire multi-cycle FBX.
+            clips[1].SetTime(GaitPhase * WalkPeriod);
+            clips[2].SetTime(GaitPhase * RunPeriod);
 
             float elapsed = Time.time - attackStart;
             if (attacking && elapsed >= attackDuration) attacking = false;
@@ -166,7 +185,136 @@ namespace Marco.Network.Character
             }
             else if (attacking && sources[3] == null)
                 RaiseArm(HumanBodyBones.RightUpperArm, HumanBodyBones.RightHand, Mathf.Sin(elapsed / attackDuration * Mathf.PI));
-            ApplyTreatmentPose(treatmentPoseWeight);
+            ApplyTreatmentPose(treatmentPoseWeight * (1f - swimWeight));
+            ApplySwimmingPose();
+            ApplySoundCanPlacementPose();
+        }
+
+        // Original procedural strokes: upright sculling at rest, alternating crawl on the
+        // surface, symmetric pull/glide underwater. World-space axes support both rig types.
+        private void ApplySwimmingPose()
+        {
+            if (swimWeight < .001f) return;
+            float travel = swimTravel;
+            bool diving = movement != null && movement.IsDiving;
+            float phase = swimClock * Mathf.PI * 2f / (diving ? 1.6f : 1.25f);
+            var head = body.ResolveBone(HumanBodyBones.Head);
+            var root = body.BodyRoot;
+            if (root != null)
+            {
+                Quaternion lean = Quaternion.AngleAxis((diving ? 72f : Mathf.Lerp(8f, 55f, travel)) * swimWeight, transform.right);
+                Vector3 anchor = head != null ? head.position : root.position + Vector3.up;
+                root.rotation = lean * root.rotation;
+                root.position = anchor + lean * (root.position - anchor);
+                if (head != null)
+                    root.position += Vector3.up * ((transform.position.y + .23f - head.position.y) * swimWeight);
+            }
+            if (player != null && player.Role == Marco.Core.WinCondition.PlayerRole.Seeker)
+            {
+                ApplySeekerSwimmingPose(travel, phase);
+                return;
+            }
+            ApplyRunnerSwimmingPose(travel, phase, diving);
+            Tilt(head, -10f * travel * swimWeight);
+        }
+
+        private void ApplyRunnerSwimmingPose(float travel, float phase, bool diving)
+        {
+            // Aim real bone segments in the tilted body's frame. Rotating around the un-tilted
+            // player's forward axis twisted the humanoid elbows/knees across the torso.
+            var root = body.BodyRoot;
+            Vector3 up = root.up, front = root.forward, right = root.right;
+            for (int side = 0; side < 2; side++)
+            {
+                bool left = side == 0;
+                float sign = left ? -1f : 1f;
+                float cycle = phase + (left || diving ? 0 : Mathf.PI);
+                float reach = .5f + .5f * Mathf.Cos(cycle);
+                Vector3 relaxedUpper = -up * .25f + front * .4f + right * (sign * .65f);
+                Vector3 relaxedLower = front * .6f - up * .2f + right * (sign * .15f);
+                Vector3 strokeUpper = Vector3.Lerp(-up * .6f + front * .6f + right * (sign * .35f),
+                    up * .9f + front * .25f + right * (sign * .2f), reach);
+                Vector3 strokeLower = Vector3.Lerp(-up * .55f + front * .2f + right * (sign * .1f),
+                    up * .65f + front * .3f - right * (sign * .05f), reach);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm,
+                    left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm,
+                    left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand,
+                    Vector3.Lerp(relaxedUpper, strokeUpper, travel), Vector3.Lerp(relaxedLower, strokeLower, travel));
+
+                float kick = Mathf.Sin(phase * 2f + side * Mathf.PI);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg,
+                    left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg,
+                    left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot,
+                    -up + front * (.1f + .08f * kick * travel) + right * (sign * .12f),
+                    -up - front * (.25f + .12f * kick * travel) + right * (sign * .08f));
+            }
+        }
+
+        private void ApplySeekerSwimmingPose(float travel, float phase)
+        {
+            // Use the tilted body's axes, with directions derived from actual joints rather
+            // than adding rotations to the imported idle pose's arbitrary bone axes.
+            var root = body.BodyRoot;
+            Vector3 up = root.up, front = root.forward, right = root.right;
+            for (int side = 0; side < 2; side++)
+            {
+                bool left = side == 0;
+                float sign = left ? -1f : 1f;
+                float cycle = phase + side * Mathf.PI;
+                float reach = Mathf.Cos(cycle);
+                Vector3 upperArm = Vector3.Lerp(-up * .25f + front * .5f + right * (sign * .55f),
+                    up * (.15f + .75f * reach) + front * .55f + right * (sign * .25f), travel);
+                Vector3 forearm = Vector3.Lerp(front * .7f - up * .15f + right * (sign * (.25f + .1f * reach)),
+                    up * (.35f + .55f * reach) + front * .35f - right * (sign * .12f), travel);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm,
+                    left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm,
+                    left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand, upperArm, forearm);
+
+                float kick = Mathf.Sin(phase * 2f + side * Mathf.PI);
+                PoseSwimmingLimb(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg,
+                    left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg,
+                    left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot,
+                    -up + front * (.12f + .16f * kick) + right * (sign * .12f),
+                    -up - front * (.3f + .12f * kick) + right * (sign * .08f));
+            }
+            Tilt(body.ResolveBone(HumanBodyBones.Head), -15f * travel * swimWeight);
+        }
+
+        private void PoseSwimmingLimb(HumanBodyBones upperId, HumanBodyBones lowerId,
+            HumanBodyBones endId, Vector3 upperDirection, Vector3 lowerDirection)
+        {
+            var upper = body.ResolveBone(upperId);
+            var lower = body.ResolveBone(lowerId);
+            var end = body.ResolveBone(endId);
+            if (upper == null || lower == null || end == null || !lower.IsChildOf(upper)) return;
+
+            // Demon.fbx: Hand.L/R and Foot.L/R are siblings of Pelvis under Demon,
+            // not children of Arm2/Leg2. Preserve their animated attachment to the lower
+            // segment explicitly so the skinned wrist/ankle cannot stay behind.
+            bool detached = !end.IsChildOf(lower);
+            Vector3 endpoint = lower.InverseTransformPoint(end.position);
+            Quaternion endRotation = Quaternion.Inverse(lower.rotation) * end.rotation;
+            Remember(upper); Remember(lower);
+            if (detached) Remember(end);
+            AimSwimmingSegment(upper, lower.position - upper.position, upperDirection);
+            if (detached)
+            {
+                end.position = lower.TransformPoint(endpoint);
+                end.rotation = lower.rotation * endRotation;
+            }
+            AimSwimmingSegment(lower, end.position - lower.position, lowerDirection);
+            if (detached)
+            {
+                end.position = lower.TransformPoint(endpoint);
+                end.rotation = lower.rotation * endRotation;
+            }
+        }
+
+        private void AimSwimmingSegment(Transform bone, Vector3 current, Vector3 desired)
+        {
+            if (current.sqrMagnitude < .000001f || desired.sqrMagnitude < .000001f) return;
+            Quaternion turn = Quaternion.FromToRotation(current, desired);
+            bone.rotation = Quaternion.Slerp(Quaternion.identity, turn, swimWeight) * bone.rotation;
         }
 
         private void Remember(Transform bone)
@@ -246,6 +394,7 @@ namespace Marco.Network.Character
 
         private void OnDestroy()
         {
+            ClearPlacementProp();
             body.Rebuilt -= BuildGraph;
             if (graph.IsValid()) graph.Destroy();
         }

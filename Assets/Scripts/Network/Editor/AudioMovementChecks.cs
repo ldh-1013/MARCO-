@@ -74,30 +74,40 @@ namespace Marco.Network.Editor
                 if (phase == 6) { walkingSpeed = 7.2f; StartWalk(player, new Vector3(56, 1.1f, 33)); phase++; return; }
                 if (phase == 8)
                 {
-                    // Verify the existing random activation rule, then test D in an active round.
-                    int tries = 0;
-                    while (!((ValveBoard)typeof(NetworkRound).GetField("board", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(round)).Valves.ContainsKey(ValveId.D) && tries++ < 50) round.RestartRound();
+                    var board = (ValveBoard)typeof(NetworkRound).GetField("board",
+                        BindingFlags.NonPublic | BindingFlags.Instance).GetValue(round);
+                    checkedValve = board.Valves.ContainsKey(ValveId.D) ? ValveId.D :
+                        board.Valves.ContainsKey(ValveId.A) ? ValveId.A : ValveId.C;
                     if (player.Role == PlayerRole.Seeker) Call(round, "CheatToggleHostRole");
-                    if (!ValveView.TryGet(ValveId.D, out var valve)) throw new Exception("D not found");
+                    if (!ValveView.TryGet(checkedValve, out var valve)) throw new Exception("Active dry valve not found");
                     player.GetComponent<PlayerMovement>().Teleport(valve.transform.position + new Vector3(-1.2f, .1f, 0));
                     Physics.SyncTransforms();
-                    Debug.Log($"[AudioMovement] D position={valve.transform.position}, player={player.transform.position}, role={player.Role}, inRange={valve.IsInRange(player.transform.position, round.InteractRange)}");
+                    Debug.Log($"[AudioMovement] {checkedValve} position={valve.transform.position}, player={player.transform.position}, role={player.Role}, inRange={valve.IsInRange(player.transform.position, round.InteractRange)}");
                     Call(player.GetComponent<PlayerInteractor>(), "BeginInteraction", round, round.InteractRange);
                     until = now + 1.2; phase++; return;
                 }
                 if (phase == 9 && now >= until)
                 {
-                    round.TryGetValveState(ValveId.D, out var state);
-                    Debug.Log($"[AudioMovement] D after role switch + interaction: status={state.Status} progress={state.Progress}");
-                    if (state.Progress < .02f) failures.Add("Active D interaction failed");
-                    round.EndWork(player.PlayerId, ValveId.D);
+                    round.TryGetValveState(checkedValve, out var state);
+                    Debug.Log($"[AudioMovement] {checkedValve} after role switch + interaction: status={state.Status} progress={state.Progress}");
+                    if (state.Progress < .02f) failures.Add("Active dry valve interaction failed");
+                    bool sound = false, pulse = false;
+                    foreach (var source in round.GetComponentsInChildren<AudioSource>())
+                        if (source.name == "SFX Valve" && source.loop && source.volume > 0f) sound = true;
+                    foreach (var filter in UnityEngine.Object.FindObjectsByType<MeshFilter>())
+                        if (filter.name == "Sound Pulse" && Vector3.Distance(filter.transform.position,
+                            ValveView.TryGet(checkedValve, out var valve) ? valve.transform.position : Vector3.positiveInfinity) < .1f)
+                            pulse = true;
+                    if (!sound || !pulse) failures.Add($"Valve {checkedValve} sound={sound}, pulse={pulse}");
+                    round.EndWork(player.PlayerId, checkedValve);
                     if (failures.Count > 0) throw new Exception(string.Join("; ", failures));
-                    Debug.Log("[AudioMovement] PASS: actual tile/concrete movement and active D interaction after Seeker->Runner switch.");
+                    Debug.Log("[AudioMovement] PASS: actual tile/concrete movement and active dry valve interaction, looping sound and expanding pulse after Seeker->Runner switch.");
                     Finish(0);
                 }
             }
             catch (Exception ex) { Debug.LogException(ex); Finish(1); }
         }
+        private static ValveId checkedValve;
         static void StartWalk(NetworkPlayer player, Vector3 point)
         {
             var movement = player.GetComponent<PlayerMovement>(); movement.Teleport(point); movement.enabled = false;

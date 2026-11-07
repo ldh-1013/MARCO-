@@ -13,7 +13,7 @@ namespace Marco.Network.Editor
             EditorSceneManager.OpenScene("Assets/Scenes/Maps/IndoorPool_v1_2.unity", OpenSceneMode.Single);
             var type = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld", true);
             var world = Activator.CreateInstance(type);
-            int tile = 0, concrete = 0, stairs = 0;
+            var counts = new System.Collections.Generic.Dictionary<string, int>();
             foreach (var collider in UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsInactive.Include))
                 foreach (var part in collider.GetComponentsInParent<MonoBehaviour>(true))
                 {
@@ -23,23 +23,45 @@ namespace Marco.Network.Editor
                     string zone = (string)partType.GetField("zone").GetValue(part);
                     if (category != "Floor" && category != "Stair" && !(category == "Obstacle" && zone == "ST")) break;
                     string surface = (string)type.GetMethod("Surface").Invoke(world, new object[] { collider, collider.bounds.center });
-                    bool metal = category == "Stair" || zone == "SC" || zone == "ST2" || zone == "L2";
-                    bool soft = zone == "LOB" || zone == "OF1" || zone == "ML" || zone == "WL" || zone == "CL" || zone == "ST";
-                    if (metal && surface != "Concrete" || soft && surface != "Tile" || string.IsNullOrEmpty(surface))
-                        throw new Exception($"Unmapped floor {part.name}: {category}/{zone} -> {surface}");
-                    if (surface == "Tile") tile++; else concrete++;
-                    if (category == "Stair") stairs++;
+                    string expected = category == "Stair" ? "MetalStairs" : zone switch
+                    {
+                        "SC" or "ST2" or "L2" => "Metal",
+                        "ML" or "WL" => "Mat",
+                        "LOB" or "OF1" or "CL" or "ST" => "Carpet",
+                        "AID" => collider.bounds.center.z >= 24f ? "Carpet" : "Tile",
+                        "SZ" => collider.bounds.center.z >= 18f ? "Concrete" : "Carpet",
+                        _ => surface
+                    };
+                    if (surface != expected || string.IsNullOrEmpty(surface))
+                        throw new Exception($"Unmapped floor {part.name}: {category}/{zone} -> {surface}, expected {expected}");
+                    counts.TryGetValue(surface, out int total);
+                    counts[surface] = total + 1;
                     break;
                 }
-            if (tile == 0 || concrete == 0 || stairs == 0) throw new Exception("Floor coverage incomplete");
+            foreach (var material in new[] { "Tile", "Concrete", "Carpet", "Mat", "Metal", "MetalStairs" })
+                if (!counts.ContainsKey(material)) throw new Exception("No floor mapped to " + material);
             string[] names = { "Concrete_0", "Concrete_1", "Concrete_2", "Concrete_3", "Tile_0", "Tile_1", "Tile_2",
-                "Moan_0", "Moan_1", "Hurt", "Treat", "Valve", "Bandage", "Reflow", "EndDrone", "Heartbeat", "SeekerDrone", "SurfaceSwim" };
+                "Moan_0", "Moan_1", "Hurt", "Treat", "Valve", "Bandage", "Reflow", "EndDrone", "Heartbeat", "SeekerDrone", "SurfaceSwim",
+                "Carpet", "Mat", "Metal", "MetalStairs", "Breath_Seeker", "Breath_Runner", "ValveJam",
+                "ValveOpened", "DiveAmbience", "ValveUnderwater" };
             foreach (var name in names)
             {
                 var clip = Resources.Load<AudioClip>("MarcoSound/" + name);
                 if (clip == null || clip.length < .1f) throw new Exception("Missing clip " + name);
             }
-            Debug.Log($"[AudioFloorAudit] PASS: {tile} tile/substitute, {concrete} concrete/substitute colliders including {stairs} stair colliders; 18 clips loaded. No scene saved.");
+            foreach (var name in new[] { "Carpet", "Mat", "Metal", "MetalStairs", "Breath_Seeker", "Breath_Runner" })
+            {
+                var original = Resources.Load<AudioClip>("MarcoSound/" + name);
+                var loopType = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.LoopClip", true);
+                float duration = name.StartsWith("Breath_") ? .6f : .34f;
+                var cue = (AudioClip)loopType.GetMethod("TrimCue").Invoke(null, new object[] { original, duration });
+                if (cue == original || Mathf.Abs(cue.length - duration) > .01f)
+                    throw new Exception("Cue trim failed for " + name);
+                UnityEngine.Object.DestroyImmediate(cue);
+            }
+            foreach (var pair in counts) Debug.Log($"[AudioFloorAudit] {pair.Key}: {pair.Value} colliders");
+            Debug.Log($"[AudioFloorAudit] PASS: 6 floor types, {names.Length} resources and 6 trimmed cues.");
+            EditorSceneManager.OpenScene("Assets/Scenes/Network/NetworkPool_v1_2.unity", OpenSceneMode.Single);
         }
     }
 }

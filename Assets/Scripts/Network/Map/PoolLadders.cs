@@ -33,6 +33,7 @@ namespace Marco.Network.Map
         {
             nearTop = null;
             if (!TryGetLocalPlayer(out var player)) return;
+            if (player.GetComponent<PlayerMovement>() != null) return; // Replaced by Space edge climb.
 
             var position = player.transform.position;
             foreach (var (bottom, top) in ladders)

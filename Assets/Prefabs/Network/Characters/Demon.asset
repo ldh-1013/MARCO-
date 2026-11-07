@@ -24,6 +24,10 @@ MonoBehaviour:
     name: Leg1.L
   - bone: 2
     name: Leg1.R
+  - bone: 3
+    name: Leg2.L
+  - bone: 4
+    name: Leg2.R
   - bone: 5
     name: Foot.L
   - bone: 6

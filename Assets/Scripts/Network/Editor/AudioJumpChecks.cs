@@ -14,7 +14,8 @@ namespace Marco.Network.Editor
         const string Pending="Marco.AudioJumpChecks";
         static int phase, trial; static double deadline, until;
         static float previous, vertical;
-        static readonly HashSet<AudioSource> jumps=new(), lands=new();
+        static readonly HashSet<AudioSource> jumps=new(), lands=new(), entries=new(), entryBaseline=new();
+        static readonly HashSet<MeshFilter> jumpRings=new(), landRings=new();
         static AudioJumpChecks(){if(SessionState.GetBool(Pending,false)) Subscribe();}
         static void Subscribe(){deadline=EditorApplication.timeSinceStartup+90; EditorApplication.update-=Tick; EditorApplication.update+=Tick;}
         public static void Run(){if(!Application.isBatchMode)throw new Exception("Batch only"); EditorSceneManager.OpenScene("Assets/Scenes/Network/NetworkPool_v1_2.unity",OpenSceneMode.Single); SessionState.SetBool(Pending,true); Subscribe(); EditorApplication.EnterPlaymode();}
@@ -35,7 +36,7 @@ namespace Marco.Network.Editor
                     player.GetComponent<PlayerMovement>().Teleport(trial<2?new Vector3(1,1.05f,40):trial<4?new Vector3(56,1.05f,33):new Vector3(4.5f,-.15f,43));
                     Physics.SyncTransforms(); until=now+.3; phase=3; return;
                 }
-                if(phase==3&&now>=until){jumps.Clear(); lands.Clear(); vertical=Mathf.Sqrt(2*22*1.25f); previous=Time.time; until=now+1.4; phase=4; return;}
+                if(phase==3&&now>=until){jumps.Clear(); lands.Clear(); entries.Clear(); entryBaseline.Clear(); foreach(var a in round.GetComponentsInChildren<AudioSource>())if(a.clip!=null&&a.clip.name=="WaterEntry")entryBaseline.Add(a); jumpRings.Clear(); landRings.Clear(); vertical=Mathf.Sqrt(2*22*1.25f); previous=Time.time; until=now+1.4; phase=4; return;}
                 if(phase==4)
                 {
                     float dt=Mathf.Min(.03f,Time.time-previous); previous=Time.time;
@@ -44,13 +45,28 @@ namespace Marco.Network.Editor
                     // Even trials stationary, odd trials horizontal movement.
                     controller.Move((Vector3.up*vertical+Vector3.forward*(trial%2==1?2f:0))*dt);
                     foreach(var source in round.GetComponentsInChildren<AudioSource>())
-                    {if(source.volume>.01f&&source.name.StartsWith("Jump "))jumps.Add(source); if(source.volume>.01f&&source.name.StartsWith("Landing "))lands.Add(source);}
+                    {if(source.volume>.01f&&source.name.StartsWith("Jump "))jumps.Add(source); if(source.volume>.01f&&source.name.StartsWith("Landing "))lands.Add(source); if(source.volume>.01f&&source.clip!=null&&source.clip.name=="WaterEntry"&&!entryBaseline.Contains(source))entries.Add(source);}
+                    foreach(var mesh in UnityEngine.Object.FindObjectsByType<MeshFilter>())
+                    {
+                        if(mesh.name.StartsWith("Jump Floor Pulse "))jumpRings.Add(mesh);
+                        if(mesh.name.StartsWith("Landing Floor Pulse "))landRings.Add(mesh);
+                    }
                     if(now<until)return;
-                    Debug.Log($"[AudioJumpChecks] role={player.Role}, moving={trial%2==1}, jumps={jumps.Count}, landings={lands.Count}");
-                    if(jumps.Count!=1||lands.Count!=1)throw new Exception("Expected one takeoff and one landing per jump");
+                    Debug.Log($"[AudioJumpChecks] role={player.Role}, moving={trial%2==1}, jumps={jumps.Count}, landings={lands.Count}, jumpRings={jumpRings.Count}, landRings={landRings.Count}, waterEntries={entries.Count}");
+                                        if(trial<4)
+                    {
+                        if(jumps.Count!=1||lands.Count!=1||jumpRings.Count!=1||landRings.Count!=1)
+                            throw new Exception("Expected one dry takeoff and landing sound/ring per jump");
+                    }
+                    else
+                    {
+                        // Real water entry replaces dry landing; its ripple is covered by WaterReactionChecks.
+                        if(jumps.Count!=1||jumpRings.Count!=1||entries.Count!=1||lands.Count!=0)
+                            throw new Exception("Expected one wet takeoff and one water entry without duplicate landing");
+                    }
                     trial++;
                     if(trial==2||trial==5)typeof(NetworkRound).GetMethod("CheatToggleHostRole",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(round,null);
-                    if(trial>=6){Debug.Log("[AudioJumpChecks] PASS: Seeker/Runner stationary and moving jumps, including shallow-water contacts with nonzero sound volume."); Finish(0);return;}
+                    if(trial>=6){Debug.Log("[AudioJumpChecks] PASS: Seeker/Runner stationary and moving dry jumps; wet takeoff and water-entry replacement without duplicate landing."); Finish(0);return;}
                     until=now; phase=2;
                 }
             }

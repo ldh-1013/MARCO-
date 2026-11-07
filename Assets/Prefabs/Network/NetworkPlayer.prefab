@@ -155,7 +155,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Vision.WalkingFootRings
   ringShader: {fileID: 4800000, guid: 8e9f42d08c3c4eb9b78a8f2f4d90c6a2, type: 3}
-  walkingRingInterval: 0.45
+  walkingRingDistance: 6
   maxRadius: 1
   lifetime: 0.8
 --- !u!114 &7740206562990220203
@@ -423,7 +423,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0276c243e14b3c54b8a51312ac37f91e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Character.CharacterMotion
-  runSpeed: 6
+  runSpeed: 5
 --- !u!114 &375446108229027121
 MonoBehaviour:
   m_ObjectHideFlags: 0

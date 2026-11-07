@@ -9,6 +9,7 @@ namespace Marco.Core.WinCondition
     {
         // ── 이동 (기획서 3.1 · 부록 A [이동속도]) ───────────────────────────────
         public float RunnerWalkSpeed = 5f;
+        public float SurfaceSwimSpeed = 3f;
         public float RunnerSprintSpeed = 7.5f;
         public float RunnerSprintStaminaSeconds = 5f;
         public float RunnerSprintStaminaDrainPerSecond = 1f;
@@ -32,12 +33,24 @@ namespace Marco.Core.WinCondition
         };
 
         // ── 밸브 진행도 ───────────────────────────────
-        // 1인 작업 기준 초당 진행도. 1/8이면 8.0초에 완료.
-        public float ValveBaseProgressPerSecond = 1f / 8f;
+        // 1인 회전 시간(초). 밸브마다 다르다 (기획서 6.1 "밸브별 회전 시간과 리스크" · 6.1-1 재개방 타임라인).
+        // 수중 B · E는 기획서 총 점유 8.0초 중 "회전" 구간만 넣는다 — 진입 · 부상은 플레이어가 직접 헤엄친다
+        // (docs/수영_잠수_구현메모.md).
+        // 재개방은 한 번이라도 Open에 도달한 밸브에 적용되고 라운드 내 유지된다(역류로 닫혀도 유지, 10-26). 다인 배율은 그대로 곱한다.
+        public float ValveRotationSeconds = 8f;          // A · C · D
+        public float ValveReopenRotationSeconds = 4f;    // A · C · D 재개방
+        public float ValveBRotationSeconds = 5f;         // 깊은 수중: 진입 1.5 / 회전 5.0 / 부상 1.5
+        public float ValveBReopenRotationSeconds = 2.5f; // 진입 0.75 / 회전 2.5 / 부상 0.75
+        public float ValveERotationSeconds = 7f;         // 얕은 수중: 진입 0.5 / 회전 7.0 / 부상 0.5
+        public float ValveEReopenRotationSeconds = 3.5f; // 진입 0.25 / 회전 3.5 / 부상 0.25
 
-        // 재개방 1인 초당 진행도. 1/4이면 4.0초에 완료 (기획서 6.1 · 부록 A [밸브], 10-26).
-        // 한 번이라도 Open에 도달한 밸브에 적용되고 라운드 내 유지된다(역류로 닫혀도 유지). 다인 배율은 그대로 곱한다.
-        public float ValveReopenProgressPerSecond = 1f / 4f;
+        // 밸브 하나의 1인 회전 시간. reopen이면 재개방 시간.
+        public float GetValveRotationSeconds(ValveId id, bool reopen) => id switch
+        {
+            ValveId.B => reopen ? ValveBReopenRotationSeconds : ValveBRotationSeconds,
+            ValveId.E => reopen ? ValveEReopenRotationSeconds : ValveERotationSeconds,
+            _ => reopen ? ValveReopenRotationSeconds : ValveRotationSeconds,
+        };
 
         // 2인 동시 작업 배율 (약 5.0초에 완료, 재개방 2.5초)
         public float ValveTwoWorkerMultiplier = 1.6f;

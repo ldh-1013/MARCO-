@@ -17,8 +17,9 @@ namespace Marco.Network.Character
         private CharacterBody body;
         private Camera playerCamera;
         private Transform head, leftHand, rightHand;
-        private Vector3 eyeOffset, cameraHome;
+        private Vector3 eyeOffset, cameraHome, landViewHome;
         private bool maskApplied;
+        private float waterViewWeight;
         private readonly List<SkinVisibility> skins = new();
         private readonly List<RigidHeadVisibility> rigidHeadParts = new();
 
@@ -29,6 +30,7 @@ namespace Marco.Network.Character
             body = GetComponent<CharacterBody>();
             playerCamera = GetComponentInChildren<Camera>(true);
             cameraHome = playerCamera.transform.localPosition;
+            landViewHome = transform.InverseTransformPoint(playerCamera.transform.position);
             body.Rebuilt += Rebind;
         }
 
@@ -81,6 +83,7 @@ namespace Marco.Network.Character
             skins.Clear();
             rigidHeadParts.Clear();
             head = leftHand = rightHand = null;
+            waterViewWeight = 0;
             if (playerCamera != null) playerCamera.transform.localPosition = cameraHome;
         }
 
@@ -136,10 +139,17 @@ namespace Marco.Network.Character
         // Follow the animated head POSITION only; the pivot already applies pitch.
         private void LateUpdate()
         {
-            if (!IsReady) return;
-            playerCamera.transform.position = body.BodyRoot.gameObject.activeInHierarchy
+            if (playerCamera == null) return;
+            bool wet = TryGetComponent<Marco.Network.Player.PlayerMovement>(out var movement) && movement.IsSwimming;
+            // A rigid-mesh character still needs water camera blending without a skinned head mask.
+            if (!IsReady && !wet && waterViewWeight <= 0) return;
+            waterViewWeight = Mathf.MoveTowards(waterViewWeight, wet ? 1f : 0f, Time.deltaTime * 5f);
+            Vector3 animatedEye = IsReady && body.BodyRoot != null && body.BodyRoot.gameObject.activeInHierarchy
                 ? head.position + transform.TransformVector(eyeOffset)
-                : playerCamera.transform.parent.TransformPoint(cameraHome);
+                : transform.TransformPoint(landViewHome);
+            Vector3 surfaceEye = animatedEye;
+            surfaceEye.y = transform.position.y + Marco.Network.Player.PlayerMovement.SwimmingEyeOffset;
+            playerCamera.transform.position = Vector3.Lerp(animatedEye, surfaceEye, waterViewWeight);
         }
 
         private void BeforeSrpCamera(ScriptableRenderContext context, Camera camera) => BeforeCamera(camera);

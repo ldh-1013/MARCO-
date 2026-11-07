@@ -13,7 +13,7 @@ namespace Marco.Core.WinCondition
         {
             foreach (var id in activeValveIds)
             {
-                _valves[id] = new Valve(config);
+                _valves[id] = new Valve(config, id);
             }
         }
 

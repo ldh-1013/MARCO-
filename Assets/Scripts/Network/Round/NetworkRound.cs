@@ -114,6 +114,9 @@ namespace Marco.Network.Round
         // Sudden death low drone from 2:00 left (기획서 6.2-1): presentation only, each client plays it from the
         // synced remaining time. P4 owns the real cue (14.2) — while empty it is only logged.
         [SerializeField] private AudioClip suddenDeathDroneClip;
+        [SerializeField] private GameObject bandagePickupModel;
+        [SerializeField] private Material bandagePickupMaterial;
+        [SerializeField] private GameObject clickerPickupModel;
 
         // Index = (int)ValveId.
         private readonly SyncList<ValveSnapshot> valveStates = new();
@@ -162,6 +165,12 @@ namespace Marco.Network.Round
         private AudioSource valveOpenedSource;
         private AudioSource suddenDeathDroneSource;
         private bool suddenDeathDronePlaying;
+        private const float EndDroneFadeSeconds = 10f;
+        internal bool IsEndDronePhase => Mode == RoundMode.Full && Result == RoundResult.InProgress &&
+            RemainingSeconds > 0f && RemainingSeconds <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+        internal float EndDroneBlend => IsEndDronePhase
+            ? Mathf.Clamp01((DefaultConfig.SuddenDeathDroneRemainingSeconds - RemainingSeconds) / EndDroneFadeSeconds)
+            : 0f;
         private static readonly WinConditionConfig DefaultConfig = new();
         private static readonly int RequiredOpenValves = DefaultConfig.RequiredOpenValveCount;
         // Lives across rounds; ResetRound puts it back to 0 s (role reveal start).
@@ -176,9 +185,9 @@ namespace Marco.Network.Round
         public int FullHalves => Mathf.RoundToInt(startLives * 2);
         private int WoundedHalves => Mathf.RoundToInt(woundedLives * 2);
 
-        // Owner side: 1.5 lives or less applies the recovery movement penalty.
+        // Only the recovering 1.5-life state is slowed; wounded 1.0-life runners keep speed.
         public float SpeedMultiplierFor(int halves) =>
-            halves > 0 && halves < FullHalves ? 1 - recoveringSpeedPenalty : 1;
+            halves == WoundedHalves + 1 ? 1 - recoveringSpeedPenalty : 1;
 
         public WinConditionConfig MovementConfig => DefaultConfig;
         public float SeekerChaseSpeed => DefaultConfig.SeekerBaseMoveSpeed *
@@ -189,6 +198,12 @@ namespace Marco.Network.Round
         // Owner side: sudden death +5% for the Seeker once the server has applied it (기획서 6.2-1, multiplied).
         public float SeekerSpeedMultiplierFor(PlayerRole role) =>
             role == PlayerRole.Seeker && seekerSpeedBoosted.Value ? DefaultConfig.SuddenDeathSeekerSpeedMultiplier : 1;
+        public bool IsSurfaceSwimming(NetworkPlayer player)
+        {
+            if (!SoundMap || player == null) return false;
+            soundWorld ??= new Marco.Network.Audio.SoundWorld();
+            return soundWorld.WaterState(player, out _) == 1;
+        }
         public RoundMode Mode => mode.Value;
         public bool GateOpen => gateOpen.Value;
         public RoundResult Result => result.Value;
@@ -265,6 +280,8 @@ namespace Marco.Network.Round
             if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
             ClearClickerViews();
+            ClearDecoyViews();
+            ClearSoundCanViews();
         }
 
         private void Update()
@@ -273,6 +290,8 @@ namespace Marco.Network.Round
             {
                 TickHealingChannels();
                 TickAudioServer();
+                TickDecoysServer();
+                TickSoundCansServer();
             }
             if (IsServerInitialized) TickClickerRespawns();
             // The map's GamePoints can finish registering after the network scene object starts.
@@ -285,6 +304,8 @@ namespace Marco.Network.Round
             }
             if (!clientStarted) return;
             UpdateSuddenDeathDrone();
+            UpdateDecoyViews();
+            UpdateSoundCanViews();
             EnsureBandageViews();
             EnsureClickerViews();
             for (int i = 0; i < bandageViews.Count; i++)
@@ -324,6 +345,8 @@ namespace Marco.Network.Round
 
         public override void OnStopServer()
         {
+            ResetSoundCansServer(false);
+            ResetDecoysServer(false);
             ResetAudioServer();
             CancelAllHealingActions();
             base.OnStopServer();
@@ -360,6 +383,8 @@ namespace Marco.Network.Round
             }
             ResetBandagePickups(available: true);
             ResetClickerPickups(available: true);
+            ResetDecoysServer(true);
+            ResetSoundCansServer(true);
 
             // INTERFACES.md §0 assembly order.
             var config = new WinConditionConfig { LastSurvivorPhaseDurationSeconds = lastSurvivorPhaseSeconds };
@@ -404,12 +429,13 @@ namespace Marco.Network.Round
             {
                 if (player.Role == PlayerRole.Seeker)
                 {
-                    if (hasSeekerPoint) player.TeleportOwner(seekerPoint.position + Vector3.up * GamePoints.PlayerStandHeight);
+                    if (hasSeekerPoint) player.TeleportOwner(
+                        seekerPoint.position + Vector3.up * GamePoints.PlayerStandHeight, seekerPoint.rotation);
                 }
                 else if (spawns != null && spawns.Length > 0)
                 {
                     var spawn = spawns[next++ % spawns.Length];
-                    if (spawn != null) player.TeleportOwner(spawn.position);
+                    if (spawn != null) player.TeleportOwner(spawn.position, spawn.rotation);
                 }
             }
         }
@@ -425,6 +451,8 @@ namespace Marco.Network.Round
 
         private void ResetRound()
         {
+            ResetSoundCansServer(false);
+            ResetDecoysServer(false);
             ResetAudioServer();
             CancelAllHealingActions();
             TimeManager.OnTick -= OnServerTick;
@@ -471,9 +499,9 @@ namespace Marco.Network.Round
         // Client side, from the synced remaining time: on at 2:00 left, off when the round ends or resets.
         private void UpdateSuddenDeathDrone()
         {
-            float remaining = remainingSeconds.Value;
-            bool shouldPlay = mode.Value == RoundMode.Full && result.Value == RoundResult.InProgress &&
-                              remaining > 0f && remaining <= DefaultConfig.SuddenDeathDroneRemainingSeconds;
+            bool shouldPlay = IsEndDronePhase;
+            if (suddenDeathDroneSource != null && shouldPlay)
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
             if (shouldPlay == suddenDeathDronePlaying) return;
             suddenDeathDronePlaying = shouldPlay;
 
@@ -491,7 +519,11 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
                 if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
             }
-            if (shouldPlay) suddenDeathDroneSource.Play();
+            if (shouldPlay)
+            {
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.Play();
+            }
             else suddenDeathDroneSource.Stop();
         }
 
@@ -567,8 +599,11 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
+            if (SoundMap && (id == ValveId.B || id == ValveId.E) &&
+                (!NetworkPlayer.TryGet(playerId, out var swimmer) || !swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)) return false;
             return valves.TryBeginWork(playerId, id);
         }
 
@@ -579,8 +614,10 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginDrainWork(int playerId, DrainHatchId id, Vector3 playerPosition)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (drains == null || !startSchedule.HasInGameStarted || !DrainHatchView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
+            if (SoundMap && (!NetworkPlayer.TryGet(playerId, out var swimmer) || !swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)) return false;
             return drains.TryBeginWork(playerId, id);
         }
 
@@ -718,6 +755,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryUseClicker(int playerId)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress ||
                 !TryGetAliveRunner(playerId, out var source) ||
@@ -1146,6 +1184,8 @@ namespace Marco.Network.Round
         {
             if (args.ConnectionState != RemoteConnectionState.Stopped) return;
             CancelHealingFor(conn.ClientId);
+            RemoveSoundCan(conn.ClientId);
+            decoyHolders.Remove(conn.ClientId);
             if (valves == null) return;
             nextTagTimes.Remove(conn.ClientId);
             runnerHalves.Remove(conn.ClientId);
@@ -1203,12 +1243,18 @@ namespace Marco.Network.Round
                 int index = bandageViews.Count;
                 var root = new GameObject($"붕대 {index + 1}");
                 root.transform.position = bandagePositions[index];
-                CreateBandageCube(root.transform, "붕대 포장", new Vector3(0.34f, 0.12f, 0.25f),
-                    new Vector3(0, 0.11f, 0), bandageWrapMaterial);
-                CreateBandageCube(root.transform, "십자 가로", new Vector3(0.18f, 0.018f, 0.055f),
-                    new Vector3(0, 0.18f, 0), bandageMarkMaterial);
-                CreateBandageCube(root.transform, "십자 세로", new Vector3(0.055f, 0.018f, 0.18f),
-                    new Vector3(0, 0.18f, 0), bandageMarkMaterial);
+                if (bandagePickupModel == null || !TryAttachPickupModel(root.transform, bandagePickupModel,
+                    "붕대", Quaternion.Euler(-90f, 0f, 0f), new Vector3(1f, 1f, 2.555f), 0.26f,
+                    bandagePickupMaterial))
+                {
+                    bandagePickupModel = null;
+                    CreateBandageCube(root.transform, "붕대 포장", new Vector3(0.34f, 0.12f, 0.25f),
+                        new Vector3(0, 0.11f, 0), bandageWrapMaterial);
+                    CreateBandageCube(root.transform, "십자 가로", new Vector3(0.18f, 0.018f, 0.055f),
+                        new Vector3(0, 0.18f, 0), bandageMarkMaterial);
+                    CreateBandageCube(root.transform, "십자 세로", new Vector3(0.055f, 0.018f, 0.18f),
+                        new Vector3(0, 0.18f, 0), bandageMarkMaterial);
+                }
                 bandageViews.Add(root.transform);
             }
         }
@@ -1228,11 +1274,45 @@ namespace Marco.Network.Round
                 int index = clickerViews.Count;
                 var root = new GameObject($"찰칵이 {index + 1}");
                 root.transform.position = ClickerSpawnPoints[index];
-                CreateBandageCube(root.transform, "본체", new Vector3(0.12f, 0.16f, 0.08f), Vector3.zero, clickerMaterial);
-                CreateBandageCube(root.transform, "렌즈", new Vector3(0.08f, 0.035f, 0.085f), new Vector3(0, 0.055f, -0.045f), clickerMaterial);
+                if (clickerPickupModel == null || !TryAttachPickupModel(root.transform, clickerPickupModel,
+                    "찰칵이", Quaternion.identity, Vector3.one, 0.22f, null))
+                {
+                    clickerPickupModel = null;
+                    CreateBandageCube(root.transform, "본체", new Vector3(0.12f, 0.16f, 0.08f), Vector3.zero, clickerMaterial);
+                    CreateBandageCube(root.transform, "렌즈", new Vector3(0.08f, 0.035f, 0.085f), new Vector3(0, 0.055f, -0.045f), clickerMaterial);
+                }
                 clickerViews.Add(root.transform);
                 root.SetActive(index < clickerPickupStates.Count && clickerPickupStates[index]);
             }
+        }
+
+        private static bool TryAttachPickupModel(Transform parent, GameObject model, string hierarchyName,
+            Quaternion localRotation, Vector3 modelScale, float targetHeight, Material materialOverride)
+        {
+            GameObject instance;
+            try { instance = Instantiate(model, parent, false); }
+            catch (InvalidCastException e)
+            {
+                Debug.LogWarning($"[MARCO][Round] {hierarchyName} 모델 참조가 GameObject가 아닙니다. 기본 모양을 사용합니다: {e.Message}");
+                return false;
+            }
+            instance.name = hierarchyName;
+            instance.transform.localPosition = Vector3.zero;
+            instance.transform.localRotation = localRotation;
+            instance.transform.localScale = Vector3.Scale(instance.transform.localScale, modelScale);
+            foreach (var collider in instance.GetComponentsInChildren<Collider>(true)) Destroy(collider);
+            var renderers = instance.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) return true;
+            if (materialOverride != null)
+                foreach (var renderer in renderers) renderer.sharedMaterial = materialOverride;
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+            if (bounds.size.y > 0.0001f) instance.transform.localScale *= targetHeight / bounds.size.y;
+            bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+            Vector3 localBottom = parent.InverseTransformPoint(bounds.min);
+            instance.transform.localPosition += Vector3.down * localBottom.y;
+            return true;
         }
 
         private void CreateBandageMaterials()
@@ -1299,6 +1379,8 @@ namespace Marco.Network.Round
 
         private void OnDestroy()
         {
+            ClearSoundCanViews();
+            ClearDecoyViews();
             ClearBandageViews();
             ClearClickerViews();
             if (Instance == this) Instance = null;
@@ -1455,6 +1537,8 @@ namespace Marco.Network.Round
         [ObserversRpc]
         internal void ValveOpenedObservers()
         {
+            if (valveOpenedClip == null && SoundMap)
+                valveOpenedClip = Resources.Load<AudioClip>("MarcoSound/ValveOpened");
             if (valveOpenedClip == null)
             {
                 Debug.Log("[MARCO] 밸브 개방 완료음 (에셋 없음)");
