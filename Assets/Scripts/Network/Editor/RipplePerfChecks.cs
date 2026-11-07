@@ -71,6 +71,9 @@ namespace Marco.Network.Editor
                 {
                     player.GetComponent<PlayerMovement>().enabled = false;
                     player.GetComponent<PlayerInteractor>().enabled = false;
+                    // Stable darkness for measurements and pictures: stop the microphone early (the voice light
+                    // reacts to room noise and would otherwise keep its last brightness).
+                    foreach (var device in Microphone.devices) if (Microphone.IsRecording(device)) Microphone.End(device);
                     player.GetComponent<PlayerMovement>().Teleport(new Vector3(1, 1.05f, 40));
                     Physics.SyncTransforms();
                     until = now + 1.5; phase = 3; return;
@@ -105,9 +108,21 @@ namespace Marco.Network.Editor
                     rings.ClearPulses();
                     until = now + GapSeconds; phase = 8; return;
                 }
-                if (phase == 8 && now >= until) { Showcase(player, rings); until = now + .35; phase = 9; return; }
+                if (phase == 8 && now >= until)
+                {
+                    Showcase(player, rings); until = now + .35; phase = 9; return;
+                }
                 if (phase == 9 && now >= until) { Capture(player, "ripple_early.png"); until = now + .5; phase = 10; return; }
-                if (phase == 10 && now >= until) { Capture(player, "ripple_late.png"); Finish(0); return; }
+                if (phase == 10 && now >= until) { Capture(player, "ripple_late.png"); until = now + 1.5; phase = 11; return; }
+                if (phase == 11 && now >= until)
+                {
+                    int glows = 0;
+                    foreach (var renderer in UnityEngine.Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+                        if (renderer.name == "Ripple Afterglow" && renderer.gameObject.activeInHierarchy) glows++;
+                    Debug.Log($"[RipplePerfChecks] RESULT own-ring afterglows alive 2.2s after the showcase: {glows}");
+                    Capture(player, "ripple_afterglow.png");
+                    Finish(0); return;
+                }
                 if (phase == 6 && now >= until) { rings.ClearPulses(); lastFrame = Time.frameCount; until = now + AliveSeconds; phase = 7; return; }
                 if (phase == 7)
                 {

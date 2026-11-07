@@ -81,13 +81,15 @@ namespace Marco.Network.Editor
                     rings.ClearPulses();
                     var door = doors[index];
                     rings.ShowSound(door.Origin + Vector3.up * 1.5f, 22f, 2.5f, false);
-                    until = now + 0.8; phase = 4; return;
+                    until = now + 0.25; phase = 5; return;
                 }
+                // Wavefront at the walls of the source room: the wall reveal is at its brightest.
+                if (phase == 5 && now >= until) { Capture(player, doors[index], "_wall"); until = now + 0.55; phase = 4; return; }
                 if (phase == 4 && now >= until)
                 {
                     var door = doors[index];
                     results.Add(Measure(rings, door));
-                    Capture(player, door);
+                    Capture(player, door, "");
                     index++;
                     if (index < doors.Count) { until = now + 2.0; phase = 3; return; }
                     foreach (var line in results) Debug.Log("[RippleDoorChecks] RESULT " + line);
@@ -209,7 +211,7 @@ namespace Marco.Network.Editor
         }
 
         // From behind and above the source, looking through the door into the next room.
-        static void Capture(NetworkPlayer player, Door door)
+        static void Capture(NetworkPlayer player, Door door, string suffix)
         {
             string directory = Environment.GetEnvironmentVariable("MARCO_RIPPLE_SHOT");
             if (string.IsNullOrEmpty(directory)) return;
@@ -231,7 +233,7 @@ namespace Marco.Network.Editor
                 image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
                 image.Apply();
                 System.IO.Directory.CreateDirectory(directory);
-                System.IO.File.WriteAllBytes(System.IO.Path.Combine(directory, "door_" + door.Id + ".png"), image.EncodeToPNG());
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(directory, "door_" + door.Id + suffix + ".png"), image.EncodeToPNG());
                 UnityEngine.Object.DestroyImmediate(image);
             }
             finally
