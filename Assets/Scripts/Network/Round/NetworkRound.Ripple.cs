@@ -47,6 +47,17 @@ namespace Marco.Network.Round
             });
         }
 
+        // S6: entering the last-survivor phase sounds once at the active drain hatch, Shout grade (§6.5-1).
+        internal void EmitSurvivorPulse(DrainHatchId id)
+        {
+            if (!RippleServerFeatures.SurvivorPulse) return;
+            RippleSafe("SurvivorPulse", () =>
+            {
+                if (DrainHatchView.TryGet(id, out var hatch) && hatch != null)
+                    EmitSound("SurvivorPulse", hatch.transform.position, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds, playAudio: false, forcePulse: true);
+            });
+        }
+
         // ITEMS
     }
 }

@@ -45,6 +45,8 @@ namespace Marco.Network.Round
         {
             Debug.Log($"[MARCO] Drain hatch activated: {drainHatchId}");
             owner.MarkDrainHatchActivated(drainHatchId);
+            // S6: never let a pulse failure escape into the Core round event.
+            try { owner.EmitSurvivorPulse(drainHatchId); } catch (System.Exception exception) { Debug.LogException(exception); }
         }
     }
 }

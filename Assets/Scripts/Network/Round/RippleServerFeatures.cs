@@ -5,6 +5,7 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool SurvivorPulse = true;          // S6  Shout pulse at the active drain hatch on last-survivor entry (§6.5-1)
         public const bool GatePulse = true;              // S5  Shout pulse at both exits when the gate opens (§10.5)
         public const bool TagPulse = true;               // S4  Shout pulse when a tag turns a Runner into an Echo (§3.1-1)
         public const bool DrowningOcclusion = true;      // S3  no drowning ring through walls (§5.4)
