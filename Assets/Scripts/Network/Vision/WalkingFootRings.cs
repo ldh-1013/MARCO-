@@ -52,7 +52,7 @@ namespace Marco.Network.Vision
         }
 
         private enum Kind : byte { Floor, Contact, Sound }
-        private enum Label : byte { Movement, Jump, Landing, Sound, Water, DecoyStep, DecoyLanding }
+        private enum Label : byte { Movement, Landing, Sound, Water, DecoyStep, DecoyLanding }
         private struct Request
         {
             public Kind Kind;
@@ -128,9 +128,11 @@ namespace Marco.Network.Vision
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.Show", exception, this); }
         }
 
+        // D3: a landing is drawn as a Sprint-grade floor ring; a take-off draws nothing (no SoundType for it,
+        // and an expanding ring would read as a voice).
         public void ShowContact(int source, Vector3 point, bool seeker, bool landing)
         {
-            try { RequestFloor(source, point, landing, seeker, true, landing ? Label.Landing : Label.Jump); }
+            try { if (landing) RequestFloor(source, point, true, seeker, true, Label.Landing); }
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.ShowContact", exception, this); }
         }
 
@@ -302,7 +304,6 @@ namespace Marco.Network.Vision
 
         private static string Name(Label label, int source) => label switch
         {
-            Label.Jump => "Jump Floor Pulse " + source,
             Label.Landing => "Landing Floor Pulse " + source,
             Label.Sound => "Sound Pulse",
             Label.Water => "Water Warning Pulse",
