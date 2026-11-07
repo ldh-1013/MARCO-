@@ -1114,6 +1114,7 @@ namespace Marco.Network.Round
             if (!ApplyTag(target)) return SwingResult.Missed;
             // Keep the terminal value so ResetLives can restore the owner's private HUD next round.
             SetLives(target, 0);
+            EmitTagPulse(target);
             return SwingResult.Echoed;
         }
 

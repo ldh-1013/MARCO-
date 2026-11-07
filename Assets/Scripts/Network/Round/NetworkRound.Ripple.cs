@@ -25,6 +25,16 @@ namespace Marco.Network.Round
         private float ValveSoundRadius(Marco.Core.WinCondition.ValveId id) =>
             RippleServerFeatures.ValveAMachineRadius && id == Marco.Core.WinCondition.ValveId.A ? PulseSpec.ValveAMachine : PulseSpec.Valve;
 
+        // S4: the tag that turns a Runner into an Echo sounds once at the tag point, Shout grade (§3.1-1).
+        // Called only on the Echoed path of Hit — a first hit (Wounded) and cheat tags make no pulse.
+        private void EmitTagPulse(NetworkPlayer target)
+        {
+            if (!RippleServerFeatures.TagPulse || target == null) return;
+            Vector3 point = target.transform.position;
+            RippleSafe("TagPulse", () => EmitSound("TagPulse", point, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds,
+                playAudio: false, forcePulse: true));
+        }
+
         // ITEMS
     }
 }

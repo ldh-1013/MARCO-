@@ -5,6 +5,7 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool TagPulse = true;               // S4  Shout pulse when a tag turns a Runner into an Echo (§3.1-1)
         public const bool DrowningOcclusion = true;      // S3  no drowning ring through walls (§5.4)
         public const bool ValveAMachineRadius = true;    // S2  valve A rotation 6m in machine ambience (§6.1-0)
         public const bool BreathPauseWhenLocked = true;  // S11 breath timer pauses while the server holds the player in place (treatment lock)
