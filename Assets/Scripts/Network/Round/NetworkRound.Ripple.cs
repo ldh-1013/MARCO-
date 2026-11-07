@@ -89,6 +89,18 @@ namespace Marco.Network.Round
             });
         }
 
+        // S8: the 0:30 exit pulses go through the normal judged path — distance, walls, Seeker × 1.2 — like
+        // every other pulse (§6.2-1). The temporary all-client RPC stays in place for the switch.
+        private void EmitExitPulsesJudged()
+        {
+            RippleSafe("ExitPulse", () =>
+            {
+                foreach (var exit in ExitView.All)
+                    if (exit != null)
+                        EmitSound("ExitPulse", exit.transform.position, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds, playAudio: false, forcePulse: true);
+            });
+        }
+
         // ITEMS
     }
 }

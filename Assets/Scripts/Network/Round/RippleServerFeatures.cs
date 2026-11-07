@@ -5,6 +5,7 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool ExitPulseJudged = true;        // S8  0:30 exit pulses through the judged EmitSound path (§6.2-1)
         public const bool DrainWorkPulse = true;         // S7  12m pulse every 2.5s while the active hatch is worked (§6.5-3)
         public const bool SurvivorPulse = true;          // S6  Shout pulse at the active drain hatch on last-survivor entry (§6.5-1)
         public const bool GatePulse = true;              // S5  Shout pulse at both exits when the gate opens (§10.5)

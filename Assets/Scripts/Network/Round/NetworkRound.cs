@@ -488,7 +488,8 @@ namespace Marco.Network.Round
         {
             foreach (var exit in ExitView.All)
                 Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
-            ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
+            if (RippleServerFeatures.ExitPulseJudged) EmitExitPulsesJudged();
+            else ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
         }
 
         // TEMPORARY — 파문 시스템 생기면 교체. Every client draws a ring at both exits, with no distance
