@@ -86,7 +86,7 @@ namespace Marco.Network.Editor
                 {
                     Sample(idle);
                     if (now < until) return;
-                    Spawn(player, rings);
+                    Burst(player, rings);
                     alive.Clear(); lastFrame = Time.frameCount;
                     until = now + AliveSeconds; phase = 5; return;
                 }
@@ -97,16 +97,22 @@ namespace Marco.Network.Editor
                     aliveAfter.Add(ActiveCount(rings));
                     trial++;
                     if (trial < Trials) { until = now + GapSeconds; phase = 6; return; }
-                    Report();
-                    Finish(0);
-                    return;
+                    Report(rings);
+                    // Optional look at the rings: set MARCO_RIPPLE_SHOT to a folder outside the project.
+                    shotDirectory = Environment.GetEnvironmentVariable("MARCO_RIPPLE_SHOT");
+                    if (string.IsNullOrEmpty(shotDirectory)) { Finish(0); return; }
+                    rings.ClearPulses();
+                    until = now + GapSeconds; phase = 8; return;
                 }
+                if (phase == 8 && now >= until) { Showcase(player, rings); until = now + .35; phase = 9; return; }
+                if (phase == 9 && now >= until) { Capture(player, "ripple_early.png"); until = now + .5; phase = 10; return; }
+                if (phase == 10 && now >= until) { Capture(player, "ripple_late.png"); Finish(0); return; }
                 if (phase == 6 && now >= until) { rings.ClearPulses(); lastFrame = Time.frameCount; until = now + AliveSeconds; phase = 7; return; }
                 if (phase == 7)
                 {
                     Sample(idle);
                     if (now < until) return;
-                    Spawn(player, rings);
+                    Burst(player, rings);
                     alive.Clear(); lastFrame = Time.frameCount;
                     until = now + AliveSeconds; phase = 5;
                 }
@@ -115,7 +121,7 @@ namespace Marco.Network.Editor
         }
 
         // The same 30 requests every run: 26 voice-grade rings, 3 remote sprint floor rings, 1 drowning pulse.
-        static void Spawn(NetworkPlayer player, WalkingFootRings rings)
+        static void Burst(NetworkPlayer player, WalkingFootRings rings)
         {
             Vector3 feet = player.transform.position;
             feet.y = player.GetComponent<CharacterController>().bounds.min.y + .025f;
@@ -136,6 +142,92 @@ namespace Marco.Network.Editor
             int after = Queries(rings);
             spawnQueries.Add(before < 0 || after < 0 ? -1 : after - before);
             queuedFrames.Add(QueueStat(rings));
+        }
+
+        static string shotDirectory;
+
+        // Own voice ring (local, weakened), a Seeker shout, a Runner talk ring and a remote Sprint floor ring.
+        static void Showcase(NetworkPlayer player, WalkingFootRings rings)
+        {
+            var body = player.transform;
+            Vector3 feet = body.position;
+            feet.y = player.GetComponent<CharacterController>().bounds.min.y + .025f;
+            // The test spot is next to the west wall: look and place rings east, into the map.
+            Vector3 forward = Vector3.right, right = Vector3.Cross(Vector3.up, forward);
+            rings.ShowSound(body.position + Vector3.up * .6f, 9f, 1.2f, false);
+            rings.ShowSound(feet + forward * 7f + Vector3.up * 1.5f, 22f, 2.5f, true);
+            rings.ShowSound(feet + right * 5f + forward * 4f + Vector3.up * 1.5f, 9f, 1.2f, false);
+            rings.Show(90123, feet + forward * 3f - right * 2f, true, false);
+            Marco.Network.Escape.TemporaryExitPulseRings.ShowAtAllExits();
+            int exits = 0;
+            foreach (var _ in Marco.Network.Escape.ExitView.All) exits++;
+            Debug.Log($"[RipplePerfChecks] exits in scene: {exits}");
+        }
+
+        static void Capture(NetworkPlayer player, string file)
+        {
+            var camera = player.GetComponentInChildren<Camera>();
+            if (camera == null) { Debug.LogWarning("[RipplePerfChecks] no player camera for screenshot"); return; }
+            Describe(player.GetComponentInChildren<WalkingFootRings>(), camera);
+            var previousRotation = camera.transform.rotation;
+            camera.transform.rotation = Quaternion.Euler(32f, 90f, 0f);
+            var texture = new RenderTexture(1280, 720, 24);
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            try
+            {
+                camera.targetTexture = texture;
+                camera.Render();
+                RenderTexture.active = texture;
+                var image = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+                image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+                image.Apply();
+                System.IO.Directory.CreateDirectory(shotDirectory);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(shotDirectory, file), image.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(image);
+                Debug.Log("[RipplePerfChecks] screenshot " + file);
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                camera.transform.rotation = previousRotation;
+                texture.Release();
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        // What is alive at screenshot time: name, position, shader, bounds, reach range and current alpha.
+        static void Describe(WalkingFootRings rings, Camera camera)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            if (rings == null || !(typeof(WalkingFootRings).GetField("rings", flags)?.GetValue(rings) is IList list)) return;
+            int exitRings = 0;
+            foreach (var renderer in UnityEngine.Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+                if (renderer.name == "Temporary Exit Pulse Ring" && renderer.gameObject.activeInHierarchy) exitRings++;
+            Debug.Log($"[RipplePerfChecks] camera {camera.name} at {camera.transform.position} rings={list.Count} exitRings={exitRings}");
+            foreach (var ring in list)
+            {
+                var type = ring.GetType();
+                var go = (GameObject)type.GetField("Object").GetValue(ring);
+                var mesh = (Mesh)type.GetField("Mesh").GetValue(ring);
+                var renderer = (Renderer)type.GetField("Renderer").GetValue(ring);
+                var block = (MaterialPropertyBlock)type.GetField("Properties").GetValue(ring);
+                var shape = type.GetField("Shape")?.GetValue(ring);
+                string reach = "n/a";
+                if (shape != null)
+                {
+                    var values = (float[])shape.GetType().GetField("Reach").GetValue(shape);
+                    int count = (int)shape.GetType().GetField("RayCount").GetValue(shape);
+                    float min = float.MaxValue, max = 0;
+                    for (int i = 0; i < count; i++) { min = Mathf.Min(min, values[i]); max = Mathf.Max(max, values[i]); }
+                    reach = $"rays={count} reach={min:0.00}..{max:0.00} water={shape.GetType().GetField("Water").GetValue(shape)}";
+                }
+                var bounds = renderer.bounds;
+                Debug.Log($"[RipplePerfChecks] ring {go.name} active={go.activeSelf} at {go.transform.position} shader={renderer.sharedMaterial?.shader?.name} " +
+                    $"verts={mesh.vertexCount} bounds={bounds.center}/{bounds.size} {reach} color={block.GetColor("_BaseColor")} radius={block.GetFloat("_Radius")} " +
+                    $"visible={GeometryUtility.TestPlanesAABB(GeometryUtility.CalculateFrustumPlanes(camera), bounds)}");
+            }
         }
 
         static void Sample(List<float> into)
@@ -162,8 +254,10 @@ namespace Marco.Network.Editor
         // Optional renderer statistic: worst number of frames a ring waited in the build queue.
         static string QueueStat(WalkingFootRings rings)
         {
-            var property = typeof(WalkingFootRings).GetProperty("MaxQueuedFrames", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            return property?.GetValue(rings)?.ToString() ?? "n/a";
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            var max = typeof(WalkingFootRings).GetProperty("MaxQueuedFrames", flags)?.GetValue(rings);
+            var late = typeof(WalkingFootRings).GetProperty("DelayedOverTwoFrames", flags)?.GetValue(rings);
+            return max == null ? "n/a" : $"{max} (rings waiting > 2 frames so far: {late})";
         }
 
         static string Stats(List<float> values)
@@ -177,7 +271,7 @@ namespace Marco.Network.Editor
             return $"frames={sorted.Count} mean={sum / sorted.Count:0.00}ms p95={p95:0.00}ms max={sorted[sorted.Count - 1]:0.00}ms";
         }
 
-        static void Report()
+        static void Report(WalkingFootRings rings)
         {
             Debug.Log($"[RipplePerfChecks] RESULT idle(0 rings): {Stats(idle)}");
             Debug.Log($"[RipplePerfChecks] RESULT alive(30 requests): {Stats(alive)}");
@@ -185,6 +279,7 @@ namespace Marco.Network.Editor
             Debug.Log($"[RipplePerfChecks] RESULT visual raycasts per trial: {string.Join(", ", spawnQueries)}");
             Debug.Log($"[RipplePerfChecks] RESULT active rings 1s after spawn: {string.Join(", ", aliveAfter)}");
             Debug.Log($"[RipplePerfChecks] RESULT max queued frames: {string.Join(", ", queuedFrames)}");
+            Debug.Log($"[RipplePerfChecks] RESULT queue after all trials: {QueueStat(rings)}");
             Debug.Log("[RipplePerfChecks] PASS: measurement finished (batch editor play mode; GPU cost is not representative). No scene saved.");
         }
 
