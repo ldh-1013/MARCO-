@@ -18,6 +18,7 @@ namespace Marco.Network.Round
             public bool Wounded;
             public Vector3 BreathPosition;
             public float StillSeconds, BreathMoved, BreathResetMoved, NextBreath;
+            public int BreathCount; // breaths since the player last moved (S1 radius steps)
         }
 
         private readonly Dictionary<int, SoundMotion> soundMotion = new();
@@ -237,7 +238,7 @@ namespace Marco.Network.Round
             local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
         }
 
-        private static bool IsSelfOnlySound(string clip) => clip == "Breath" || clip.StartsWith("Breath_");
+        private static bool IsSelfOnlySound(string clip) => !RippleServerFeatures.BreathAudible && (clip == "Breath" || clip.StartsWith("Breath_"));
         private static bool CanReceiveSound(string clip, int sourceId, int listenerId) =>
             !IsSelfOnlySound(clip) || sourceId == listenerId;
 
@@ -253,13 +254,14 @@ namespace Marco.Network.Round
             if ((motion.BreathMoved >= 3f && motion.NextBreath == 0f) || motion.BreathResetMoved >= 5f)
             {
                 motion.StillSeconds = motion.BreathMoved = motion.BreathResetMoved = motion.NextBreath = 0;
+                motion.BreathCount = 0;
                 return;
             }
             motion.StillSeconds += dt;
             if (motion.StillSeconds < Mathf.Max(20f, motion.NextBreath)) return;
             motion.NextBreath = motion.StillSeconds + 15f;
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
-            EmitSound(clip, position, 0f, .65f, .6f, sourceId: player.PlayerId);
+            EmitSound(clip, position, RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f, .65f, .6f, sourceId: player.PlayerId);
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,

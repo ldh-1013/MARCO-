@@ -5,5 +5,6 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool BreathAudible = true;          // S1  breath heard by others, 3m → +2m/15s → 9m (부록 A [정지 감지])
     }
 }
