@@ -295,6 +295,7 @@ namespace Marco.Network.Round
             if (NetworkPlayer.Local == null || NetworkPlayer.Local.Status != PlayerStatus.Alive) return;
             if (recordedPlayback == null) recordedPlayback = gameObject.AddComponent<RecordedSoundPlayback>();
             recordedPlayback.Receive(id, frame, packet, point, gain, blocked);
+            try { DirectionHints.OnSoundCan(id, point, blocked); } catch (Exception exception) { DirectionHints.ReportFault("SoundCanFrameTarget", exception); }
         }
 
         [TargetRpc]

@@ -309,6 +309,7 @@ namespace Marco.Network.Round
             if (fromOther) NotifyOtherSound();
             if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);
             if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local);
+            try { Marco.Network.Vision.DirectionHints.OnSound(clip, point, muffled, loopKey, actionId, fromOther, pulseRadius, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SoundTarget", exception); }
         }
 
         internal bool UsesPoolAudio => SoundMap;

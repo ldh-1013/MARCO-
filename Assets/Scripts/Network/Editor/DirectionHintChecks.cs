@@ -285,15 +285,32 @@ namespace Marco.Network.Editor
                         Mark();
                         var point = player.transform.position + new Vector3(0, 0, 3f);
                         for (int i = 0; i < 5; i++) Send(round, player, "", point + Vector3.right * i * .01f, -1, muffled: false, radius: 9f, seconds: 2.5f);
-                        until = now + .6; step = 41; return true;
+                        // The first logged exception is slow in the batch editor (stack trace), so the queued rings get time to build.
+                        until = now + 1.5; step = 41; return true;
                     }
                 case 41:
                     {
+                        // The editor's Error Pause stops play mode when the deliberate exception is logged (a built player
+                        // has no such pause): note it, resume, and give the queued rings frames to build.
                         SetFault(false);
                         expectFault = false;
+                        faultPaused = EditorApplication.isPaused;
+                        EditorApplication.isPaused = false;
+                        until = now + 1.0; step = 42; return true;
+                    }
+                case 42:
+                    {
                         var point = player.transform.position + new Vector3(0, 0, 3f);
                         int ringsShown = RingsNear(rings, point, .5f);
-                        if (Wired) Expect(ringsShown == 5 && faultLogs == 1, "Hint fault does not touch sound or ring", $"rings {ringsShown}/5 still shown, exception logs {faultLogs} (expected 1 — once per kind)");
+                        var queue = typeof(WalkingFootRings).GetField("queue", Flags)?.GetValue(rings) as IList;
+                        var diag = new System.Text.StringBuilder();
+                        foreach (var ring in Rings(rings)) { var t = ring.GetType(); var g = (GameObject)t.GetField("Object").GetValue(ring); diag.Append($"[{g.transform.position} r={t.GetField("Radius").GetValue(ring)} sound={t.GetField("Sound").GetValue(ring)}] "); }
+                        var asm = typeof(WalkingFootRings).Assembly;
+                        var budget = asm.GetType("Marco.Network.Vision.RippleBudget")?.GetProperty("Remaining", Flags)?.GetValue(null);
+                        var world = typeof(WalkingFootRings).GetField("world", Flags)?.GetValue(rings);
+                        var estimate = asm.GetType("Marco.Network.Vision.RippleReach")?.GetMethod("Estimate", Flags)?.Invoke(null, new object[] { world, point, 9f });
+                        Debug.Log($"[DirectionHintChecks] DIAG fault rings: point {point}, player {player.transform.position}, queue {queue?.Count}, budget remaining {budget}, estimate {estimate}, frame {Time.frameCount}, rings {diag}");
+                        if (Wired) Expect(ringsShown == 5 && faultLogs == 1, "Hint fault does not touch sound or ring", $"rings {ringsShown}/5 still shown, exception logs {faultLogs} (expected 1 — once per kind), editor error pause hit: {faultPaused}");
                         else Expect(ringsShown == 5 && faultLogs == 0, "Hint fault (not wired)", $"rings {ringsShown}/5, exception logs {faultLogs}");
                         step = 45; return true;
                     }
@@ -303,9 +320,13 @@ namespace Marco.Network.Editor
                         var onSound = Hints?.GetMethod("OnSound", Flags);
                         if (onSound == null) { results.Add("skip overlay: hint system absent"); step = 50; return true; }
                         bool ahead = step == 45;
+                        // Hints still held from earlier steps (a turning valve holds for its whole rotation) would hide the band under test.
+                        var channel = Hints.GetField("Hint", Flags)?.GetValue(null);
+                        channel?.GetType().GetMethod("Clear")?.Invoke(channel, null);
                         var view = player.GetComponentInChildren<Camera>(true);
                         var forward = Vector3.ProjectOnPlane(view != null ? view.transform.forward : player.transform.forward, Vector3.up).normalized;
                         var point = player.transform.position + forward * (ahead ? 3f : -3f);
+                        Debug.Log($"[DirectionHintChecks] DIAG before direct call: shown {Shown}, extended {Read("Extended")}, last {LastOctant}, soundCalls {Calls}, voiceCalls {Read("VoiceCalls")}");
                         Mark();
                         onSound.Invoke(null, new object[] { "", point, true, -1, 9000 + step, true, 0f, 2.5f });
                         until = now + .3; step++; return true;
@@ -314,6 +335,7 @@ namespace Marco.Network.Editor
                 case 48:
                     {
                         bool ahead = step == 46;
+                        Debug.Log($"[DirectionHintChecks] DIAG after direct call: shown {Shown}, extended {Read("Extended")}, last {LastOctant}, soundCalls {Calls}, voiceCalls {Read("VoiceCalls")}");
                         Expect(ShownSince == 1, $"Overlay direct call ({(ahead ? "ahead" : "behind")})", $"hints {ShownSince}");
                         OverlayCheck(player);
                         var side = LitSide();
@@ -328,6 +350,7 @@ namespace Marco.Network.Editor
 
         static int tick;
         static double loopStart;
+        static bool faultPaused;
         static bool firstChecked;
 
         static void OverlayCheck(NetworkPlayer player)
@@ -350,6 +373,11 @@ namespace Marco.Network.Editor
             float best = 0; Vector2 at = default;
             foreach (var renderer in overlay.GetComponentsInChildren<CanvasRenderer>(true))
                 if (renderer.GetAlpha() > best) { best = renderer.GetAlpha(); at = ((RectTransform)renderer.transform).anchoredPosition; }
+            var all = new System.Text.StringBuilder();
+            foreach (var renderer in overlay.GetComponentsInChildren<CanvasRenderer>(true))
+                all.Append($"[{renderer.name} a={renderer.GetAlpha():0.000} at {((RectTransform)renderer.transform).anchoredPosition}] ");
+            var view = NetworkPlayer.Local?.GetComponentInChildren<Camera>(true);
+            Debug.Log($"[DirectionHintChecks] DIAG overlay: lastOctant {LastOctant}, view yaw {(view != null ? view.transform.eulerAngles.y : -1)}, screen {Screen.width}x{Screen.height}, {all}");
             if (best <= 0) return "none";
             if (Mathf.Abs(at.y) * Screen.width >= Mathf.Abs(at.x) * Screen.height) return at.y > 0 ? "top" : "bottom";
             return at.x > 0 ? "right" : "left";

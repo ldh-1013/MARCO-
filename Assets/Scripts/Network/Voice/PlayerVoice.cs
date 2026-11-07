@@ -165,6 +165,7 @@ namespace Marco.Network.Voice
                     audioBufferedSamples++;
                 }
             }
+            try { DirectionHints.OnVoice(player != null ? player.PlayerId : -1, point, blocked); } catch (Exception exception) { DirectionHints.ReportFault("PlayVoiceTarget", exception); }
         }
 
         private void EnsureVoiceSource()

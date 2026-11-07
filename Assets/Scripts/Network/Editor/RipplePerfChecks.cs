@@ -362,7 +362,7 @@ namespace Marco.Network.Editor
         const double HintSeconds = 5;
         static readonly List<float> hintIdle = new(), hintLoad = new();
         static double voiceStart;
-        static int voiceSent, hiddenSent, shownBefore, lookupsBefore, voiceLookups;
+        static int voiceSent, hiddenSent, shownBefore, voiceLookups;
         static long voiceBytes;
         static Action<int, Vector3, bool> voiceHook;
         static Type HintType => Type.GetType("Marco.Network.Vision.DirectionHints, Marco.Network");
@@ -393,14 +393,18 @@ namespace Marco.Network.Editor
         static void PumpVoice(NetworkPlayer player, double now)
         {
             if (voiceHook == null) return;
-            if (voiceLookups < 0) { voiceLookups = 0; lookupsBefore = HintCounter("Lookups"); }
+            if (voiceLookups < 0) voiceLookups = 0;
             int due = (int)((now - voiceStart) * 50);
+            if (voiceSent >= due) return;
             var point = player.transform.position + Vector3.right * 2f;
+            // Only the voice calls' own lookups: the 30 hidden SoundTargets arrive inside the same window.
+            int before = HintCounter("Lookups");
             while (voiceSent < due)
             {
                 voiceHook(77, point, true);
                 voiceSent++;
             }
+            voiceLookups += HintCounter("Lookups") - before;
         }
 
         // Bytes the Mono heap grows over `calls` back-to-back voice hook calls (GC.GetAllocatedBytesForCurrentThread is
@@ -426,8 +430,8 @@ namespace Marco.Network.Editor
             Debug.Log($"[RipplePerfChecks] RESULT hint idle (switch on, nothing hidden): {Stats(hintIdle)}");
             Debug.Log($"[RipplePerfChecks] RESULT hint load (30 hidden SoundTargets at once + blocked voice 50/s for {HintSeconds:0}s): {Stats(hintLoad)}");
             if (HintType == null) { Debug.Log("[RipplePerfChecks] RESULT hint system: absent (baseline — SoundTarget cost only)"); return; }
-            int shown = HintCounter("Shown") - shownBefore, lookups = HintCounter("Lookups") - lookupsBefore;
-            float perCall = voiceSent > 0 ? lookups / (float)voiceSent : 0;
+            int shown = HintCounter("Shown") - shownBefore;
+            float perCall = voiceSent > 0 ? voiceLookups / (float)voiceSent : 0;
             bool counterWorks = false;
             var player = NetworkPlayer.Local;
             if (voiceHook != null && player != null) voiceBytes = VoiceHeapGrowth(player.transform.position + Vector3.right * 2f, 1000, out counterWorks);
