@@ -86,13 +86,21 @@ namespace Marco.Network.Vision
             var round = NetworkRound.Instance;
             bool active = round != null && round.Mode != RoundMode.NotStarted &&
                 round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.IsEcho);
-            int water = world.WaterState(owner, out float level);
-            bool grounded = world.TryFloorNear(owner, out _, .09f);
-            var velocity = ownerBody != null ? ownerBody.velocity : Vector3.zero;
-            float speed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
-            bool fast = MovementPulseClock.IsFastMovement(owner.Role, speed, water == 1);
-            clock.Advance(owner.transform.position, Time.deltaTime, active && !owner.IsEcho && water != 2 && (grounded || water == 1), fast, out bool emit);
-            fast = clock.Fast;
+            // Maps with pool audio emit the owner's floor rings from RoundAudioPlayback; only other maps need
+            // this clock (and its per-frame floor/water probes, which allocate).
+            bool fast = false, emit = false;
+            int water = 0;
+            float level = 0;
+            if (round == null || !round.UsesPoolAudio)
+            {
+                water = world.WaterState(owner, out level);
+                bool grounded = world.TryFloorNear(owner, out _, .09f);
+                var velocity = ownerBody != null ? ownerBody.velocity : Vector3.zero;
+                float speed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
+                fast = MovementPulseClock.IsFastMovement(owner.Role, speed, water == 1);
+                clock.Advance(owner.transform.position, Time.deltaTime, active && !owner.IsEcho && water != 2 && (grounded || water == 1), fast, out emit);
+                fast = clock.Fast;
+            }
             if (!active) { Clear(); return; }
             if (emit && !round.UsesPoolAudio && ownerBody != null)
             {
