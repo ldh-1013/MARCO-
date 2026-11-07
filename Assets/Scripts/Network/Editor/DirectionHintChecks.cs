@@ -151,10 +151,17 @@ namespace Marco.Network.Editor
                     {
                         bool on = step == 0;
                         SetSwitch(on);
-                        if (!FindActiveValve(round, out valveId, out var valve) ||
-                            !FindHiddenSpot(round, player, valve.transform.position, (float)Invoke(round, "ValveSoundRadius", valveId), out hostSpot))
-                        { results.Add($"skip hidden valve ({(on ? "on" : "off")}): no active A/C/D valve with a walled spot in range"); step = on ? 10 : 60; return true; }
-                        sourcePoint = valve.transform.position;
+                        if (!FindHiddenValve(round, player, out valveId, out sourcePoint, out hostSpot))
+                        {
+                            // Active valves are random: when none has a walled spot in range, the same loop is sent directly.
+                            results.Add($"hidden valve ({(on ? "on" : "off")}): no active valve with a walled spot in range this round - synthetic muffled loop ticks instead");
+                            sourcePoint = player.transform.position + Vector3.forward * 2f;
+                            expectedOctant = 0;
+                            rings.ClearPulses();
+                            Mark();
+                            loopStart = now; firstChecked = false;
+                            step = on ? 5 : 55; return true;
+                        }
                         expectedOctant = ServerOctant(sourcePoint, hostSpot);
                         rings.ClearPulses();
                         Mark();
@@ -168,7 +175,7 @@ namespace Marco.Network.Editor
                         int first = ShownSince;
                         Expect(RingsNear(rings, sourcePoint, 1f) == 0, $"Hidden valve {valveId} ring ({(on ? "on" : "off")})", $"world rings at the valve: {RingsNear(rings, sourcePoint, 1f)} (expected 0 — wall)");
                         if (on && ExpectHints)
-                            Expect(first == 1 && LastOctant == expectedOctant, "Hidden valve hint (on)",
+                            Expect(first == 1 && LastOctant == expectedOctant, $"Hidden valve {valveId} hint (on)",
                                 $"hints {first}, octant {LastOctant} (server snap {expectedOctant}), host at {hostSpot}");
                         else Expect(first == 0, $"Hidden valve hint ({(on ? "on, not wired" : "off")})", $"hints {first}");
                         until = now + 2.8; step++; return true;
@@ -181,6 +188,25 @@ namespace Marco.Network.Editor
                         else Expect(ShownSince == 0, $"Hidden valve loop repeat ({(on ? "on, not wired" : "off")})", $"hints {ShownSince}");
                         Invoke(round, "ValveAudio", valveId, ValveSoundEvent.RotatingStopped);
                         until = now + .5; step = on ? 10 : 60; return true;
+                    }
+                case 5: // synthetic hidden loop: muffled 0-radius "Valve" ticks every 0.25 s, like a turning valve behind a wall
+                case 55:
+                    {
+                        bool on = step == 5;
+                        Send(round, player, "Valve", sourcePoint, 100009, muffled: true, radius: 0f, seconds: 8f);
+                        if (!firstChecked && now >= loopStart + 1.0)
+                        {
+                            firstChecked = true;
+                            if (on && ExpectHints) Expect(ShownSince == 1 && LastOctant == expectedOctant, "Hidden loop hint (on, synthetic)", $"hints {ShownSince}, octant {LastOctant} (expected {expectedOctant})");
+                            else Expect(ShownSince == 0, $"Hidden loop hint ({(on ? "on, not wired" : "off")}, synthetic)", $"hints {ShownSince}");
+                        }
+                        if (now >= loopStart + 3.8)
+                        {
+                            if (on && ExpectHints) Expect(ShownSince == 2, "Hidden loop repeat (2.5 s, synthetic)", $"hints after 3.8 s: {ShownSince} (expected 2)");
+                            else Expect(ShownSince == 0, $"Hidden loop repeat ({(on ? "on, not wired" : "off")}, synthetic)", $"hints {ShownSince}");
+                            step = on ? 10 : 60; until = now + .5; return true;
+                        }
+                        until = now + .25; return true;
                     }
                 case 10: // hidden gate pulses S5 (wall between the host and an exit)
                 case 60:
@@ -301,6 +327,8 @@ namespace Marco.Network.Editor
         }
 
         static int tick;
+        static double loopStart;
+        static bool firstChecked;
 
         static void OverlayCheck(NetworkPlayer player)
         {
@@ -345,12 +373,18 @@ namespace Marco.Network.Editor
             return ((int)Mathf.Round(yaw / 45f) % 8 + 8) % 8;
         }
 
-        static bool FindActiveValve(NetworkRound round, out ValveId id, out ValveView view)
+        // An active valve (only those may turn) with a spot where the host hears it through a wall or the water surface.
+        static bool FindHiddenValve(NetworkRound round, NetworkPlayer player, out ValveId id, out Vector3 source, out Vector3 spot)
         {
             var board = typeof(NetworkRound).GetField("board", Flags)?.GetValue(round) as ValveBoard;
-            foreach (var candidate in new[] { ValveId.C, ValveId.D, ValveId.A })
-                if (board != null && board.Valves.ContainsKey(candidate) && ValveView.TryGet(candidate, out view)) { id = candidate; return true; }
-            id = default; view = null;
+            foreach (var candidate in new[] { ValveId.C, ValveId.D, ValveId.A, ValveId.B, ValveId.E })
+            {
+                if (board == null || !board.Valves.ContainsKey(candidate) || !ValveView.TryGet(candidate, out var view)) continue;
+                if (!FindHiddenSpot(round, player, view.transform.position, (float)Invoke(round, "ValveSoundRadius", candidate), out spot)) continue;
+                id = candidate; source = view.transform.position;
+                return true;
+            }
+            id = default; source = default; spot = default;
             return false;
         }
 
@@ -358,7 +392,8 @@ namespace Marco.Network.Editor
         static bool FindHiddenSpot(NetworkRound round, NetworkPlayer player, Vector3 source, float radius, out Vector3 spot)
         {
             var movement = player.GetComponent<PlayerMovement>();
-            for (float distance = 2f; distance < radius * .5f - .2f; distance += 1f)
+            float reach = radius * .5f * (player.Role == PlayerRole.Seeker ? 1.2f : 1f) - .2f;
+            for (float distance = 1.5f; distance < reach; distance += .75f)
                 for (int i = 0; i < 16; i++)
                 {
                     float angle = i * Mathf.PI / 8f;

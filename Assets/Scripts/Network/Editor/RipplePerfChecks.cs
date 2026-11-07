@@ -110,6 +110,14 @@ namespace Marco.Network.Editor
                 if (phase == 20 && now >= until)
                 {
                     SetHintSwitch(true);
+                    // The overlay is made once, on the first hint; its one-off cost is measured apart from the load.
+                    var ensure = Type.GetType("Marco.Network.Vision.DirectionHintOverlay, Marco.Network")?.GetMethod("Ensure", BindingFlags.Static | BindingFlags.Public);
+                    if (ensure != null)
+                    {
+                        var watch = Stopwatch.StartNew();
+                        ensure.Invoke(null, null);
+                        Debug.Log($"[RipplePerfChecks] RESULT hint overlay creation (once per session): {watch.Elapsed.TotalMilliseconds:0.00}ms");
+                    }
                     hintIdle.Clear(); lastFrame = Time.frameCount;
                     until = now + 2; phase = 21; return;
                 }
@@ -390,26 +398,43 @@ namespace Marco.Network.Editor
             var point = player.transform.position + Vector3.right * 2f;
             while (voiceSent < due)
             {
-                long before = GC.GetAllocatedBytesForCurrentThread();
                 voiceHook(77, point, true);
-                voiceBytes += GC.GetAllocatedBytesForCurrentThread() - before;
                 voiceSent++;
             }
         }
 
+        // Bytes the Mono heap grows over `calls` back-to-back voice hook calls (GC.GetAllocatedBytesForCurrentThread is
+        // not implemented by this runtime). A 4 KB probe proves the meter sees allocations; the smallest of 5 runs is kept
+        // so a stray allocation elsewhere on the main thread cannot fake a cost.
+        static long VoiceHeapGrowth(Vector3 point, int calls, out bool meterWorks)
+        {
+            long before = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+            var probe = new byte[4096];
+            meterWorks = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - before >= 4096 && probe.Length == 4096;
+            long best = long.MaxValue;
+            for (int run = 0; run < 5; run++)
+            {
+                long start = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+                for (int i = 0; i < calls; i++) voiceHook(77, point, true);
+                best = Math.Min(best, UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - start);
+            }
+            return best;
+        }
+
         static void ReportHints()
         {
-            long probe = GC.GetAllocatedBytesForCurrentThread();
-            var sink = new byte[1024];
-            bool counterWorks = GC.GetAllocatedBytesForCurrentThread() - probe >= 1024 && sink.Length == 1024;
             Debug.Log($"[RipplePerfChecks] RESULT hint idle (switch on, nothing hidden): {Stats(hintIdle)}");
             Debug.Log($"[RipplePerfChecks] RESULT hint load (30 hidden SoundTargets at once + blocked voice 50/s for {HintSeconds:0}s): {Stats(hintLoad)}");
             if (HintType == null) { Debug.Log("[RipplePerfChecks] RESULT hint system: absent (baseline — SoundTarget cost only)"); return; }
             int shown = HintCounter("Shown") - shownBefore, lookups = HintCounter("Lookups") - lookupsBefore;
             float perCall = voiceSent > 0 ? lookups / (float)voiceSent : 0;
+            bool counterWorks = false;
+            var player = NetworkPlayer.Local;
+            if (voiceHook != null && player != null) voiceBytes = VoiceHeapGrowth(player.transform.position + Vector3.right * 2f, 1000, out counterWorks);
             Debug.Log($"[RipplePerfChecks] RESULT hints lit by the hidden burst + voice: {shown} (hidden sent {hiddenSent}, merged by octant and source)");
-            Debug.Log($"[RipplePerfChecks] RESULT voice hook: {voiceSent} calls, allocated {voiceBytes} bytes (counter works: {counterWorks}), dictionary lookups per call {perCall:0.00}");
-            if (counterWorks && voiceBytes != 0) throw new Exception($"Voice hint path allocated {voiceBytes} bytes over {voiceSent} calls (must be 0)");
+            Debug.Log($"[RipplePerfChecks] RESULT voice hook: {voiceSent} calls at 50/s, dictionary lookups per call {perCall:0.00}; Mono heap growth over 1000 back-to-back calls {voiceBytes} bytes (meter sees a 4 KB probe: {counterWorks})");
+            if (!counterWorks) throw new Exception("Allocation meter did not see a 4 KB probe - the voice path allocation is unmeasured");
+            if (voiceBytes != 0) throw new Exception($"Voice hint path grew the heap by {voiceBytes} bytes over 1000 calls (must be 0)");
             if (voiceSent > 0 && perCall > 1.0001f) throw new Exception($"Voice hint path did {perCall:0.00} dictionary lookups per call (must be ≤ 1)");
         }
 
