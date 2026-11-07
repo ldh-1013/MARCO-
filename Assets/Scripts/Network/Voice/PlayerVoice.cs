@@ -37,6 +37,8 @@ namespace Marco.Network.Voice
         private AudioLowPassFilter voiceFilter;
         private float nextLocalPulse, nextServerPulse;
         private VoiceGrade lastLocalPulse, lastServerPulse;
+        // S9: one re-pulse rule for the own ring (client) and the rings others see (server).
+        private readonly VoicePulseGate localPulseGate = new(), serverPulseGate = new();
 
         private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
         {
@@ -83,7 +85,8 @@ namespace Marco.Network.Voice
             if (packet == null) return;
             var round = NetworkRound.Instance;
             if (round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
-                (Time.time >= nextLocalPulse || grade > lastLocalPulse))
+                (RippleServerFeatures.VoiceRepulseOnChange ? localPulseGate.ShouldPulse(grade, Time.time, PulseSpec(grade).duration)
+                    : (Time.time >= nextLocalPulse || grade > lastLocalPulse)))
             {
                 var (radius, duration) = PulseSpec(grade);
                 nextLocalPulse = Time.time + duration;
@@ -102,7 +105,8 @@ namespace Marco.Network.Voice
             bool inGameVoice = round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game;
             var (baseRadius, duration) = PulseSpec(grade);
             Vector3 origin = VoiceOrigin();
-            bool pulse = inGameVoice && (Time.time >= nextServerPulse || grade > lastServerPulse);
+            bool pulse = inGameVoice && (RippleServerFeatures.VoiceRepulseOnChange ? serverPulseGate.ShouldPulse(grade, Time.time, duration)
+                : (Time.time >= nextServerPulse || grade > lastServerPulse));
             if (pulse) { nextServerPulse = Time.time + duration; lastServerPulse = grade; }
             foreach (var listener in NetworkPlayer.All)
             {
