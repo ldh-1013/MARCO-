@@ -33,7 +33,7 @@ namespace Marco.Network.Editor
         static RipplePerfChecks() { if (SessionState.GetBool(Pending, false)) Subscribe(); }
         static void Subscribe()
         {
-            deadline = EditorApplication.timeSinceStartup + 150;
+            deadline = EditorApplication.timeSinceStartup + 180;
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
         }
@@ -102,6 +102,33 @@ namespace Marco.Network.Editor
                     trial++;
                     if (trial < Trials) { until = now + GapSeconds; phase = 6; return; }
                     Report(rings);
+                    rings.ClearPulses();
+                    until = now + GapSeconds; phase = 20; return;
+                }
+                // Phase C direction hints (host): 30 hidden ring-display sounds at once through the real SoundTarget,
+                // plus one remote speaker's blocked voice packets at 50 per second for 5 s through the voice hook.
+                if (phase == 20 && now >= until)
+                {
+                    SetHintSwitch(true);
+                    hintIdle.Clear(); lastFrame = Time.frameCount;
+                    until = now + 2; phase = 21; return;
+                }
+                if (phase == 21)
+                {
+                    Sample(hintIdle);
+                    if (now < until) return;
+                    HiddenBurst(round, player);
+                    hintLoad.Clear(); lastFrame = Time.frameCount;
+                    voiceStart = now; voiceSent = 0; voiceBytes = 0; voiceLookups = -1;
+                    until = now + HintSeconds; phase = 22; return;
+                }
+                if (phase == 22)
+                {
+                    Sample(hintLoad);
+                    PumpVoice(player, now);
+                    if (now < until) return;
+                    ReportHints();
+                    SetHintSwitch(false);
                     // Optional look at the rings: set MARCO_RIPPLE_SHOT to a folder outside the project.
                     shotDirectory = Environment.GetEnvironmentVariable("MARCO_RIPPLE_SHOT");
                     if (string.IsNullOrEmpty(shotDirectory)) { Finish(0); return; }
@@ -321,6 +348,69 @@ namespace Marco.Network.Editor
             if (maxOwnWait is int wait && wait != 0) throw new Exception("Own ring waited " + wait + " frames");
             foreach (int created in ownSameFrame) if (created != 2) throw new Exception("Own ring was not created in the request frame");
             Debug.Log("[RipplePerfChecks] PASS: measurement finished (batch editor play mode; GPU cost is not representative). No scene saved.");
+        }
+
+        // ---- Phase C direction hint load (reflection: measured before and after the hint system exists) ----
+        const double HintSeconds = 5;
+        static readonly List<float> hintIdle = new(), hintLoad = new();
+        static double voiceStart;
+        static int voiceSent, hiddenSent, shownBefore, lookupsBefore, voiceLookups;
+        static long voiceBytes;
+        static Action<int, Vector3, bool> voiceHook;
+        static Type HintType => Type.GetType("Marco.Network.Vision.DirectionHints, Marco.Network");
+
+        static void SetHintSwitch(bool on) =>
+            Type.GetType("Marco.Network.Vision.RippleClientFeatures, Marco.Network")?.GetField("DirectionHint")?.SetValue(null, on);
+
+        static int HintCounter(string name) =>
+            HintType?.GetProperty(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(null) is int value ? value : -1;
+
+        static void HiddenBurst(NetworkRound round, NetworkPlayer player)
+        {
+            var target = typeof(NetworkRound).GetMethod("SoundTarget", BindingFlags.Instance | BindingFlags.NonPublic);
+            shownBefore = HintCounter("Shown");
+            for (int i = 0; i < 30; i++)
+            {
+                float angle = i * Mathf.PI * 2f / 30f;
+                var point = player.transform.position + new Vector3(Mathf.Sin(angle), 0, Mathf.Cos(angle)) * 2f;
+                target.Invoke(round, new object[] { player.Owner, "", point, .5f, 1f, -1, true, -1, false, true, 0f, 2.5f });
+            }
+            hiddenSent = 30;
+            var method = HintType?.GetMethod("OnVoice", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            voiceHook = method != null ? (Action<int, Vector3, bool>)Delegate.CreateDelegate(typeof(Action<int, Vector3, bool>), method) : null;
+            if (voiceHook != null) voiceHook(77, player.transform.position + Vector3.right * 2f, true); // warm-up: JIT and the speaker's state
+        }
+
+        // Blocked voice packets of one remote speaker at 50 per second; bytes allocated inside the hook are summed.
+        static void PumpVoice(NetworkPlayer player, double now)
+        {
+            if (voiceHook == null) return;
+            if (voiceLookups < 0) { voiceLookups = 0; lookupsBefore = HintCounter("Lookups"); }
+            int due = (int)((now - voiceStart) * 50);
+            var point = player.transform.position + Vector3.right * 2f;
+            while (voiceSent < due)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                voiceHook(77, point, true);
+                voiceBytes += GC.GetAllocatedBytesForCurrentThread() - before;
+                voiceSent++;
+            }
+        }
+
+        static void ReportHints()
+        {
+            long probe = GC.GetAllocatedBytesForCurrentThread();
+            var sink = new byte[1024];
+            bool counterWorks = GC.GetAllocatedBytesForCurrentThread() - probe >= 1024 && sink.Length == 1024;
+            Debug.Log($"[RipplePerfChecks] RESULT hint idle (switch on, nothing hidden): {Stats(hintIdle)}");
+            Debug.Log($"[RipplePerfChecks] RESULT hint load (30 hidden SoundTargets at once + blocked voice 50/s for {HintSeconds:0}s): {Stats(hintLoad)}");
+            if (HintType == null) { Debug.Log("[RipplePerfChecks] RESULT hint system: absent (baseline — SoundTarget cost only)"); return; }
+            int shown = HintCounter("Shown") - shownBefore, lookups = HintCounter("Lookups") - lookupsBefore;
+            float perCall = voiceSent > 0 ? lookups / (float)voiceSent : 0;
+            Debug.Log($"[RipplePerfChecks] RESULT hints lit by the hidden burst + voice: {shown} (hidden sent {hiddenSent}, merged by octant and source)");
+            Debug.Log($"[RipplePerfChecks] RESULT voice hook: {voiceSent} calls, allocated {voiceBytes} bytes (counter works: {counterWorks}), dictionary lookups per call {perCall:0.00}");
+            if (counterWorks && voiceBytes != 0) throw new Exception($"Voice hint path allocated {voiceBytes} bytes over {voiceSent} calls (must be 0)");
+            if (voiceSent > 0 && perCall > 1.0001f) throw new Exception($"Voice hint path did {perCall:0.00} dictionary lookups per call (must be ≤ 1)");
         }
 
         static void Finish(int code)
