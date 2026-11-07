@@ -27,13 +27,16 @@ namespace Marco.Network.Vision
         public static readonly int MaxPad = Shader.PropertyToID("_MaxPad");
 
         // Four vertices per segment (no sharing), so every quad knows the stop distance of both its ends.
-        const int MaxEnds = RippleVisualSettings.MaxSegments + 1;
-        const int MaxVertices = RippleVisualSettings.MaxSegments * 4;
+        const int MaxQuads = RippleVisualSettings.MaxSegments + RippleVisualSettings.MaxDoorEdges;
+        const int MaxEnds = MaxQuads + 1;
+        const int MaxVertices = MaxQuads * 4;
         static readonly Vector3[] vertices = new Vector3[MaxVertices];
         static readonly Vector4[] ray = new Vector4[MaxVertices];
         static readonly Vector4[] other = new Vector4[MaxVertices];
         static readonly Vector4[][] heights = { new Vector4[MaxVertices], new Vector4[MaxVertices], new Vector4[MaxVertices], new Vector4[MaxVertices] };
-        static readonly int[] triangles = new int[RippleVisualSettings.MaxSegments * 6];
+        static readonly int[] triangles = new int[MaxQuads * 6];
+        static readonly float[] angles = new float[MaxQuads];
+        static readonly bool[] endWall = new bool[MaxEnds];
         static readonly Vector3[] endDirection = new Vector3[MaxEnds], endInner = new Vector3[MaxEnds], endOuter = new Vector3[MaxEnds];
         static readonly float[] endReach = new float[MaxEnds];
         static readonly Vector4[][] endHeights = { new Vector4[MaxEnds], new Vector4[MaxEnds], new Vector4[MaxEnds], new Vector4[MaxEnds] };
@@ -67,14 +70,30 @@ namespace Marco.Network.Vision
 
         public static void Write(Mesh mesh, RippleShape shape, float innerWidth)
         {
-            int segments = Segments(shape.Radius);
+            int uniform = Segments(shape.Radius);
+            // Uniform ends plus the door-cone edges, so a leaked arc ends exactly on the jamb angle.
+            int segments = 0, edge = 0;
+            for (int i = 0; i < uniform; i++)
+            {
+                float angle = i * Mathf.PI * 2f / uniform;
+                while (edge < shape.EdgeCount && shape.EdgeAngle[edge] < angle)
+                {
+                    if (angle - shape.EdgeAngle[edge] > 1e-4f && (segments == 0 || shape.EdgeAngle[edge] - angles[segments - 1] > 1e-4f))
+                        angles[segments++] = shape.EdgeAngle[edge];
+                    edge++;
+                }
+                angles[segments++] = angle;
+            }
+            for (; edge < shape.EdgeCount; edge++)
+                if (shape.EdgeAngle[edge] - angles[segments - 1] > 1e-4f && Mathf.PI * 2f - shape.EdgeAngle[edge] > 1e-4f)
+                    angles[segments++] = shape.EdgeAngle[edge];
             int rays = Mathf.Max(1, shape.RayCount);
             float jump = RippleVisualSettings.ReachJump(shape.Radius);
             int next = 0;
             // Segment ends: direction, stop distance, height profile and the fully expanded inner/outer points.
             for (int i = 0; i <= segments; i++)
             {
-                float angle = (i % segments) * Mathf.PI * 2f / segments;
+                float angle = angles[i % segments];
                 // Bracketing rays a (at or before this angle) and b (after it), wrapping around.
                 while (next < rays && shape.Angle[next] <= angle) next++;
                 int a = (next - 1 + rays) % rays, b = next % rays;
@@ -86,7 +105,9 @@ namespace Marco.Network.Vision
                 // Small differences blend; a large jump (a wall edge between the two rays) takes the shorter
                 // reach so the ring never crosses a wall between samples.
                 float reach = Mathf.Abs(reachA - reachB) <= jump ? Mathf.Lerp(reachA, reachB, t) : Mathf.Min(reachA, reachB);
-                if (t <= .001f) reach = reachA; else if (t >= .999f) reach = reachB;
+                bool wall = Mathf.Abs(reachA - reachB) <= jump ? shape.Wall[a] && shape.Wall[b] : reachA <= reachB ? shape.Wall[a] : shape.Wall[b];
+                if (t <= .001f) { reach = reachA; wall = shape.Wall[a]; }
+                else if (t >= .999f) { reach = reachB; wall = shape.Wall[b]; }
                 for (int k = 0; k < RippleShape.MaxSamples; k++)
                     profile[k] = Mathf.Lerp(shape.Heights[a * RippleShape.MaxSamples + k], shape.Heights[b * RippleShape.MaxSamples + k], t);
 
@@ -95,6 +116,7 @@ namespace Marco.Network.Vision
                 float inner = Mathf.Max(0, front - innerWidth);
                 endDirection[i] = direction;
                 endReach[i] = reach;
+                endWall[i] = wall;
                 endInner[i] = direction * inner + Vector3.up * Height(profile, inner, shape.Step);
                 endOuter[i] = direction * front + Vector3.up * Height(profile, front, shape.Step);
                 for (int c = 0; c < 4; c++)
@@ -129,7 +151,7 @@ namespace Marco.Network.Vision
             vertices[vertex] = side == 0 ? endInner[end] : endOuter[end];
             var direction = endDirection[end];
             ray[vertex] = new Vector4(direction.x, direction.z, endReach[end], side);
-            other[vertex] = new Vector4(endReach[otherEnd], 0, 0, 0);
+            other[vertex] = new Vector4(endReach[otherEnd], endWall[end] ? 1 : 0, 0, 0);
             for (int c = 0; c < 4; c++) heights[c][vertex] = endHeights[c][end];
         }
 

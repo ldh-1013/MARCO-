@@ -51,6 +51,13 @@ namespace Marco.Network.Vision
         // Ray directions and floor samples per direction by radius. Cost ≈ directions × (samples − 1) × 2.
         public static int RayDirections(float radius) => radius <= 2f ? 16 : radius <= 12.5f ? 24 : 20;
         public static int ProfileSamples(float radius) => radius <= 2f ? 5 : radius <= 12.5f ? 9 : 11;
+        // Open doorways (§16.4 [10-26]): rays just inside each jamb (degrees) and through the cone at this
+        // circumference spacing at the ring radius, as the per-ring budget allows (nearest doors first).
+        public const float DoorEdgeInsetDegrees = .2f;
+        public const float DoorFillSpacing = .3f;
+        public const int MaxDoorEdges = 32;
+        // Door probing: jamb ray height above the storey floor, and the upper storey height (Layout_v1_2 upperFloor).
+        public const float DoorProbeHeight = 1.2f, UpperFloorHeight = 3.5f;
         // Water-surface rings only need one horizontal ray per direction.
         public const int WaterRayDirections = 32;
         // Extra directions inserted where neighbouring reaches differ (doors, corners).
