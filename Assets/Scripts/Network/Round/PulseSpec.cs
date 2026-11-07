@@ -15,8 +15,8 @@ namespace Marco.Network.Round
         public static float BreathRadius(int breathsSoFar) =>
             breathsSoFar < 0 ? BreathStart : System.Math.Min(BreathMax, BreathStart + BreathStep * breathsSoFar);
         // §5.2 ⑦ debounce reused for ⑨ re-emission: a changed grade counts after 0.15s; pulses of one
-        // speaker are at least 0.15s apart.
-        public const float VoiceGradeHold = .15f, VoiceMinInterval = .15f;
+        // speaker are at least 0.25s apart (at most 4 per second per listener — server delivery rule).
+        public const float VoiceGradeHold = .15f, VoiceMinInterval = .25f;
         // D9: ring-only pulses send this instead of a clip name; RoundAudioPlayback plays nothing for it.
         public const string NoAudio = "";
     }
