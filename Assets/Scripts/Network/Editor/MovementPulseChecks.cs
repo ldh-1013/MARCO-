@@ -9,7 +9,11 @@ namespace Marco.Network.Editor
 {
     public static class MovementPulseChecks
     {
-        public static void Run()
+        // Existing check: the map scene. RunNetworkPool runs the same checks in the main scene NetworkPool_v1_2.
+        public static void Run() => Run("Assets/Scenes/Maps/IndoorPool_v1_2.unity");
+        public static void RunNetworkPool() => Run("Assets/Scenes/Network/NetworkPool_v1_2.unity");
+
+        private static void Run(string scenePath)
         {
             if (!Application.isBatchMode) throw new InvalidOperationException("Batch inspection only; does not run inside the user's editor.");
             var previousSetup = EditorSceneManager.GetSceneManagerSetup();
@@ -72,7 +76,7 @@ namespace Marco.Network.Editor
                 for(int i=0;i<120;i++){bool fast=i>=60;position.x+=.05f;clock.Advance(position,.01f,true,fast,out bool ring);if(ring)rings++;}
                 Require(rings==0&&clock.Fast,"A sustained grade change did not reset the ring counter");
 
-                EditorSceneManager.OpenScene("Assets/Scenes/Maps/IndoorPool_v1_2.unity",OpenSceneMode.Single);
+                EditorSceneManager.OpenScene(scenePath,OpenSceneMode.Single);
                 var assembly=typeof(WalkingFootRings).Assembly;
                 var worldType=assembly.GetType("Marco.Network.Audio.SoundWorld",true);
                 var world=Activator.CreateInstance(worldType,true);
@@ -122,7 +126,7 @@ namespace Marco.Network.Editor
                 Require((bool)hear.Invoke(world,arguments),"Seeker did not receive its 1.2 hearing multiplier");
                 UnityEngine.Object.DestroyImmediate(listenerObject);
                 UnityEngine.Object.DestroyImmediate(wall);
-                Debug.Log("[MovementPulseChecks] PASS: walk 2m sounds/6m ring; sprint 6m; stop reset; teleport suppression; wall clip; open gap; hearing cutoff; blocked gain/redacted position; Seeker 1.2 hearing. No scene saved.");
+                Debug.Log("[MovementPulseChecks] PASS in "+scenePath+": walk 2m sounds/6m ring; sprint 6m; stop reset; teleport suppression; wall clip; open gap; hearing cutoff; blocked gain/redacted position; Seeker 1.2 hearing. No scene saved.");
             }
             catch(Exception ex){Debug.LogException(ex);exitCode = 1;}
             finally
