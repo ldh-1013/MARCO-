@@ -24,6 +24,8 @@ namespace Marco.Network.Vision
         private readonly List<Ring> rings = new();
         private readonly List<Ring> pool = new();
         private readonly List<Request> queue = new();
+        private readonly List<Afterglow> afterglows = new();
+        private readonly List<Afterglow> afterglowPool = new();
         private Material material;
         private NetworkPlayer owner;
         private CharacterController ownerBody;
@@ -52,6 +54,22 @@ namespace Marco.Network.Vision
             public bool Seeker, Contact, Expand, Sound, Self;
             public Color Tint;
             public float Radius;
+            // Wall reveal strip (child object, same material, _Mode 1).
+            public GameObject WallObject;
+            public Renderer WallRenderer;
+            public Mesh WallMesh;
+            public MaterialPropertyBlock WallProperties = new();
+            public bool HasWall;
+        }
+
+        // Own ring-display rings leave the wall-floor lines they reached (§16.4 잔상, _Mode 2).
+        private sealed class Afterglow
+        {
+            public GameObject Object;
+            public Renderer Renderer;
+            public Mesh Mesh;
+            public MaterialPropertyBlock Properties = new();
+            public float Started;
         }
 
         private enum Kind : byte { Floor, Contact, Sound }
@@ -126,9 +144,15 @@ namespace Marco.Network.Vision
                 }
                 float age = now - ring.Started;
                 float t = age / ring.Lifetime;
-                if (t >= 1) { Remove(i); continue; }
+                if (t >= 1)
+                {
+                    if (ring.Self && ring.Sound) StartAfterglow(ring);
+                    Remove(i);
+                    continue;
+                }
                 Draw(ring, age, t, now);
             }
+            DrawAfterglows(now);
         }
 
         // ── Entry points (called by movement, sound, voice and item code) ───────────────────────
@@ -301,6 +325,14 @@ namespace Marco.Network.Vision
                     ? RippleVisualSettings.FloorCoreWidth + RippleVisualSettings.FloorTrailWidth
                     : RippleVisualSettings.CoreWidth + RippleVisualSettings.TrailWidth);
                 RippleMesh.ApplyShape(ring.Properties, ring.Shape, request.DoubleEdge);
+                // Walls light up only for ring-display rings, never for an Echo listener (§3.2-1).
+                ring.HasWall = sound && !owner.IsEcho && RippleMesh.WriteWall(ring.WallMesh);
+                if (ring.HasWall)
+                {
+                    RippleMesh.ApplyShape(ring.WallProperties, ring.Shape, false);
+                    ring.WallProperties.SetFloat(RippleMesh.Mode, 1f);
+                }
+                ring.WallObject.SetActive(ring.HasWall);
                 ring.Object.name = Name(request.Label, request.Source);
                 ring.Object.transform.position = request.Point;
                 ring.Started = Time.time; ring.Lifetime = request.Lifetime; ring.StoppedAt = -1;
@@ -350,9 +382,81 @@ namespace Marco.Network.Vision
                 core = RippleVisualSettings.FloorCoreWidth * width;
                 trail = RippleVisualSettings.FloorTrailWidth * width;
             }
+            if (ring.HasWall)
+            {
+                float wall = alpha * RippleVisualSettings.WallRevealBrightness * (ring.Self ? RippleVisualSettings.SelfWallRevealBrightness : 1f);
+                RippleMesh.ApplyFrame(ring.WallProperties, ring.Tint, wall, radius, core, trail);
+                ring.WallRenderer.SetPropertyBlock(ring.WallProperties);
+            }
             if (ring.Self) alpha *= RippleVisualSettings.SelfAlphaClamped;
             RippleMesh.ApplyFrame(ring.Properties, ring.Tint, alpha, radius, core, trail);
             ring.Renderer.SetPropertyBlock(ring.Properties);
+        }
+
+        private void StartAfterglow(Ring ring)
+        {
+            if (material == null || ring.Object == null) return;
+            while (afterglows.Count >= RippleVisualSettings.AfterglowCap) RemoveAfterglow(0);
+            Afterglow glow = null;
+            while (afterglowPool.Count > 0 && glow == null)
+            {
+                var pooled = afterglowPool[afterglowPool.Count - 1];
+                afterglowPool.RemoveAt(afterglowPool.Count - 1);
+                if (pooled.Object != null) glow = pooled;
+                else if (pooled.Mesh != null) Destroy(pooled.Mesh);
+            }
+            if (glow == null)
+            {
+                var go = new GameObject("Ripple Afterglow");
+                var renderer = go.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                renderer.lightProbeUsage = LightProbeUsage.Off;
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                var mesh = new Mesh { name = "Ripple Afterglow" };
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                glow = new Afterglow { Object = go, Renderer = renderer, Mesh = mesh };
+            }
+            // Same shape, no new raycasts: only the wall-stopped ends are drawn in _Mode 2.
+            RippleMesh.Write(glow.Mesh, ring.Shape, RippleVisualSettings.CoreWidth);
+            RippleMesh.ApplyShape(glow.Properties, ring.Shape, false);
+            glow.Properties.SetFloat(RippleMesh.Mode, 2f);
+            glow.Object.transform.position = ring.Object.transform.position;
+            glow.Started = Time.time;
+            afterglows.Add(glow);
+            DrawAfterglow(glow, 0f);
+            glow.Object.SetActive(true);
+        }
+
+        private void DrawAfterglows(float now)
+        {
+            for (int i = afterglows.Count - 1; i >= 0; i--)
+            {
+                var glow = afterglows[i];
+                float age = now - glow.Started;
+                if (glow.Object == null || age >= RippleVisualSettings.AfterglowSeconds) { RemoveAfterglow(i); continue; }
+                DrawAfterglow(glow, age);
+            }
+        }
+
+        // 15% -> 0% linear over 12 s (부록 A [잔상]); a short fade-in hides the hand-over from the ring.
+        private static void DrawAfterglow(Afterglow glow, float age)
+        {
+            float alpha = RippleVisualSettings.AfterglowAlpha * Mathf.Clamp01(age / RippleVisualSettings.AfterglowFadeIn) *
+                (1f - age / RippleVisualSettings.AfterglowSeconds);
+            RippleMesh.ApplyFrame(glow.Properties, RippleVisualSettings.EnvironmentColor, alpha, 1e4f,
+                RippleVisualSettings.CoreWidth, 0f);
+            glow.Renderer.SetPropertyBlock(glow.Properties);
+        }
+
+        private void RemoveAfterglow(int i)
+        {
+            var glow = afterglows[i];
+            afterglows.RemoveAt(i);
+            if (glow.Object == null) { if (glow.Mesh != null) Destroy(glow.Mesh); return; }
+            glow.Object.SetActive(false);
+            afterglowPool.Add(glow);
         }
 
         private bool EnsureMaterial()
@@ -373,6 +477,7 @@ namespace Marco.Network.Vision
                 pool.RemoveAt(pool.Count - 1);
                 if (pooled.Object != null) return pooled;
                 if (pooled.Mesh != null) Destroy(pooled.Mesh);
+                if (pooled.WallMesh != null) Destroy(pooled.WallMesh);
             }
             // Root object, no collider or rigidbody: rings never take part in physics or judgement.
             var go = new GameObject("Ripple Ring");
@@ -384,8 +489,19 @@ namespace Marco.Network.Vision
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
             var mesh = new Mesh { name = "Ripple Ring" };
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var wall = new GameObject("Ripple Wall Reveal");
+            wall.transform.SetParent(go.transform, false);
+            var wallRenderer = wall.AddComponent<MeshRenderer>();
+            wallRenderer.sharedMaterial = material;
+            wallRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            wallRenderer.receiveShadows = false;
+            wallRenderer.lightProbeUsage = LightProbeUsage.Off;
+            wallRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            var wallMesh = new Mesh { name = "Ripple Wall Reveal" };
+            wall.AddComponent<MeshFilter>().sharedMesh = wallMesh;
+            wall.SetActive(false);
             go.SetActive(false);
-            return new Ring { Object = go, Renderer = renderer, Mesh = mesh };
+            return new Ring { Object = go, Renderer = renderer, Mesh = mesh, WallObject = wall, WallRenderer = wallRenderer, WallMesh = wallMesh };
         }
 
         // ── Ownership rules (D1) and colour (D5) ───────────────────────────────
@@ -454,6 +570,7 @@ namespace Marco.Network.Vision
             if (ring.Object == null)
             {
                 if (ring.Mesh != null) Destroy(ring.Mesh);
+                if (ring.WallMesh != null) Destroy(ring.WallMesh);
                 return;
             }
             ring.Object.SetActive(false);
@@ -464,6 +581,7 @@ namespace Marco.Network.Vision
         {
             queue.Clear();
             for (int i = rings.Count - 1; i >= 0; i--) Remove(i);
+            for (int i = afterglows.Count - 1; i >= 0; i--) RemoveAfterglow(i);
         }
 
         private void OnDisable()
@@ -481,8 +599,15 @@ namespace Marco.Network.Vision
                 {
                     if (ring.Object != null) Destroy(ring.Object);
                     if (ring.Mesh != null) Destroy(ring.Mesh);
+                    if (ring.WallMesh != null) Destroy(ring.WallMesh);
                 }
                 pool.Clear();
+                foreach (var glow in afterglowPool)
+                {
+                    if (glow.Object != null) Destroy(glow.Object);
+                    if (glow.Mesh != null) Destroy(glow.Mesh);
+                }
+                afterglowPool.Clear();
                 if (material != null) Destroy(material);
             }
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.OnDestroy", exception, this); }

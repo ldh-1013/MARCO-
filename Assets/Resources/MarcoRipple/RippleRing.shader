@@ -23,6 +23,8 @@ Shader "Marco/RippleRing"
         _JoinStart("Corner fade start", Float) = 0.3
         _JoinEnd("Corner fade end", Float) = 0.6
         _MaxPad("Maximum strip padding", Float) = 1.5
+        _Mode("0 ring / 1 wall reveal / 2 afterglow", Float) = 0
+        _WallFade("Wall reveal fade distance", Float) = 1.5
     }
     SubShader
     {
@@ -45,7 +47,7 @@ Shader "Marco/RippleRing"
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
                 float _Radius, _Step, _Core, _Trail, _Halo, _Glow, _Double, _Gap, _InnerBrightness;
-                float _StopFade, _StopDim, _MinPixels, _JoinStart, _JoinEnd, _MaxPad;
+                float _StopFade, _StopDim, _MinPixels, _JoinStart, _JoinEnd, _MaxPad, _Mode, _WallFade;
             CBUFFER_END
 
             struct Attributes
@@ -56,7 +58,7 @@ Shader "Marco/RippleRing"
                 float4 h1 : TEXCOORD2;
                 float4 h2 : TEXCOORD3;
                 float4 h3 : TEXCOORD4;
-                float4 other : TEXCOORD5;    // x = reach at the other end of this quad
+                float4 other : TEXCOORD5;    // x = reach at the other end of this quad, y = 1 if this end stopped at a wall
             };
 
             struct Varyings
@@ -66,6 +68,7 @@ Shader "Marco/RippleRing"
                 float front : TEXCOORD1;     // wavefront distance for this direction (stops at reach)
                 float reach : TEXCOORD2;
                 float join : TEXCOORD3;      // 0 where the quad would stretch radially across a corner
+                float wall : TEXCOORD4;      // ring/afterglow: 1 at wall-stopped ends; wall reveal: height fraction
             };
 
             // Linear interpolation of the 16-sample profile written as a tent filter (no dynamic indexing).
@@ -95,6 +98,14 @@ Shader "Marco/RippleRing"
 
             Varyings vert(Attributes v)
             {
+                // Wall reveal: a static strip standing on the wall where this ring stops (§16.4 2차 연출).
+                if (_Mode > 0.5 && _Mode < 1.5)
+                {
+                    Varyings w;
+                    w.positionHCS = TransformObjectToHClip(v.positionOS.xyz);
+                    w.radial = 0; w.front = 0; w.reach = v.ray.z; w.join = 1; w.wall = v.ray.w;
+                    return w;
+                }
                 float2 dir = v.ray.xy;
                 float reach = v.ray.z;
                 float front = min(_Radius, reach);
@@ -117,6 +128,7 @@ Shader "Marco/RippleRing"
                 // Both ends of a quad compute the same difference, so the whole quad fades together.
                 float otherFront = min(_Radius, v.other.x);
                 o.join = 1.0 - smoothstep(_JoinStart, _JoinEnd, abs(front - otherFront));
+                o.wall = v.other.y;
                 return o;
             }
 
@@ -128,6 +140,15 @@ Shader "Marco/RippleRing"
 
             half4 frag(Varyings i) : SV_Target
             {
+                if (_Mode > 0.5 && _Mode < 1.5)
+                {
+                    // Lights the moment the wavefront reaches this wall, then fades as the ring moves on;
+                    // brightest at the floor, gone towards the top.
+                    float reached = _Radius - i.reach;
+                    float flash = smoothstep(0.0, 0.15, reached) * pow(1.0 - saturate(reached / max(_WallFade, 1e-3)), 2.0);
+                    float up = 1.0 - saturate(i.wall);
+                    return half4(_BaseColor.rgb, saturate(_BaseColor.a * flash * up * up));
+                }
                 float px = max(fwidth(i.radial), 1e-4);       // metres per pixel across the line, on screen
                 float x = i.radial - i.front;                 // > 0 outside the wavefront
                 float core = max(_Core, _MinPixels * px);
@@ -143,6 +164,12 @@ Shader "Marco/RippleRing"
                 float second = Band(x + _Gap, max(_Core, _MinPixels * px), px) * _InnerBrightness;
                 ring = max(ring, second * _Double);
 
+                if (_Mode > 1.5)
+                {
+                    // Afterglow (§16.4): only the core line where this ring stopped at a wall, no glow.
+                    float edge = Band(x, core, px) * saturate(i.wall) * i.join;
+                    return half4(_BaseColor.rgb, saturate(_BaseColor.a * edge));
+                }
                 // A direction stopped by a wall stays at the wall and dims there instead of jumping.
                 float stopped = saturate((_Radius - i.reach) / max(_StopFade, 1e-3));
                 ring *= lerp(1.0, _StopDim, stopped) * i.join;

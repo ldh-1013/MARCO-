@@ -25,6 +25,8 @@ namespace Marco.Network.Vision
         public static readonly int JoinStart = Shader.PropertyToID("_JoinStart");
         public static readonly int JoinEnd = Shader.PropertyToID("_JoinEnd");
         public static readonly int MaxPad = Shader.PropertyToID("_MaxPad");
+        public static readonly int Mode = Shader.PropertyToID("_Mode");
+        public static readonly int WallFade = Shader.PropertyToID("_WallFade");
 
         // Four vertices per segment (no sharing), so every quad knows the stop distance of both its ends.
         const int MaxQuads = RippleVisualSettings.MaxSegments + RippleVisualSettings.MaxDoorEdges;
@@ -132,6 +134,9 @@ namespace Marco.Network.Vision
                 triangles[t] = v; triangles[t + 1] = v + 1; triangles[t + 2] = v + 2;
                 triangles[t + 3] = v + 1; triangles[t + 4] = v + 3; triangles[t + 5] = v + 2;
             }
+            lastSegments = segments;
+            lastStep = shape.Step;
+            lastRadius = shape.Radius;
             int count = segments * 4;
             mesh.Clear();
             mesh.SetVertices(vertices, 0, count);
@@ -155,6 +160,56 @@ namespace Marco.Network.Vision
             for (int c = 0; c < 4; c++) heights[c][vertex] = endHeights[c][end];
         }
 
+        // The wall strips of the shape last passed to Write: one quad per segment whose two ends stopped at a
+        // wall and are not split by a corner. Returns false when the ring touches no wall.
+        static int lastSegments;
+        static float lastStep, lastRadius;
+        public static bool WriteWall(Mesh mesh)
+        {
+            int quads = 0;
+            float join = RippleVisualSettings.JoinStart;
+            for (int i = 0; i < lastSegments; i++)
+            {
+                int j = i + 1;
+                if (!endWall[i] || !endWall[j] || Mathf.Abs(endReach[i] - endReach[j]) >= join) continue;
+                if (endReach[i] >= lastRadius - .001f || endReach[j] >= lastRadius - .001f) continue;
+                int v = quads * 4;
+                WallEnd(v, i, 0); WallEnd(v + 1, i, 1); WallEnd(v + 2, j, 0); WallEnd(v + 3, j, 1);
+                int t = quads * 6;
+                triangles[t] = v; triangles[t + 1] = v + 1; triangles[t + 2] = v + 2;
+                triangles[t + 3] = v + 1; triangles[t + 4] = v + 3; triangles[t + 5] = v + 2;
+                quads++;
+            }
+            mesh.Clear();
+            if (quads == 0) return false;
+            mesh.SetVertices(vertices, 0, quads * 4);
+            mesh.SetUVs(0, ray, 0, quads * 4);
+            mesh.SetTriangles(triangles, 0, quads * 6, 0, false);
+            mesh.RecalculateBounds();
+            return true;
+        }
+
+        static void WallEnd(int vertex, int end, int top)
+        {
+            var direction = endDirection[end];
+            float reach = Mathf.Max(0, endReach[end] - RippleVisualSettings.WallRevealInset);
+            float floor = Height(endProfile, end, reach);
+            vertices[vertex] = direction * reach + Vector3.up * (floor + top * RippleVisualSettings.WallRevealHeight);
+            ray[vertex] = new Vector4(direction.x, direction.z, endReach[end], top);
+        }
+
+        static float Height(Vector4[][] rows, int end, float distance)
+        {
+            for (int c = 0; c < 4; c++)
+            {
+                var h = rows[c][end];
+                profile[c * 4] = h.x; profile[c * 4 + 1] = h.y; profile[c * 4 + 2] = h.z; profile[c * 4 + 3] = h.w;
+            }
+            return Height(profile, distance, lastStep);
+        }
+
+        static Vector4[][] endProfile => endHeights;
+
         static float Height(float[] values, float distance, float step)
         {
             float f = Mathf.Clamp(distance / Mathf.Max(step, 1e-4f), 0, RippleShape.MaxSamples - 1);
@@ -174,9 +229,11 @@ namespace Marco.Network.Vision
             properties.SetFloat(StopFade, Mathf.Max(.3f, shape.Radius * RippleVisualSettings.StopFadeFraction));
             properties.SetFloat(StopDim, RippleVisualSettings.StoppedDim);
             properties.SetFloat(MinPixels, RippleVisualSettings.MinPixels);
+            properties.SetFloat(Mode, 0f);
             properties.SetFloat(JoinStart, RippleVisualSettings.JoinStart);
             properties.SetFloat(JoinEnd, RippleVisualSettings.JoinEnd);
             properties.SetFloat(MaxPad, RippleVisualSettings.MaxPadMetres);
+            properties.SetFloat(WallFade, RippleVisualSettings.WallRevealFade(shape.Radius));
         }
 
         // Per-frame values. No allocation: the block is reused.

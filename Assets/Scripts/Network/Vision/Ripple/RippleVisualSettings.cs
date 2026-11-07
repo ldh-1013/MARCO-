@@ -95,6 +95,17 @@ namespace Marco.Network.Vision
         // Where neighbouring segments' wavefronts are this far apart (one stopped at a wall corner, one still
         // moving), the strip between them would be a radial line: fade it out from JoinStart to JoinEnd metres.
         public const float JoinStart = .3f, JoinEnd = .6f;
+        // Wall reveal (§16.4 [10-26] 2차): a strip standing on the wall where a ring-display ring stops, lit the
+        // moment the wavefront arrives. Height, gap in front of the wall, brightness (own rings dimmer — the
+        // voice light already shows the own surroundings), and how far the wavefront moves on while it fades.
+        public const float WallRevealHeight = 2.5f, WallRevealInset = .04f;
+        public const float WallRevealBrightness = .6f, SelfWallRevealBrightness = .5f;
+        public static float WallRevealFade(float radius) => Mathf.Max(1.5f, radius * .15f);
+        // Afterglow (§16.4 · 부록 A [잔상]): own ring-display rings leave their wall-floor lines, 15% → 0% over 12 s.
+        public const float AfterglowAlpha = .15f, AfterglowSeconds = 12f;
+        // 연출 튜닝값: the afterglow fades in while the ring itself fades out, so there is no pop.
+        public const float AfterglowFadeIn = .3f;
+        public const int AfterglowCap = 12;
         // Strip padding is MinPixels measured along the screen-space radial direction, capped at this many metres.
         public const float MaxPadMetres = 1.5f;
 
