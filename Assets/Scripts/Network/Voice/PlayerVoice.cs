@@ -39,6 +39,8 @@ namespace Marco.Network.Voice
         private VoiceGrade lastLocalPulse, lastServerPulse;
         // S9: one re-pulse rule for the own ring (client) and the rings others see (server).
         private readonly VoicePulseGate localPulseGate = new(), serverPulseGate = new();
+        // D1: speech gate for sending and the own ring only (the voice light is not affected).
+        private readonly VoiceActivityGate activityGate = new();
 
         private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
         {
@@ -81,6 +83,7 @@ namespace Marco.Network.Voice
 
         private void OnVoiceSamplesReady(float[] samples, VoiceGrade grade)
         {
+            if (RippleServerFeatures.VoiceActivityGate && !activityGate.Accept(samples, Time.time)) return;
             var packet = VoiceCodec.Encode(samples);
             if (packet == null) return;
             var round = NetworkRound.Instance;

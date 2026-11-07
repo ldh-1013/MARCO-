@@ -142,6 +142,8 @@ namespace Marco.Network.Editor
             }
             var gate = Type.GetType("Marco.Network.Voice.VoicePulseGate, Marco.Network");
             if (gate != null) SimulateVoiceGate(gate);
+            var activity = Type.GetType("Marco.Network.Voice.VoiceActivityGate, Marco.Network");
+            if (activity != null) SimulateActivityGate(activity);
         }
 
         // Boundary flicker at 20 ms frames for 10 s, three patterns, through the shared voice pulse gate.
@@ -161,6 +163,37 @@ namespace Marco.Network.Editor
                 float rate = pulses / 10f;
                 Expect(rate <= 7f, "S9 gate (simulated)", $"Whisper↔Talk every {period * 20} ms: {rate:0.0} pulses/s per speaker (≤ 7)");
             }
+        }
+
+        // D1 gate (switch off by default) on synthetic 20 ms / 48 kHz frames: steady fan noise must stop
+        // opening it once the floor has learned the room, a click must never open it, a voice-band tone must.
+        static void SimulateActivityGate(Type gateType)
+        {
+            var random = new System.Random(7);
+            float[] Frame(Func<int, float> sample) { var f = new float[960]; for (int i = 0; i < f.Length; i++) f[i] = sample(i); return f; }
+            var gate = Activator.CreateInstance(gateType);
+            var accept = gateType.GetMethod("Accept");
+            float t = 0; int openNoise = 0, frames = 0;
+            for (int n = 0; n < 500; n++, t += .02f)  // 10 s fan-like noise at about -42 dBFS
+            {
+                bool open = (bool)accept.Invoke(gate, new object[] { Frame(_ => (float)(random.NextDouble() * 2 - 1) * .0137f), t });
+                if (n >= 250) { frames++; if (open) openNoise++; }
+            }
+            bool click = false;
+            for (int n = 0; n < 5; n++, t += .02f)    // one 20 ms click, then quiet
+            {
+                int frame = n;
+                click |= (bool)accept.Invoke(gate, new object[] { Frame(i => frame == 0 ? (i % 2 == 0 ? .3f : -.3f) : 0f), t });
+            }
+            float openedAfter = -1;
+            for (int n = 0; n < 50; n++, t += .02f)   // 300 Hz voice-band tone at about -25 dBFS
+            {
+                int frame = n;
+                bool open = (bool)accept.Invoke(gate, new object[] { Frame(i => .08f * Mathf.Sin(2 * Mathf.PI * 300f * (frame * 960 + i) / 48000f)), t });
+                if (open && openedAfter < 0) openedAfter = n * .02f;
+            }
+            Expect(openNoise == 0 && !click && openedAfter >= .14f && openedAfter <= .3f, "D1 gate (simulated; switch off in game)",
+                $"steady noise open frames after 5 s: {openNoise}/{frames}, click opened: {click}, tone opened after {openedAfter:0.00}s");
         }
 
         // Live steps; returns true while a step is still running.

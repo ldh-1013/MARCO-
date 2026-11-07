@@ -5,6 +5,7 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool VoiceActivityGate = false;     // D1  band-pass / noise floor / 0.15s gate on voice send + own ring - OFF until the voice regression
         public const bool VoiceRepulseOnChange = true;   // S9  voice re-pulse on a held grade change, >= 0.15s apart (§5.2 ⑦ ⑨)
         public const bool ExitPulseJudged = true;        // S8  0:30 exit pulses through the judged EmitSound path (§6.2-1)
         public const bool DrainWorkPulse = true;         // S7  12m pulse every 2.5s while the active hatch is worked (§6.5-3)
