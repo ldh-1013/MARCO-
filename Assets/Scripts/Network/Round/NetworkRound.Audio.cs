@@ -263,7 +263,7 @@ namespace Marco.Network.Round
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
-            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1)
+            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1, bool playAudio = true, bool forcePulse = false)
         {
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
@@ -281,7 +281,7 @@ namespace Marco.Network.Round
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
                 float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.IsEcho ? 1.5f : 1f;
                 float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
-                bool showPulse = !blocked && (clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
+                bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));
                 if (showPulse && loopKey >= 0)
                 {
@@ -291,7 +291,7 @@ namespace Marco.Network.Round
                 }
                 if (listener.IsEcho) { if (showPulse) pulseSeconds = 3f; }
                 else pulseSeconds *= durationScale;
-                SoundTarget(listener.Owner, clip, point, volume * gain, duration * durationScale, loopKey,
+                SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain, duration * durationScale, loopKey,
                     underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds);
             }
         }
