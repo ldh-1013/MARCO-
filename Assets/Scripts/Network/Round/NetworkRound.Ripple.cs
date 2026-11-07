@@ -35,6 +35,18 @@ namespace Marco.Network.Round
                 playAudio: false, forcePulse: true));
         }
 
+        // S5: when the gate latches open, both exits sound once, Shout grade (§10.5).
+        internal void EmitGatePulses()
+        {
+            if (!RippleServerFeatures.GatePulse) return;
+            RippleSafe("GatePulse", () =>
+            {
+                foreach (var exit in ExitView.All)
+                    if (exit != null)
+                        EmitSound("GatePulse", exit.transform.position, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds, playAudio: false, forcePulse: true);
+            });
+        }
+
         // ITEMS
     }
 }
