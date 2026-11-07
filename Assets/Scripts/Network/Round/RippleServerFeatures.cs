@@ -5,6 +5,7 @@ namespace Marco.Network.Round
     // its own switch in its own commit.
     public static class RippleServerFeatures
     {
+        public const bool ValveAMachineRadius = true;    // S2  valve A rotation 6m in machine ambience (§6.1-0)
         public const bool BreathPauseWhenLocked = true;  // S11 breath timer pauses while the server holds the player in place (treatment lock)
         public const bool BreathAudible = true;          // S1  breath heard by others, 3m → +2m/15s → 9m (부록 A [정지 감지])
     }

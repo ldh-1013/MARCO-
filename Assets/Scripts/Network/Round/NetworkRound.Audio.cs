@@ -111,7 +111,7 @@ namespace Marco.Network.Round
                 if (ValveView.TryGet(id, out var valve))
                     EmitSound(id == ValveId.B || id == ValveId.E ? "ValveUnderwater" : "Valve",
                         valve.transform.position,
-                        12f,
+                        ValveSoundRadius(id),
                         0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),
                         100000 + (int)id, id == ValveId.B || id == ValveId.E);
 
