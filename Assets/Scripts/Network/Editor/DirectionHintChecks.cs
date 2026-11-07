@@ -341,8 +341,49 @@ namespace Marco.Network.Editor
                         var side = LitSide();
                         Expect(ahead ? side == "top" : side == "bottom", $"Overlay edge ({(ahead ? "ahead → top" : "behind → bottom")})", $"brightest band on the {side} edge");
                         if (ahead) { until = now + 3.2; step = 47; return true; }   // let the first band fade before the second
-                        step = 50; return true;
+                        step = 80; until = now + .6; return true;
                     }
+                case 80: // state D, live: a control hint while alive, then none as Echo, escaped, spectating, or for my own sound
+                    {
+                        if (!ExpectHints && !(HasHints && Calls > 0)) { results.Add("skip state D live: hint system absent or not wired"); step = 50; return true; }
+                        SetSwitch(true);
+                        Mark();
+                        Send(round, player, "", player.transform.position + Vector3.right * 2f, -1, muffled: true, radius: 0f, seconds: 2.5f);
+                        until = now + .5; step = 81; return true;
+                    }
+                case 81:
+                    Expect(ShownSince == 1, "D control (alive, in a round)", $"hints {ShownSince} (expected 1)");
+                    statusIndex = 0; step = 82; return true;
+                case 82:
+                    if (statusIndex >= DStatuses.Length) { step = 85; return true; }
+                    player.SetStatus(DStatuses[statusIndex]);
+                    until = now + .3; step = 83; return true;
+                case 83:
+                    {
+                        Mark();
+                        var offset = Quaternion.Euler(0, 90f * (statusIndex + 1), 0) * Vector3.forward * 2f;
+                        Send(round, player, "", player.transform.position + offset, -1, muffled: true, radius: 0f, seconds: 2.5f);
+                        until = now + .5; step = 84; return true;
+                    }
+                case 84:
+                    {
+                        var overlay = GameObject.Find("Direction Hint Overlay");
+                        bool canvasOff = overlay == null || !overlay.GetComponent<Canvas>().enabled;
+                        var status = DStatuses[statusIndex];
+                        Expect(ShownSince == 0 && canvasOff, $"D {status}{(status == PlayerStatus.Tagged ? " (Echo)" : "")}", $"hints {ShownSince}, overlay canvas {(canvasOff ? "off" : "on")}");
+                        player.SetStatus(PlayerStatus.Alive);
+                        statusIndex++;
+                        until = now + .3; step = 82; return true;
+                    }
+                case 85:
+                    {
+                        Mark();
+                        Send(round, player, "", player.transform.position + new Vector3(-1.5f, 0, -1.5f), -1, muffled: true, radius: 0f, seconds: 2.5f, fromOther: false);
+                        until = now + .5; step = 86; return true;
+                    }
+                case 86:
+                    Expect(ShownSince == 0, "D own sound", $"hints {ShownSince}");
+                    step = 50; return true;
                 default:
                     return false;
             }
@@ -350,6 +391,8 @@ namespace Marco.Network.Editor
 
         static int tick;
         static double loopStart;
+        static int statusIndex;
+        static readonly PlayerStatus[] DStatuses = { PlayerStatus.Tagged, PlayerStatus.Escaped, PlayerStatus.Spectating };
         static bool faultPaused;
         static bool firstChecked;
 
@@ -388,10 +431,10 @@ namespace Marco.Network.Editor
             typeof(NetworkRound).GetMethod(method, Flags).Invoke(round, args);
 
         // A real SoundTarget from the server to the host's own client connection.
-        static void Send(NetworkRound round, NetworkPlayer player, string clip, Vector3 point, int loopKey, bool muffled, float radius, float seconds)
+        static void Send(NetworkRound round, NetworkPlayer player, string clip, Vector3 point, int loopKey, bool muffled, float radius, float seconds, bool fromOther = true)
         {
             var target = typeof(NetworkRound).GetMethod("SoundTarget", Flags);
-            target.Invoke(round, new object[] { player.Owner, clip, point, .5f, 1f, loopKey, muffled, -1, false, true, radius, seconds });
+            target.Invoke(round, new object[] { player.Owner, clip, point, .5f, 1f, loopKey, muffled, -1, false, fromOther, radius, seconds });
         }
 
         // SoundWorld snaps a hidden source to the nearest 45° around the listener (atan2(x, z), 0 = +Z).

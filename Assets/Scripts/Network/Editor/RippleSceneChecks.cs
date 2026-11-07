@@ -109,6 +109,29 @@ namespace Marco.Network.Editor
                             if ((bool)type.GetField("HasWall").GetValue(ring)) wallStrips++;
                         }
                     Expect(shaderName == "Marco/RippleRing", "Ring drawn with the Resources shader", $"sound ring shader = {shaderName}, wall reveal strips = {wallStrips}");
+                    // Phase C direction hint: shipped off; switched on here, a hidden sound ahead must be drawn by the runtime overlay.
+                    Expect(!RippleClientFeatures.DirectionHint, "Direction hint switch default", $"DirectionHint = {RippleClientFeatures.DirectionHint} (expected False)");
+                    RippleClientFeatures.DirectionHint = true;
+                    var view = player.GetComponentInChildren<Camera>(true);
+                    var ahead = Vector3.ProjectOnPlane(view != null ? view.transform.forward : player.transform.forward, Vector3.up).normalized;
+                    DirectionHints.OnSound("", player.transform.position + ahead * 3f, true, -1, 7001, true, 0f, 2.5f);
+                    until = now + .4; phase = 4; return;
+                }
+                if (phase == 4 && now >= until)
+                {
+                    var overlay = GameObject.Find(DirectionHintOverlay.ObjectName);
+                    var canvas = overlay != null ? overlay.GetComponent<Canvas>() : null;
+                    var quads = overlay != null ? overlay.GetComponentsInChildren<CanvasRenderer>(true) : new CanvasRenderer[0];
+                    int lit = 0;
+                    string shader = "none";
+                    foreach (var quad in quads)
+                    {
+                        if (quad.GetAlpha() > .001f) lit++;
+                        if (quad.materialCount > 0 && quad.GetMaterial(0) != null) shader = quad.GetMaterial(0).shader.name;
+                    }
+                    Expect(canvas != null && canvas.enabled && canvas.renderMode == RenderMode.ScreenSpaceOverlay && quads.Length == 8 && lit == 1 && shader == "UI/Default",
+                        "Direction hint overlay (runtime, no scene object)", $"canvas {(canvas != null ? canvas.renderMode + " sorting " + canvas.sortingOrder : "missing")}, quads {quads.Length}, lit {lit}, shader {shader}");
+                    RippleClientFeatures.DirectionHint = false;
                     phase = 9; return;
                 }
                 if (phase == 9)
