@@ -94,7 +94,9 @@ namespace Marco.Network.Editor
                 var visual=visualObject.AddComponent<WalkingFootRings>(); visual.enabled=false;
                 var build=typeof(WalkingFootRings).GetMethod("BuildMesh",BindingFlags.Instance|BindingFlags.NonPublic);
                 var mesh=(Mesh)build.Invoke(visual,new object[]{origin,5f,false});
-                Require(mesh.vertexCount==130,"Unexpected floor mesh topology");
+                // Inner/outer vertex per segment plus the seam; segment count follows the circumference.
+                int segments=(int)assembly.GetType("Marco.Network.Vision.RippleMesh",true).GetMethod("Segments").Invoke(null,new object[]{5f});
+                Require(segments>=64&&mesh.vertexCount==(segments+1)*2,"Unexpected floor mesh topology");
                 Require(mesh.vertices[1].x<1.01f,"Ring crossed closed wall");
                 UnityEngine.Object.DestroyImmediate(mesh);UnityEngine.Object.DestroyImmediate(visualObject);
                 box.enabled=false;Physics.SyncTransforms();
