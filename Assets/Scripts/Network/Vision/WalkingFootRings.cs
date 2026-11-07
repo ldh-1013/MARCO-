@@ -31,6 +31,9 @@ namespace Marco.Network.Vision
         // Rings that had to wait for the raycast budget: worst wait in rendered frames, and how many waited > 2.
         internal int MaxQueuedFrames { get; private set; }
         internal int DelayedOverTwoFrames { get; private set; }
+        // Own rings (§5.3 0ms) never wait: how many were created and the worst wait in frames (always 0).
+        internal int OwnRingsCreated { get; private set; }
+        internal int MaxOwnWaitFrames { get; private set; }
         // Fake decoy footsteps behave exactly like one remote player's Sprint rings (D8).
         private const int DecoyStepSource = int.MinValue + 1;
 
@@ -60,7 +63,7 @@ namespace Marco.Network.Vision
             public int Source, Frame;
             public Vector3 Point;
             public float Radius, Lifetime;
-            public bool DoubleEdge, Self;
+            public bool DoubleEdge, Self, Own;
             public Color Tint;
         }
 
@@ -231,6 +234,7 @@ namespace Marco.Network.Vision
         // and appear only when fully built — never late in parts.
         private void Submit(Request request, bool own)
         {
+            request.Own = own;
             if (own || (queue.Count == 0 && RippleBudget.Remaining >= RippleReach.Estimate(world, request.Point, request.Radius)))
                 Create(request);
             else queue.Add(request);
@@ -255,6 +259,11 @@ namespace Marco.Network.Vision
         private void Create(Request request)
         {
             if (!CanUse()) return;
+            if (request.Own)
+            {
+                OwnRingsCreated++;
+                MaxOwnWaitFrames = Mathf.Max(MaxOwnWaitFrames, Time.frameCount - request.Frame);
+            }
             bool sound = request.Kind == Kind.Sound;
             if (sound)
             {

@@ -85,6 +85,11 @@ namespace Marco.Network.Vision
         public const float DoubleGap = .14f, DoubleInnerBrightness = .6f;
         // A segment stopped by a wall dims to this over StopFadeFraction × radius of further expansion.
         public const float StoppedDim = .55f, StopFadeFraction = .25f;
+        // Where neighbouring segments' wavefronts are this far apart (one stopped at a wall corner, one still
+        // moving), the strip between them would be a radial line: fade it out from JoinStart to JoinEnd metres.
+        public const float JoinStart = .3f, JoinEnd = .6f;
+        // Strip padding is MinPixels measured along the screen-space radial direction, capped at this many metres.
+        public const float MaxPadMetres = 1.5f;
 
         static Color Hex(int r, int g, int b) => new(r / 255f, g / 255f, b / 255f, 1f);
     }

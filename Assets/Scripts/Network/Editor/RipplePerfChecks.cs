@@ -28,6 +28,7 @@ namespace Marco.Network.Editor
         static readonly List<double> spawnMs = new();
         static readonly List<int> spawnQueries = new(), aliveAfter = new();
         static readonly List<string> queuedFrames = new();
+        static readonly List<int> ownSameFrame = new();
 
         static RipplePerfChecks() { if (SessionState.GetBool(Pending, false)) Subscribe(); }
         static void Subscribe()
@@ -142,6 +143,13 @@ namespace Marco.Network.Editor
             int after = Queries(rings);
             spawnQueries.Add(before < 0 || after < 0 ? -1 : after - before);
             queuedFrames.Add(QueueStat(rings));
+            // Own rings right after the burst, when this frame's raycast budget is already spent: both must
+            // be created inside the call (not queued). Outside the timed/counted part above.
+            int ownBefore = OwnCreated(rings);
+            bool seeker = player.Role == Marco.Core.WinCondition.PlayerRole.Seeker;
+            rings.ShowSound(player.transform.position + Vector3.up * .6f, 9f, 1.2f, seeker);
+            rings.Show(player.PlayerId, feet, true, seeker);
+            ownSameFrame.Add(OwnCreated(rings) - ownBefore);
         }
 
         static string shotDirectory;
@@ -223,6 +231,16 @@ namespace Marco.Network.Editor
                     for (int i = 0; i < count; i++) { min = Mathf.Min(min, values[i]); max = Mathf.Max(max, values[i]); }
                     reach = $"rays={count} reach={min:0.00}..{max:0.00} water={shape.GetType().GetField("Water").GetValue(shape)}";
                 }
+                // Quads whose two ends' wavefronts differ by ≥ JoinEnd (0.6m) at the current radius: before the
+                // corner fix these drew radial lines; now the shader fades them (join = 0).
+                float radius = block.GetFloat("_Radius");
+                var rayData = new List<Vector4>(); var otherData = new List<Vector4>();
+                mesh.GetUVs(0, rayData); mesh.GetUVs(5, otherData);
+                int radialQuads = 0;
+                if (otherData.Count == rayData.Count)
+                    for (int v = 0; v + 3 < rayData.Count; v += 4)
+                        if (Mathf.Abs(Mathf.Min(radius, rayData[v].z) - Mathf.Min(radius, otherData[v].x)) >= .6f) radialQuads++;
+                reach += $" radialQuads={radialQuads}";
                 var bounds = renderer.bounds;
                 Debug.Log($"[RipplePerfChecks] ring {go.name} active={go.activeSelf} at {go.transform.position} shader={renderer.sharedMaterial?.shader?.name} " +
                     $"verts={mesh.vertexCount} bounds={bounds.center}/{bounds.size} {reach} color={block.GetColor("_BaseColor")} radius={block.GetFloat("_Radius")} " +
@@ -236,6 +254,9 @@ namespace Marco.Network.Editor
             lastFrame = Time.frameCount;
             into.Add(Time.unscaledDeltaTime * 1000f);
         }
+
+        static int OwnCreated(WalkingFootRings rings) =>
+            typeof(WalkingFootRings).GetProperty("OwnRingsCreated", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(rings) is int count ? count : -1;
 
         static int ActiveCount(WalkingFootRings rings)
         {
@@ -280,6 +301,10 @@ namespace Marco.Network.Editor
             Debug.Log($"[RipplePerfChecks] RESULT active rings 1s after spawn: {string.Join(", ", aliveAfter)}");
             Debug.Log($"[RipplePerfChecks] RESULT max queued frames: {string.Join(", ", queuedFrames)}");
             Debug.Log($"[RipplePerfChecks] RESULT queue after all trials: {QueueStat(rings)}");
+            var maxOwnWait = typeof(WalkingFootRings).GetProperty("MaxOwnWaitFrames", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(rings);
+            Debug.Log($"[RipplePerfChecks] RESULT own rings created in the request frame (of 2, budget spent): {string.Join(", ", ownSameFrame)}; own ring max wait frames: {maxOwnWait ?? "n/a"}");
+            if (maxOwnWait is int wait && wait != 0) throw new Exception("Own ring waited " + wait + " frames");
+            foreach (int created in ownSameFrame) if (created != 2) throw new Exception("Own ring was not created in the request frame");
             Debug.Log("[RipplePerfChecks] PASS: measurement finished (batch editor play mode; GPU cost is not representative). No scene saved.");
         }
 

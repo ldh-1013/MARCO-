@@ -1,8 +1,8 @@
 // Ring pulse (기획서 §5.5-1 · §5.5-3 · §16.4). One static strip per ring; the wavefront radius is a
 // material property, so expanding a ring never rewrites its mesh. Each vertex carries its direction,
-// the distance at which a wall or ledge stopped that direction, and the floor-height profile along it.
-// The marching that produced those values is the CPU side (RippleReach); this shader only draws.
-// Loaded through Resources so no prefab or GraphicsSettings entry is needed.
+// the distance at which a wall or ledge stopped that direction, the floor-height profile along it, and the
+// stop distance of the other end of its quad. The marching that produced those values is the CPU side
+// (RippleReach); this shader only draws. Loaded through Resources so no prefab or GraphicsSettings entry is needed.
 Shader "Marco/RippleRing"
 {
     Properties
@@ -20,6 +20,9 @@ Shader "Marco/RippleRing"
         _StopFade("Stopped fade distance", Float) = 1
         _StopDim("Stopped brightness", Float) = 0.55
         _MinPixels("Minimum width in pixels", Float) = 1.5
+        _JoinStart("Corner fade start", Float) = 0.3
+        _JoinEnd("Corner fade end", Float) = 0.6
+        _MaxPad("Maximum strip padding", Float) = 1.5
     }
     SubShader
     {
@@ -42,7 +45,7 @@ Shader "Marco/RippleRing"
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
                 float _Radius, _Step, _Core, _Trail, _Halo, _Glow, _Double, _Gap, _InnerBrightness;
-                float _StopFade, _StopDim, _MinPixels;
+                float _StopFade, _StopDim, _MinPixels, _JoinStart, _JoinEnd, _MaxPad;
             CBUFFER_END
 
             struct Attributes
@@ -53,6 +56,7 @@ Shader "Marco/RippleRing"
                 float4 h1 : TEXCOORD2;
                 float4 h2 : TEXCOORD3;
                 float4 h3 : TEXCOORD4;
+                float4 other : TEXCOORD5;    // x = reach at the other end of this quad
             };
 
             struct Varyings
@@ -61,6 +65,7 @@ Shader "Marco/RippleRing"
                 float radial : TEXCOORD0;    // distance from the source along this direction
                 float front : TEXCOORD1;     // wavefront distance for this direction (stops at reach)
                 float reach : TEXCOORD2;
+                float join : TEXCOORD3;      // 0 where the quad would stretch radially across a corner
             };
 
             // Linear interpolation of the 16-sample profile written as a tent filter (no dynamic indexing).
@@ -75,19 +80,29 @@ Shader "Marco/RippleRing"
                 return dot(w0, v.h0) + dot(w1, v.h1) + dot(w2, v.h2) + dot(w3, v.h3);
             }
 
+            // World metres covered by one screen pixel along the ring's radial direction at this point.
+            // Seen at a grazing angle the radial direction is foreshortened, so this grows and the strip widens.
+            float RadialMetresPerPixel(float3 positionWS, float3 radialWS)
+            {
+                const float probe = 0.05;
+                float4 a = TransformWorldToHClip(positionWS);
+                float4 b = TransformWorldToHClip(positionWS + radialWS * probe);
+                if (a.w <= 1e-3 || b.w <= 1e-3) return _MaxPad;
+                float2 halfScreen = _ScreenParams.xy * 0.5;
+                float pixels = length(b.xy / b.w * halfScreen - a.xy / a.w * halfScreen) / probe;
+                return 1.0 / max(pixels, 1e-4);
+            }
+
             Varyings vert(Attributes v)
             {
                 float2 dir = v.ray.xy;
                 float reach = v.ray.z;
                 float front = min(_Radius, reach);
 
-                // Keep the line at least _MinPixels wide on screen: pad the strip by the world size
-                // of a pixel at this depth (the fragment stage does the exact coverage).
                 float3 frontWS = TransformObjectToWorld(float3(dir.x * front, Height(v, front), dir.y * front));
-                float depth = max(0.01, -TransformWorldToView(frontWS).z);
-                float projection = max(abs(GetViewToHClipMatrix()[1][1]), 1e-3);
-                float worldPerPixel = depth * 2.0 / (projection * max(_ScreenParams.y, 1.0));
-                float pad = _MinPixels * worldPerPixel * 2.0;
+                float3 radialWS = normalize(TransformObjectToWorldDir(float3(dir.x, 0, dir.y)));
+                // Room for at least _MinPixels across the line on screen; the fragment stage does exact coverage.
+                float pad = min(_MinPixels * 2.0 * RadialMetresPerPixel(frontWS, radialWS), _MaxPad);
 
                 float inner = _Trail + _Core + _Double * _Gap + pad;
                 float outer = _Halo + pad;
@@ -99,6 +114,9 @@ Shader "Marco/RippleRing"
                 o.radial = d;
                 o.front = front;
                 o.reach = reach;
+                // Both ends of a quad compute the same difference, so the whole quad fades together.
+                float otherFront = min(_Radius, v.other.x);
+                o.join = 1.0 - smoothstep(_JoinStart, _JoinEnd, abs(front - otherFront));
                 return o;
             }
 
@@ -110,7 +128,7 @@ Shader "Marco/RippleRing"
 
             half4 frag(Varyings i) : SV_Target
             {
-                float px = max(fwidth(i.radial), 1e-4);
+                float px = max(fwidth(i.radial), 1e-4);       // metres per pixel across the line, on screen
                 float x = i.radial - i.front;                 // > 0 outside the wavefront
                 float core = max(_Core, _MinPixels * px);
 
@@ -122,12 +140,12 @@ Shader "Marco/RippleRing"
                 float ring = max(Band(x, core, px), trail + halo);
 
                 // Seeker rings: a second, dimmer edge just inside the first (§16.4 형태적 구분).
-                float second = Band(x + _Gap, core, px) * _InnerBrightness;
+                float second = Band(x + _Gap, max(_Core, _MinPixels * px), px) * _InnerBrightness;
                 ring = max(ring, second * _Double);
 
                 // A direction stopped by a wall stays at the wall and dims there instead of jumping.
                 float stopped = saturate((_Radius - i.reach) / max(_StopFade, 1e-3));
-                ring *= lerp(1.0, _StopDim, stopped);
+                ring *= lerp(1.0, _StopDim, stopped) * i.join;
 
                 return half4(_BaseColor.rgb, saturate(_BaseColor.a * ring));
             }
