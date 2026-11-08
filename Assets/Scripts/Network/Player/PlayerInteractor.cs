@@ -29,9 +29,13 @@ namespace Marco.Network.Player
         // after the server's own cooldown and never sends a request the server would reject.
         private bool swingPending;
         private float nextSwingTime;
+        private const float ValveDiveHintSeconds = 2.5f;
+        private float valveDiveHintUntil;
 
         // Seeker only: seconds left on the swing cooldown, for the HUD.
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
+        // Owner only: the server just turned down an underwater valve (B · E) because we were not diving.
+        public bool ShowsValveDiveHint => Time.time < valveDiveHintUntil;
         public int SelectedItemSlot => selectedItemSlot;
         public bool IsAimingDecoy => aimingDecoy;
 
@@ -250,11 +254,22 @@ namespace Marco.Network.Player
 
         // Any rejection (inactive, already open, not a Runner, out of range) gets the same jam cue, so the
         // reply never tells the Seeker or anyone else which valves are active (기획서 6.1-0, 10-26).
+        // B · E pressed without diving get a dive hint instead of the jam; the server decides it before the
+        // active set, the same for every B · E, so it reveals nothing either.
         [ServerRpc]
         private void BeginWorkServer(ValveId valveId)
         {
             var round = NetworkRound.Instance;
-            if (round == null || !round.TryBeginWork(OwnerId, valveId, transform.position)) ValveJamTarget(Owner, valveId);
+            var reply = round != null ? round.TryBeginWork(OwnerId, valveId, transform.position) : ValveWorkReply.Jammed;
+            if (reply == ValveWorkReply.Jammed) ValveJamTarget(Owner, valveId);
+            else if (reply == ValveWorkReply.NeedsDive) ValveNeedsDiveTarget(Owner, valveId);
+        }
+
+        [TargetRpc]
+        private void ValveNeedsDiveTarget(NetworkConnection conn, ValveId valveId)
+        {
+            if (workingValve == valveId) workingValve = null;
+            valveDiveHintUntil = Time.time + ValveDiveHintSeconds;
         }
 
         // Local only: just the presser hears it, and it makes no pulse (기획서 6.1-0).

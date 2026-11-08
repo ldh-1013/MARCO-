@@ -45,6 +45,7 @@ namespace Marco.Network
             DrawRunnerInventory();
             DrawHealingProgress();
             DrawBreath();
+            DrawValveDiveHint();
             DrawRoundStart(round);
             DrawResult(round);
         }
@@ -147,6 +148,17 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
             GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
             GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
+        }
+
+        // Underwater valve (B · E) pressed without diving: shown for any B · E, active or not.
+        private static void DrawValveDiveHint()
+        {
+            var player = NetworkPlayer.Local;
+            // Kept up even once diving: a press made right after going under can still reach the server
+            // before our position does, and the player should then know to press again.
+            if (player == null || !player.TryGetComponent(out PlayerInteractor interactor) || !interactor.ShowsValveDiveHint) return;
+            GUI.Label(new Rect(TestHudSkin.Width * .5f - 300, TestHudSkin.Height * .5f + 60, 600, 36),
+                "Ctrl로 잠수해서 돌리세요", TestHudSkin.Text(24, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         private static void DrawBreath()
