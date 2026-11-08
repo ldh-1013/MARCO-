@@ -248,6 +248,12 @@ namespace Marco.Network.Round
         {
             var root = new GameObject(name);
             root.transform.SetParent(transform, false);
+            var prefab = Resources.Load<GameObject>("ItemVisuals/Duck");
+            if (prefab != null)
+            {
+                Instantiate(prefab, root.transform, false);
+                return root;
+            }
             var visual = new GameObject("Duck visual").transform;
             visual.SetParent(root.transform, false);
             DuckPart(visual, "노란 몸통", new Vector3(.25f, .16f, .22f), new Vector3(0, .09f, 0), decoyMaterial);
