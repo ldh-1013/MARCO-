@@ -12,7 +12,7 @@ namespace Marco.Network.Character
     // Pitch comes from the camera pivot; remote pivots are not synced, so they look level.
     [DefaultExecutionOrder(50)]
     [RequireComponent(typeof(CharacterBody))]
-    public sealed class CharacterMotion : MonoBehaviour
+    public sealed partial class CharacterMotion : MonoBehaviour
     {
         // The Runner's sprint speed blends the run clip in above this threshold.
         [SerializeField] private float runSpeed = 5f;
@@ -118,7 +118,12 @@ namespace Marco.Network.Character
 
         private void LateUpdate()
         {
-            if (!graph.IsValid() || !body.BodyRoot.gameObject.activeInHierarchy) return;
+            if (!graph.IsValid() || body.BodyRoot == null || !body.BodyRoot.gameObject.activeInHierarchy)
+            {
+                if (placementProp != null) placementProp.SetActive(false);
+                placementWeight = 0;
+                return;
+            }
             // Swimming rotates the entire model around the head. Restore the model anchor
             // before sampling the next frame so the lean never accumulates.
             body.BodyRoot.localPosition = asset.modelOffset;
@@ -182,6 +187,7 @@ namespace Marco.Network.Character
                 RaiseArm(HumanBodyBones.RightUpperArm, HumanBodyBones.RightHand, Mathf.Sin(elapsed / attackDuration * Mathf.PI));
             ApplyTreatmentPose(treatmentPoseWeight * (1f - swimWeight));
             ApplySwimmingPose();
+            ApplySoundCanPlacementPose();
         }
 
         // Original procedural strokes: upright sculling at rest, alternating crawl on the
@@ -388,6 +394,7 @@ namespace Marco.Network.Character
 
         private void OnDestroy()
         {
+            ClearPlacementProp();
             body.Rebuilt -= BuildGraph;
             if (graph.IsValid()) graph.Destroy();
         }

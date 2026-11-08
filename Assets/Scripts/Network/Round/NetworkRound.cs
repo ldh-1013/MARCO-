@@ -280,6 +280,8 @@ namespace Marco.Network.Round
             if (suddenDeathDroneSource != null) suddenDeathDroneSource.Stop();
             ClearBandageViews();
             ClearClickerViews();
+            ClearDecoyViews();
+            ClearSoundCanViews();
         }
 
         private void Update()
@@ -288,6 +290,8 @@ namespace Marco.Network.Round
             {
                 TickHealingChannels();
                 TickAudioServer();
+                TickDecoysServer();
+                TickSoundCansServer();
             }
             if (IsServerInitialized) TickClickerRespawns();
             // The map's GamePoints can finish registering after the network scene object starts.
@@ -300,6 +304,8 @@ namespace Marco.Network.Round
             }
             if (!clientStarted) return;
             UpdateSuddenDeathDrone();
+            UpdateDecoyViews();
+            UpdateSoundCanViews();
             UpdateResultScreenClient();
             EnsureBandageViews();
             EnsureClickerViews();
@@ -340,6 +346,8 @@ namespace Marco.Network.Round
 
         public override void OnStopServer()
         {
+            ResetSoundCansServer(false);
+            ResetDecoysServer(false);
             ResetAudioServer();
             CancelAllHealingActions();
             base.OnStopServer();
@@ -378,6 +386,8 @@ namespace Marco.Network.Round
             }
             ResetBandagePickups(available: true);
             ResetClickerPickups(available: true);
+            ResetDecoysServer(true);
+            ResetSoundCansServer(true);
 
             // INTERFACES.md §0 assembly order.
             var config = new WinConditionConfig { LastSurvivorPhaseDurationSeconds = lastSurvivorPhaseSeconds };
@@ -445,6 +455,8 @@ namespace Marco.Network.Round
 
         private void ResetRound()
         {
+            ResetSoundCansServer(false);
+            ResetDecoysServer(false);
             ResetAudioServer();
             CancelAllHealingActions();
             TimeManager.OnTick -= OnServerTick;
@@ -595,6 +607,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
             if (SoundMap && (id == ValveId.B || id == ValveId.E) &&
@@ -609,6 +622,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryBeginDrainWork(int playerId, DrainHatchId id, Vector3 playerPosition)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (drains == null || !startSchedule.HasInGameStarted || !DrainHatchView.TryGet(id, out var view)) return false;
             if (!view.IsInRange(playerPosition, interactRange)) return false;
             if (SoundMap && (!NetworkPlayer.TryGet(playerId, out var swimmer) || !swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)) return false;
@@ -749,6 +763,7 @@ namespace Marco.Network.Round
         [Server]
         public bool TryUseClicker(int playerId)
         {
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
             if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress ||
                 !TryGetAliveRunner(playerId, out var source) ||
@@ -1177,6 +1192,8 @@ namespace Marco.Network.Round
         {
             if (args.ConnectionState != RemoteConnectionState.Stopped) return;
             CancelHealingFor(conn.ClientId);
+            RemoveSoundCan(conn.ClientId);
+            decoyHolders.Remove(conn.ClientId);
             if (valves == null) return;
             nextTagTimes.Remove(conn.ClientId);
             runnerHalves.Remove(conn.ClientId);
@@ -1370,6 +1387,8 @@ namespace Marco.Network.Round
 
         private void OnDestroy()
         {
+            ClearSoundCanViews();
+            ClearDecoyViews();
             ClearBandageViews();
             ClearClickerViews();
             if (Instance == this) Instance = null;

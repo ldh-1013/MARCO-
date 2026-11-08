@@ -97,6 +97,10 @@ namespace Marco.Network.Vision
             if (ring != null) { ring.Lifetime = .8f; ring.Object.name = "Water Warning Pulse"; }
         }
 
+        // Item callers share the new sound-wave renderer and pooled cleanup.
+        public void EmitSoundPulse(Vector3 origin, float radius, float duration) => ShowSound(origin, radius, duration);
+        public void ClearPulses() => Clear();
+
         public void ShowSound(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
         {
             if (radius <= 0 || duration <= 0) return;

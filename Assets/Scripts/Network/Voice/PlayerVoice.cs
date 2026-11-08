@@ -79,6 +79,7 @@ namespace Marco.Network.Voice
 
         private void OnVoiceSamplesReady(float[] samples, VoiceGrade grade)
         {
+            Lobby.LobbyVoiceActivity.Publish(samples);
             var packet = VoiceCodec.Encode(samples);
             if (packet == null) return;
             var round = NetworkRound.Instance;
@@ -133,6 +134,7 @@ namespace Marco.Network.Voice
             float gain, bool blocked, bool serverGain, Channel channel = Channel.Reliable)
         {
             if (IsOwner || packet == null) return;
+            Lobby.LobbyVoiceActivity.PublishPacket(packet);
             NetworkRound.Instance?.NotifyOtherSound();
             EnsureVoiceSource();
             // Proximity voice fades out over the radius the server allowed; channel-wide voice is flat.
