@@ -719,6 +719,24 @@ namespace Marco.Tests.Remote
             return false;
         }
 
+        // Like OpenSpot, but of every open spot at that distance the one closest to the centre's height. The server judges
+        // hearing at eye height, so a listener put on top of a machine 3 m above a valve is out of a 6 m radius at "5 m".
+        static bool LevelSpot(Vector3 center, float distance, out Vector3 spot)
+        {
+            spot = default;
+            float best = float.MaxValue;
+            for (int i = 0; i < 24; i++)
+            {
+                float angle = i * Mathf.PI / 12f;
+                if (!Floor(center + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance, out var s)) continue;
+                if (Mathf.Abs(Vector2.Distance(new Vector2(s.x, s.z), new Vector2(center.x, center.z)) - distance) > .3f) continue;
+                if (Physics.Linecast(center + Vector3.up * .6f, s + Vector3.up * .6f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                float dy = Mathf.Abs(s.y - center.y);
+                if (dy < best) { best = dy; spot = s; }
+            }
+            return best < float.MaxValue;
+        }
+
         // A centre with open spots in every distance asked (along one bearing), for range tests.
         static bool OpenLine(float[] distances, out Vector3 center, out Vector3[] spots)
         {
@@ -991,11 +1009,12 @@ namespace Marco.Tests.Remote
                 if (!ValveView.TryGet(id, out var view)) continue;
                 var at = view.transform.position;
                 bool underwater = id == ValveId.B || id == ValveId.E;
-                if (!OpenSpot(at, 5f, out var five) || !OpenSpot(at, 8f, out var eight)) { Step("S2", $"\"valve\":{Q(id.ToString())},\"result\":\"no open spots\""); continue; }
+                if (!LevelSpot(at, 5f, out var five) || !LevelSpot(at, 8f, out var eight)) { Step("S2", $"\"valve\":{Q(id.ToString())},\"result\":\"no open spots\""); continue; }
                 Tp(2, five, at); Tp(3, eight, at);
                 yield return new WaitForSecondsRealtime(2.2f);
                 float expected = Has(Round, "ValveSoundRadius", 1) ? (float)Call(Round, "ValveSoundRadius", id) : 12f;
-                Step("S2", $"\"valve\":{Q(id.ToString())},\"underwater\":{B(underwater)},\"at\":{V(at)},\"expected\":{F(expected)},\"c2\":{F(Vector3.Distance(at, P(2).transform.position))},\"c3\":{F(Vector3.Distance(at, P(3).transform.position))}");
+                var j2 = Judge(at, P(2), expected); var j3 = Judge(at, P(3), expected);
+                Step("S2", $"\"valve\":{Q(id.ToString())},\"underwater\":{B(underwater)},\"at\":{V(at)},\"expected\":{F(expected)},\"c2\":{F(Vector3.Distance(at, P(2).transform.position))},\"c3\":{F(Vector3.Distance(at, P(3).transform.position))},\"j2\":[{B(j2.heard)},{B(j2.blocked)},{F(j2.perceived)}],\"j3\":[{B(j3.heard)},{B(j3.blocked)},{F(j3.perceived)}]");
                 Call(Round, "ValveAudio", id, ValveSoundEvent.RotatingStarted);
                 yield return new WaitForSecondsRealtime(3f);
                 Call(Round, "ValveAudio", id, ValveSoundEvent.RotatingStopped);
@@ -1215,7 +1234,7 @@ namespace Marco.Tests.Remote
                 foreach (var key in valves.Keys.Cast<object>().ToList())
                 {
                     var id = (ValveId)key;
-                    if (!ValveView.TryGet(id, out var view) || !OpenSpot(view.transform.position, 4f, out var spot)) continue;
+                    if (!ValveView.TryGet(id, out var view) || !LevelSpot(view.transform.position, 4f, out var spot)) continue;
                     Tp(1, spot, view.transform.position);
                     yield return new WaitForSecondsRealtime(2.2f);
                     Step("compatValve", $"\"valve\":{Q(id.ToString())}");
