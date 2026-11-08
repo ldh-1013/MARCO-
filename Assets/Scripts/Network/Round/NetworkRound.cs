@@ -26,6 +26,10 @@ namespace Marco.Network.Round
     // Escape and tagging still work there, but no result is ever decided.
     public enum RoundMode : byte { NotStarted, ValvesOnly, Full }
 
+    // Server reply to a valve press. NeedsDive is decided before the active set is consulted and is
+    // the same for B and E whether active or not, so it never reveals which valves are active.
+    public enum ValveWorkReply : byte { Accepted, Jammed, NeedsDive }
+
     // No "active" flag: the active set stays on the server (기획서 6.1-0 · 14.3 ValveActivated, 10-26).
     // Inactive valves simply stay Closed at 0, like an untouched active one.
     public struct ValveSnapshot
@@ -604,15 +608,22 @@ namespace Marco.Network.Round
 
         // Role is checked inside ValveInteractionService via IPlayerRoster; distance is checked here
         // against the server's copy of the player transform (client-authoritative movement for now).
+        // Underwater valves (B · E) answer NeedsDive to an alive Runner who is not diving, checked before
+        // the active set so the reply is identical for active and inactive ones.
         [Server]
-        public bool TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
+        public ValveWorkReply TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
         {
-            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
-            if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return false;
-            if (!view.IsInRange(playerPosition, interactRange)) return false;
-            if (SoundMap && (id == ValveId.B || id == ValveId.E) &&
-                (!NetworkPlayer.TryGet(playerId, out var swimmer) || !swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)) return false;
-            return valves.TryBeginWork(playerId, id);
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return ValveWorkReply.Jammed;
+            if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return ValveWorkReply.Jammed;
+            if (!view.IsInRange(playerPosition, interactRange)) return ValveWorkReply.Jammed;
+            if (SoundMap && (id == ValveId.B || id == ValveId.E))
+            {
+                if (!NetworkPlayer.TryGet(playerId, out var swimmer)) return ValveWorkReply.Jammed;
+                if (!swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)
+                    return swimmer.Role == PlayerRole.Runner && swimmer.Status == PlayerStatus.Alive && !IsStartLocked(swimmer.Role)
+                        ? ValveWorkReply.NeedsDive : ValveWorkReply.Jammed;
+            }
+            return valves.TryBeginWork(playerId, id) ? ValveWorkReply.Accepted : ValveWorkReply.Jammed;
         }
 
         [Server]
