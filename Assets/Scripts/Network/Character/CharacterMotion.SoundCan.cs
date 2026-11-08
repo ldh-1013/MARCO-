@@ -104,17 +104,26 @@ namespace Marco.Network.Character
         {
             if (visible && placementProp == null)
             {
-                var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
-                if (shader == null) return;
-                placementPropMaterial = new Material(shader);
-                if (placementPropMaterial.HasProperty("_BaseColor")) placementPropMaterial.SetColor("_BaseColor", new Color(1f, .72f, .3f));
-                placementProp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementProp.name = "소리통 설치 중 손에 든 장치";
-                placementProp.GetComponent<Collider>().enabled = false;
-                placementProp.transform.SetParent(transform, false);
-                placementProp.transform.localScale = new Vector3(.16f, .18f, .09f);
-                var renderer = placementProp.GetComponent<Renderer>();
-                renderer.sharedMaterial = placementPropMaterial; renderer.shadowCastingMode = ShadowCastingMode.Off;
+                var prefab = Resources.Load<GameObject>("ItemVisuals/Recorder");
+                if (prefab != null)
+                {
+                    placementProp = Instantiate(prefab, transform, false);
+                    placementProp.name = "소리통 설치 중 손에 든 장치";
+                }
+                else
+                {
+                    var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+                    if (shader == null) return;
+                    placementPropMaterial = new Material(shader);
+                    if (placementPropMaterial.HasProperty("_BaseColor")) placementPropMaterial.SetColor("_BaseColor", new Color(1f, .72f, .3f));
+                    placementProp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    placementProp.name = "소리통 설치 중 손에 든 장치";
+                    placementProp.GetComponent<Collider>().enabled = false;
+                    placementProp.transform.SetParent(transform, false);
+                    placementProp.transform.localScale = new Vector3(.16f, .18f, .09f);
+                    var renderer = placementProp.GetComponent<Renderer>();
+                    renderer.sharedMaterial = placementPropMaterial; renderer.shadowCastingMode = ShadowCastingMode.Off;
+                }
             }
             if (placementProp == null) return;
             placementProp.SetActive(visible);
