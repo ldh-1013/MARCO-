@@ -40,9 +40,6 @@ namespace Marco.Network.Editor
             const string unityChan = "Assets/unity-chan!/Unity-chan! Model/Art/Animations/";
             if (assets.runnerWin == null) assets.runnerWin = Clip(unityChan + "unitychan_WIN00.fbx");
             if (assets.runnerLose == null) assets.runnerLose = Clip(unityChan + "unitychan_LOSE00.fbx");
-            if (assets.echoPrefab == null) assets.echoPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/GhostCharacter_Free/Prefabs/Ghost.prefab");
-            if (assets.echoWin == null) assets.echoWin = AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/GhostCharacter_Free/AnimationClips/ghost_idle.anim");
-            if (assets.echoLose == null) assets.echoLose = AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/GhostCharacter_Free/AnimationClips/ghost_surprised.anim");
             if (created) AssetDatabase.CreateAsset(assets, AssetPath);
             else EditorUtility.SetDirty(assets);
             AssetDatabase.SaveAssets();

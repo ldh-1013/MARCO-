@@ -16,7 +16,3 @@ MonoBehaviour:
   seeker: {fileID: 11400000, guid: 90d6ae4a7f752224db95f465c791fe37, type: 2}
   runnerWin: {fileID: 7400000, guid: e2538d48c03da46a8b0c3b59d39a4cab, type: 3}
   runnerLose: {fileID: 7400000, guid: c7df2ec8d896a4a15abc7636d440631b, type: 3}
-  echoPrefab: {fileID: 19588385245968726, guid: 8ee08d04ad5df46fbb2e97260b63420b, type: 3}
-  echoWin: {fileID: 7400000, guid: 2c01f85ff72a3477ea14feee64280f31, type: 2}
-  echoLose: {fileID: 7400000, guid: 814f3c6ec45d94785b046de04084086d, type: 2}
-  echoHeight: 1.25

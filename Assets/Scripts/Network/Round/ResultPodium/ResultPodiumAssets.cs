@@ -13,16 +13,9 @@ namespace Marco.Network.Round.ResultPodium
         public CharacterAsset runner;
         public CharacterAsset seeker;
 
-        [Header("Runner (unity-chan!)")]
+        [Header("Runner and Echo (unity-chan!; an Echo is the same model, see-through)")]
         public AnimationClip runnerWin;
         public AnimationClip runnerLose;
-
-        [Header("Echo (GhostCharacter_Free)")]
-        public GameObject echoPrefab;
-        public AnimationClip echoWin;
-        public AnimationClip echoLose;
-        [Tooltip("Echo model height on the podium, in metres.")]
-        public float echoHeight = 1.25f;
 
         public static ResultPodiumAssets Load() => Resources.Load<ResultPodiumAssets>(ResourcePath);
     }

@@ -193,10 +193,8 @@ namespace Marco.Network.Round.ResultPodium
                     prefab = definition != null ? definition.visualPrefab : null;
                     clip = definition != null ? definition.idleClip : null;
                     break;
+                // An Echo is the Runner model made see-through, as in game (CharacterBody ghost materials).
                 case PodiumBody.Echo:
-                    prefab = assets != null ? assets.echoPrefab : null;
-                    clip = assets == null ? null : entry.Won || !decided ? assets.echoWin : assets.echoLose;
-                    break;
                 default:
                     definition = assets != null ? assets.runner : null;
                     prefab = definition != null ? definition.visualPrefab : null;
@@ -252,8 +250,7 @@ namespace Marco.Network.Round.ResultPodium
                     actor.Graph.Evaluate(0);
                 }
                 if (actor.Procedural) RememberSeekerRest(actor);
-                if (entry.Body == PodiumBody.Echo) FitHeight(actor, assets.echoHeight, .18f);
-                else if (entry.Body == PodiumBody.Seeker) FitHeight(actor, SeekerHeight, 0f);
+                if (entry.Body == PodiumBody.Seeker) FitHeight(actor, SeekerHeight, 0f);
             }
             else
             {
@@ -290,7 +287,14 @@ namespace Marco.Network.Round.ResultPodium
                 var sources = renderer.sharedMaterials;
                 var replaced = new Material[sources.Length];
                 for (int i = 0; i < sources.Length; i++)
-                    replaced[i] = Surface(sources[i], entry.Body == PodiumBody.Seeker ? new Color(1.55f, 1.5f, 1.5f) : Color.white, rim, loser ? 1f : 0f, entry.Body == PodiumBody.Echo ? .3f : 0f);
+                {
+                    if (entry.Body == PodiumBody.Echo)
+                    {
+                        replaced[i] = Surface(sources[i], EchoTint, rim, 0f, .45f);
+                        MakeTranslucent(replaced[i], EchoAlpha);
+                    }
+                    else replaced[i] = Surface(sources[i], entry.Body == PodiumBody.Seeker ? new Color(1.55f, 1.5f, 1.5f) : Color.white, rim, loser ? 1f : 0f, 0f);
+                }
                 renderer.sharedMaterials = replaced;
                 renderer.shadowCastingMode = ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
@@ -397,13 +401,12 @@ namespace Marco.Network.Round.ResultPodium
             if (!actor.Graph.IsValid()) return;
             if (actor.Procedural) RestoreSeekerRest(actor);
             float length = actor.Clip.length;
-            double time = actor.Clip.isLooping || actor.Entry.Body != PodiumBody.Runner
+            // Idles loop; WIN00/LOSE00 play once and hold their last pose.
+            double time = actor.Clip.isLooping || actor.Entry.Body == PodiumBody.Seeker
                 ? since % Mathf.Max(.01f, length)
                 : Mathf.Min(since, length - 1f / 60f);
             actor.Playable.SetTime(time);
             actor.Graph.Evaluate(0);
-            if (actor.Model != null && actor.Entry.Body == PodiumBody.Echo)
-                actor.Model.localPosition = actor.ModelRest + Vector3.up * (.06f * Mathf.Sin(since * 2.2f));
             if (actor.Procedural) PoseSeeker(actor, since);
         }
 
@@ -668,6 +671,23 @@ namespace Marco.Network.Round.ResultPodium
             material.SetFloat("_Emission", emission);
             materials.Add(material);
             return material;
+        }
+
+        // Same see-through purple as the in-game Echo (NetworkPlayer prefab CharacterBody.ghostTint 0.65, 0.25, 1, 0.3),
+        // a little lighter and more opaque so it still reads against the dark podium backdrop;
+        // depth-unsorted, double-sided alpha blend like CharacterBody.MakeGhostMaterials.
+        private static readonly Color EchoTint = new(.78f, .45f, 1f);
+        private const float EchoAlpha = .5f;
+
+        private static void MakeTranslucent(Material material, float alpha)
+        {
+            material.SetFloat("_Alpha", alpha);
+            material.SetFloat("_Cutoff", .05f);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetFloat("_Cull", 0f);
+            material.renderQueue = (int)RenderQueue.Transparent;
         }
 
         private Transform Quad(string name, Vector3 position, Vector3 scale, Material material, Transform parent = null) =>

@@ -11,6 +11,10 @@ Shader "MARCO/ResultPodiumSurface"
         _Dim("Dim", Range(0,1)) = 0
         _Emission("Emission", Range(0,1)) = 0
         _Cull("Cull", Float) = 0
+        _Alpha("Alpha", Range(0,1)) = 1
+        _SrcBlend("Src Blend", Float) = 1
+        _DstBlend("Dst Blend", Float) = 0
+        _ZWrite("Z Write", Float) = 1
     }
     SubShader
     {
@@ -19,14 +23,15 @@ Shader "MARCO/ResultPodiumSurface"
         {
             Tags { "LightMode"="SRPDefaultUnlit" }
             Cull [_Cull]
-            ZWrite On
+            ZWrite [_ZWrite]
+            Blend [_SrcBlend] [_DstBlend]
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
             sampler2D _BaseMap;
             float4 _BaseMap_ST, _BaseColor, _RimColor;
-            float _Cutoff, _Dim, _Emission;
+            float _Cutoff, _Dim, _Emission, _Alpha;
             struct Input { float4 vertex:POSITION; float3 normal:NORMAL; float2 uv:TEXCOORD0; };
             struct Output { float4 vertex:SV_POSITION; float3 normal:TEXCOORD0; float2 uv:TEXCOORD1; float3 world:TEXCOORD2; };
             Output vert(Input v)
@@ -54,7 +59,7 @@ Shader "MARCO/ResultPodiumSurface"
                 // Losing side: desaturate and darken, still readable.
                 float grey = dot(lit, float3(.299, .587, .114));
                 lit = lerp(lit, grey * float3(.62, .66, .78), _Dim * .75);
-                return float4(lit, 1);
+                return float4(lit, _Alpha);
             }
             ENDCG
         }
