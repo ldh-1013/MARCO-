@@ -185,7 +185,69 @@ namespace Marco.Tests.Remote
         void Start()
         {
             RippleSwitch(hintOn);
-            StartCoroutine(Run());
+            StartCoroutine(Guarded(Run(), "Run"));
+        }
+
+        // ---------------------------------------------------------------- harness FAIL (11-09)
+        // Coroutine trees run by hand, so an exception at any depth is caught. The run then ends at once as a harness FAIL:
+        // the exception text goes to this instance's log and to sync/fail_<who>.txt, the host ends every instance, and the
+        // orchestrator moves on instead of waiting out its time limit. Unity's own yield instructions are passed through.
+        IEnumerator Guarded(IEnumerator root, string where)
+        {
+            var stack = new Stack<IEnumerator>();
+            stack.Push(root);
+            while (stack.Count > 0 && !failed)
+            {
+                object current;
+                try
+                {
+                    var top = stack.Peek();
+                    if (!top.MoveNext()) { stack.Pop(); continue; }
+                    current = top.Current;
+                }
+                catch (Exception ex) { Fail(where, ex.ToString()); yield break; }
+                if (current is IEnumerator nested && !(current is CustomYieldInstruction)) { stack.Push(nested); continue; }
+                yield return current;
+            }
+        }
+
+        bool failed;
+        float nextFailPoll;
+        void Fail(string where, string text)
+        {
+            if (failed) return;
+            failed = true;
+            if (text.Length > 6000) text = text.Substring(0, 6000);
+            Ev("harnessFail", $"\"where\":{Q(where)},\"exception\":{Q(text)}");
+            Summary("harness FAIL: " + where);
+            try { File.WriteAllText(Path.Combine(syncDir, $"fail_{Who}.txt"), where + Environment.NewLine + text); } catch { }
+            StartCoroutine(FailExit());
+        }
+
+        IEnumerator FailExit()
+        {
+            if (IsHost)
+            {
+                try { Cmd("*", "quit"); } catch { }
+                yield return new WaitForSecondsRealtime(2f);
+                try { lan?.Leave(); } catch { }
+            }
+            yield return new WaitForSecondsRealtime(.5f);
+            Application.Quit();
+        }
+
+        // Host: a client that failed ends the whole run too (checked once a second).
+        void WatchClientFails()
+        {
+            if (!IsHost || failed || syncDir == null || Time.realtimeSinceStartup < nextFailPoll) return;
+            nextFailPoll = Time.realtimeSinceStartup + 1f;
+            foreach (var f in Directory.GetFiles(syncDir, "fail_client*.txt"))
+            {
+                string text;
+                try { text = File.ReadAllText(f); } catch (IOException) { continue; }
+                Fail("client " + Path.GetFileNameWithoutExtension(f).Substring(5), text);
+                return;
+            }
         }
 
         static void RippleSwitch(bool on)
@@ -225,6 +287,7 @@ namespace Marco.Tests.Remote
                 WatchVoice();
                 WatchHints();
                 Frames();
+                WatchClientFails();
             }
             catch (Exception ex) { if (harnessErrors++ < 20) Ev("harnessError", $"\"msg\":{Q(ex.GetType().Name + ": " + ex.Message)},\"at\":{Q((ex.StackTrace ?? "").Split('\n')[0])}"); }
         }
@@ -402,7 +465,12 @@ namespace Marco.Tests.Remote
         void Cmd(string target, string cmd, string args = "")
         {
             seq++;
-            File.AppendAllText(CmdFile, $"{seq}\t{target}\t{cmd}\t{args}\n");
+            // Clients read this file every frame; an append can meet a reader holding it open — retry briefly.
+            for (int attempt = 0; ; attempt++)
+            {
+                try { File.AppendAllText(CmdFile, $"{seq}\t{target}\t{cmd}\t{args}\n"); break; }
+                catch (IOException) when (attempt < 200) { System.Threading.Thread.Sleep(2); }
+            }
             Ev("cmd", $"\"seq\":{seq},\"target\":{Q(target)},\"cmd\":{Q(cmd)},\"args\":{Q(args)}");
         }
 
@@ -421,7 +489,7 @@ namespace Marco.Tests.Remote
                         lastSeq = n;
                         if (p[1] != "*" && p[1] != hid.ToString()) continue;
                         Ev("exec", $"\"seq\":{n},\"cmd\":{Q(p[2])},\"args\":{Q(p[3])}");
-                        StartCoroutine(Execute(p[2], p[3]));
+                        StartCoroutine(Guarded(Execute(p[2], p[3]), "Execute " + p[2] + " " + p[3]));
                     }
                 }
                 yield return new WaitForSecondsRealtime(.05f);
@@ -626,7 +694,7 @@ namespace Marco.Tests.Remote
         // ---------------------------------------------------------------- client
         IEnumerator ClientMain()
         {
-            StartCoroutine(ClientCommands());
+            StartCoroutine(Guarded(ClientCommands(), "ClientCommands"));
             yield return Connect();
             while (true)
             {
@@ -648,7 +716,12 @@ namespace Marco.Tests.Remote
         {
             if (NetworkPlayer.Local.PlayerId == readyFor) return;
             readyFor = NetworkPlayer.Local.PlayerId;
-            File.WriteAllText(Path.Combine(syncDir, $"ready_{hid}.txt"), readyFor.ToString());
+            // Write a temp file and move it into place, so the host never reads a half-written file (11-09: a sharing
+            // violation on ready_3.txt killed the host's scenario coroutine).
+            string final = Path.Combine(syncDir, $"ready_{hid}.txt"), temp = final + ".tmp";
+            File.WriteAllText(temp, readyFor.ToString());
+            if (File.Exists(final)) File.Delete(final);
+            File.Move(temp, final);
             Ev("ready", $"\"playerId\":{readyFor}");
         }
 
@@ -679,7 +752,10 @@ namespace Marco.Tests.Remote
         {
             if (id == 0) return Host;
             var file = Path.Combine(syncDir, $"ready_{id}.txt");
-            if (!File.Exists(file) || !int.TryParse(File.ReadAllText(file).Trim(), out int playerId)) return null;
+            string text;
+            try { if (!File.Exists(file)) return null; text = File.ReadAllText(file); }
+            catch (IOException) { return null; }   // being written by the client right now: try again next call
+            if (!int.TryParse(text.Trim(), out int playerId)) return null;
             return NetworkPlayer.TryGet(playerId, out var player) ? player : null;
         }
 
@@ -883,6 +959,8 @@ namespace Marco.Tests.Remote
                 case "lobby": yield return LobbyScenario(); break;
                 case "visual": yield return VisualScenario(); break;
                 case "soak": yield return SoakScenario(); break;
+                case "extra": yield return ExtraScenario(); break;
+                case "smoke": yield return SmokeScenario(); break;
             }
             yield return Finish();
         }
@@ -1190,7 +1268,7 @@ namespace Marco.Tests.Remote
             Step("load", "\"seconds\":60");
             Cmd("*", "voice", "voice -10 60");
             Cmd("*", "sprint", "60");
-            StartCoroutine(Speak("voice", -10f, 60f));
+            StartCoroutine(Guarded(Speak("voice", -10f, 60f), "Speak load"));
             yield return Sprint(60f);
             Step("loadEnd");
             yield return new WaitForSecondsRealtime(2f);
@@ -1246,6 +1324,165 @@ namespace Marco.Tests.Remote
             Step("compatGate");
             Call(Round, "CheatOpenActiveValves");
             yield return new WaitForSecondsRealtime(3f);
+        }
+
+        // Pre-campaign check (11-09): N players connect, every ready file is read, one round starts — nothing else.
+        IEnumerator SmokeScenario()
+        {
+            yield return StartRound(1);
+            yield return new WaitForSecondsRealtime(3f);
+            var ids = Enumerable.Range(1, expectedPlayers - 1).Select(i => P(i)?.PlayerId ?? -1);
+            Step("smokeOk", $"\"players\":{NetworkPlayer.All.Count},\"clientIds\":[{string.Join(",", ids)}]");
+        }
+
+        // ---------------------------------------------------------------- follow-ups (requested 2026-11-09)
+        // S2C: valve C on the 2nd floor, heard from inside the tank room, from the viewing lobby right outside its one door,
+        // and from the 1st floor right below. surfaceB / surfaceDrain: the underwater forced pulses (valve B, drain hatch 1)
+        // heard from above the water surface — swimming on the surface and standing on the deck. Direction hints on everywhere.
+        IEnumerator ExtraScenario()
+        {
+            yield return StartRound(1);
+            RippleSwitch(true);
+            Cmd("*", "hint", "on");
+            yield return new WaitForSecondsRealtime(.5f);
+            if (Want("S2C")) yield return S2C();
+            if (Want("surfaceB")) yield return SurfaceValveB();
+            if (Want("surfaceDrain")) yield return SurfaceDrain();
+        }
+
+        // One listener as the server sees it: position, eye height (the hearing end point), swim / dive state, judgment.
+        string Ear(int id, Vector3 source, float radius)
+        {
+            var p = P(id);
+            if (p == null) return "null";
+            var m = p.GetComponent<PlayerMovement>();
+            float eye = m != null ? m.WaterEyeHeight : p.transform.position.y;
+            var j = Judge(source, p, radius);
+            var end = new Vector3(p.transform.position.x, eye, p.transform.position.z);
+            return $"{{\"slot\":{id},\"id\":{p.PlayerId},\"role\":{Q(p.Role.ToString())},\"pos\":{V(p.transform.position)},\"oct\":{Octant(source, end)},\"eye\":{F(eye)},\"swim\":{B(m != null && m.IsSwimming)},\"dive\":{B(m != null && m.IsDiving)},\"d\":{F(Vector3.Distance(source, end))},\"judge\":[{B(j.heard)},{B(j.blocked)},{F(j.perceived)}]}}";
+        }
+
+        // A floor spot near `near` (same search as Floor), trying offsets up to 2 m when furniture is in the way.
+        static bool FloorNear(Vector3 near, out Vector3 spot)
+        {
+            if (Floor(near, out spot)) return true;
+            for (float r = .5f; r <= 2f; r += .5f)
+                for (int i = 0; i < 8; i++)
+                {
+                    float angle = i * Mathf.PI / 4f;
+                    if (Floor(near + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * r, out spot)) return true;
+                }
+            spot = default;
+            return false;
+        }
+
+        IEnumerator S2C()
+        {
+            if (!ValveView.TryGet(ValveId.C, out var view)) { Step("S2C", "\"result\":\"no valve C view\""); yield break; }
+            var at = view.transform.position;
+            bool active = Get(Get(Round, "board"), "Valves") is IDictionary valves && valves.Contains(ValveId.C);
+            float radius = Has(Round, "ValveSoundRadius", 1) ? (float)Call(Round, "ValveSoundRadius", ValveId.C) : 12f;
+            // Map design (docs/맵설계.md): valve C (6.0, 16.5) h 4.5, tank room door u01 (9.0, 20.0) 1.0 wide, lobby east of it.
+            // Positions are taken relative to the valve so a small offset between the doc and the scene does not matter.
+            var door = at + new Vector3(3f, 0, 3.5f);
+            bool room = false; Vector3 inRoom = default;
+            foreach (float d in new[] { 3f, 2.5f, 3.5f, 4f, 2f, 5f })
+                if (LevelSpot(at, d, out inRoom) && Mathf.Abs(inRoom.y - at.y) < 2f) { room = true; break; }
+            bool outside = FloorNear(door + new Vector3(1f, 0, 0), out var doorOutside) && doorOutside.y > at.y - 2.5f;
+            var through = at + (door - at).normalized * 7f;
+            bool line = FloorNear(through, out var doorLine) && doorLine.y > at.y - 2.5f;
+            bool below = FloorNear(new Vector3(at.x, at.y - 4.5f, at.z), out var under) && under.y < at.y - 2f;
+            Step("S2Cspots", $"\"valve\":{V(at)},\"active\":{B(active)},\"radius\":{F(radius)},\"room\":{(room ? V(inRoom) : "null")},\"doorOutside\":{(outside ? V(doorOutside) : "null")},\"doorLine\":{(line ? V(doorLine) : "null")},\"below\":{(below ? V(under) : "null")}");
+            // pass 1: c1 tank room, c2 lobby right outside the door, c3 1st floor right below; pass 2: c2 on the valve → door line.
+            for (int pass = 1; pass <= 2; pass++)
+            {
+                if (pass == 1)
+                {
+                    if (room) Tp(1, inRoom, at);
+                    if (outside) Tp(2, doorOutside, at);
+                    if (below) Tp(3, under, at);
+                }
+                else if (line) Tp(2, doorLine, at);
+                else break;
+                yield return new WaitForSecondsRealtime(2.2f);
+                string spots = pass == 1 ? "{\"room\":1,\"doorOutside\":2,\"below\":3}" : "{\"doorLine\":2}";
+                Step("S2C", $"\"pass\":{pass},\"slots\":{spots},\"ears\":[{Ear(1, at, radius)},{Ear(2, at, radius)},{Ear(3, at, radius)},{Ear(0, at, radius)}]");
+                Call(Round, "ValveAudio", ValveId.C, ValveSoundEvent.RotatingStarted);
+                Cmd("1", "shotat", $"{Ms + 900} S2C_p{pass}");
+                yield return new WaitForSecondsRealtime(3f);
+                Call(Round, "ValveAudio", ValveId.C, ValveSoundEvent.RotatingStopped);
+                yield return new WaitForSecondsRealtime(1f);
+            }
+            Step("S2Cend");
+        }
+
+        // Surface level of the pool that contains `point` — the same PoolV12Part "Pool" bounds SoundWorld (internal) reads.
+        static bool Surface(Vector3 point, out float surface)
+        {
+            surface = 0f;
+            foreach (var component in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include))
+            {
+                if (component == null || component.GetType().Name != "PoolV12Part") continue;
+                var type = component.GetType();
+                if (type.GetField("category")?.GetValue(component) as string != "Pool") continue;
+                var pool = new Bounds((Vector3)type.GetField("designPosition").GetValue(component), (Vector3)type.GetField("designSize").GetValue(component));
+                if (point.x > pool.min.x && point.x < pool.max.x && point.z > pool.min.z && point.z < pool.max.z) { surface = pool.center.y; return true; }
+            }
+            return false;
+        }
+
+        // A swimming spot on the surface: transform low enough for water contact, eye above the surface (not diving).
+        static Vector3 SwimSpot(float x, float z, float surface) => new Vector3(x, surface + .3f, z);
+
+        IEnumerator SurfaceValveB()
+        {
+            if (!ValveView.TryGet(ValveId.B, out var view)) { Step("surfaceB", "\"result\":\"no valve B view\""); yield break; }
+            var at = view.transform.position;
+            if (!Surface(at, out float surface)) { Step("surfaceB", "\"result\":\"no pool\""); yield break; }
+            float radius = Has(Round, "ValveSoundRadius", 1) ? (float)Call(Round, "ValveSoundRadius", ValveId.B) : 12f;
+            // Valve B sits 1.5 m from the east wall of the deep end; the east deck is beyond it (docs/맵설계.md).
+            // Expected hint bearings differ per listener: swimNear → E, swimFar → NE, both deck listeners → W.
+            Tp(1, SwimSpot(at.x - 1.5f, at.z, surface), at);
+            Tp(2, SwimSpot(at.x - 3f, at.z - 2.5f, surface), at);
+            bool deckHost = FloorNear(new Vector3(at.x + 2.5f, surface + .5f, at.z), out var hostDeck);
+            bool deckRunner = FloorNear(new Vector3(at.x + 4f, surface + .5f, at.z + 1f), out var runnerDeck);
+            if (deckHost) Tp(0, hostDeck, at);
+            if (deckRunner) Tp(3, runnerDeck, at);
+            yield return new WaitForSecondsRealtime(2.5f);
+            Step("surfaceB", $"\"valve\":{V(at)},\"surface\":{F(surface)},\"radius\":{F(radius)},\"slots\":{{\"swimNear\":1,\"swimFar\":2,\"deckRunner\":3,\"deckSeeker\":0}},\"ears\":[{Ear(1, at, radius)},{Ear(2, at, radius)},{Ear(3, at, radius)},{Ear(0, at, radius)}]");
+            Call(Round, "ValveAudio", ValveId.B, ValveSoundEvent.RotatingStarted);
+            Cmd("1", "shotat", $"{Ms + 900} surfaceB");
+            yield return new WaitForSecondsRealtime(6.5f);
+            Call(Round, "ValveAudio", ValveId.B, ValveSoundEvent.RotatingStopped);
+            Step("surfaceBend", $"\"ears\":[{Ear(1, at, radius)},{Ear(2, at, radius)},{Ear(3, at, radius)},{Ear(0, at, radius)}]");
+            yield return new WaitForSecondsRealtime(1f);
+        }
+
+        IEnumerator SurfaceDrain()
+        {
+            if (!DrainHatchView.TryGet(DrainHatchId.First, out var view)) { Step("surfaceDrain", "\"result\":\"no hatch view\""); yield break; }
+            var at = view.transform.position;
+            if (!Surface(at, out float surface)) { Step("surfaceDrain", "\"result\":\"no pool\""); yield break; }
+            const float radius = 12f, period = 2.5f;   // spec: drain forced pulse = Valve grade 12 m, every 2.5 s (PulseSpec is not in B0)
+            // Drain 1 is 4.0 m from the east edge of the deep end (docs/맵설계.md); the east deck is beyond that edge.
+            // Not straight above (no bearing there): swimAbove 1.5 m SW of the hatch → NE, swim3m → E, deck → W.
+            // Deck Seeker 0.5 m past the edge ≈ 6.8 m (inside 7.2); deck Runner ≈ 7.0 m (outside 6) is the control.
+            Tp(1, SwimSpot(at.x - 1.5f, at.z - 1.5f, surface), at);
+            Tp(2, SwimSpot(at.x - 3f, at.z, surface), at);
+            bool deckHost = FloorNear(new Vector3(at.x + 4.5f, surface + .5f, at.z), out var hostDeck);
+            bool deckRunner = FloorNear(new Vector3(at.x + 4.5f, surface + .5f, at.z + 1.5f), out var runnerDeck);
+            if (deckHost) Tp(0, hostDeck, at);
+            if (deckRunner) Tp(3, runnerDeck, at);
+            yield return new WaitForSecondsRealtime(2.5f);
+            Step("surfaceDrain", $"\"hatch\":{V(at)},\"surface\":{F(surface)},\"radius\":{F(radius)},\"slots\":{{\"swimAbove\":1,\"swim3m\":2,\"deckRunner\":3,\"deckSeeker\":0}},\"ears\":[{Ear(1, at, radius)},{Ear(2, at, radius)},{Ear(3, at, radius)},{Ear(0, at, radius)}],\"pulled\":\"EmitDrainWorkPulse x3\"");
+            Cmd("1", "shotat", $"{Ms + 900} surfaceDrain");
+            for (int i = 0; i < 3; i++)
+            {
+                Call(Round, "EmitDrainWorkPulse", DrainHatchId.First);
+                yield return new WaitForSecondsRealtime(period);
+            }
+            Step("surfaceDrainEnd", $"\"ears\":[{Ear(1, at, radius)},{Ear(2, at, radius)},{Ear(3, at, radius)},{Ear(0, at, radius)}]");
+            yield return new WaitForSecondsRealtime(1f);
         }
 
         // 4-D.2: c1 makes noise and speech next to the host; packets / rings / lobby reactions are compared between builds.
@@ -1335,10 +1572,10 @@ namespace Marco.Tests.Remote
                 Tp(1, watch, door.center);
                 yield return new WaitForSecondsRealtime(2.5f);
                 Step("door", $"\"n\":{shown},\"door\":{V(door.center)},\"width\":{F(door.width)},\"speaker\":{V(speak)},\"watcher\":{V(watch)}");
-                StartCoroutine(Speak("steady", -10f, .3f));
+                StartCoroutine(Guarded(Speak("steady", -10f, .3f), "Speak visual"));
                 long at = Ms + 900;
                 Cmd("1", "shotat", $"{at} door{shown}");
-                StartCoroutine(ShotAt(at, $"door{shown}"));
+                StartCoroutine(Guarded(ShotAt(at, $"door{shown}"), "ShotAt visual"));
                 yield return new WaitForSecondsRealtime(3.5f);
                 // Own ring afterglow: 15% → 0% over 12 s (host = the speaker).
                 if (shown == 1)
@@ -1406,13 +1643,18 @@ namespace Marco.Tests.Remote
 
         IEnumerator RelayClient()
         {
-            StartCoroutine(ClientCommands());
+            StartCoroutine(Guarded(ClientCommands(), "ClientCommands"));
             var relayType = T("Marco.Network.Lobby.UnityRelayLobby");
             var relay = relayType != null ? FindAnyObjectByType(relayType) as MonoBehaviour : null;
             string file = Path.Combine(syncDir, "relay_code.txt");
             float deadline = Time.realtimeSinceStartup + 120;
             while (!File.Exists(file) && Time.realtimeSinceStartup < deadline) yield return null;
-            string code = File.Exists(file) ? File.ReadAllText(file).Trim() : "";
+            string code = "";
+            for (int attempt = 0; attempt < 200 && File.Exists(file); attempt++)
+            {
+                try { code = File.ReadAllText(file).Trim(); break; }
+                catch (IOException) { System.Threading.Thread.Sleep(2); }
+            }
             while (relay != null && !(Get(relay, "Ready") is bool ready && ready) && Time.realtimeSinceStartup < deadline) yield return null;
             Ev("relay", $"\"code\":{Q(code)},\"ready\":{B(relay != null && Get(relay, "Ready") is bool r && r)},\"status\":{Q(relay != null ? Get(relay, "Status") as string : "no relay")}");
             if (relay != null && code.Length > 0) Call(relay, "JoinRoomCode", code);
