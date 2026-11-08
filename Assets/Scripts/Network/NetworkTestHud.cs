@@ -1,6 +1,7 @@
 using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Round;
+using Marco.Network.Round.ResultPodium;
 using UnityEngine;
 
 namespace Marco.Network
@@ -19,13 +20,16 @@ namespace Marco.Network
         private static readonly Color MutedColor = new(0.6f, 0.6f, 0.6f);
         private static readonly Color OpenColor = new(0.3f, 0.85f, 0.4f);
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
-        // Result banner: winning side's color (기획서 12.5 — Runners cyan, Seeker red).
-        private static readonly Color RunnersWinColor = new(0.2f, 0.9f, 1f);
-        private static readonly Color SeekersWinColor = new(0.95f, 0.2f, 0.2f);
 
         private LanConnector connector;
+        private ResultPodiumView podium;
 
-        private void Awake() => connector = GetComponent<LanConnector>();
+        private void Awake()
+        {
+            connector = GetComponent<LanConnector>();
+            podium = GetComponent<ResultPodiumView>();
+            if (podium == null) podium = gameObject.AddComponent<ResultPodiumView>();
+        }
 
         private void OnGUI()
         {
@@ -398,54 +402,14 @@ namespace Marco.Network
             return "";
         }
 
-        // Center: result screen (기획서 12.5) — banner, three award cards, rematch vote. It only reads
-        // NetworkRound's display values, so the real UI can replace it as is. The sound map time-lapse
-        // and clip saving are post-MVP and not drawn.
-        private static void DrawResult(NetworkRound round)
+        // Center: result screen (기획서 12.5) — podium (banner, everyone posing in a row, name/result/award
+        // slot) with the rematch vote at the bottom; see ResultPodiumView. The sound map time-lapse and
+        // clip saving are post-MVP and not drawn.
+        private void DrawResult(NetworkRound round)
         {
             if (!round.IsResultScreenShown) return;
-
-            const float width = 1100, height = 560;
-            var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.45f - height / 2, width, height);
-            TestHudSkin.Panel(rect);
-            var inner = Inset(rect);
-
-            var banner = new GUIStyle(TestHudSkin.Text(96, FontStyle.Bold, TextAnchor.MiddleCenter));
-            banner.normal.textColor = round.Result switch
-            {
-                RoundResult.RunnersWin => RunnersWinColor,
-                RoundResult.SeekersWin => SeekersWinColor,
-                _ => MutedColor,
-            };
-            GUI.Label(new Rect(inner.x, inner.y, inner.width, 140), ResultLabel(round.Result), banner);
-
-            // Award logic (기획서 8.1~8.3) is not built yet: empty cards hold the places.
-            const float cardWidth = 300, cardHeight = 150, cardGap = 40;
-            float cardX = inner.x + (inner.width - (cardWidth * 3 + cardGap * 2)) / 2, cardY = inner.y + 170;
-            for (int i = 0; i < AwardTitles.Length; i++)
-            {
-                var card = new Rect(cardX + i * (cardWidth + cardGap), cardY, cardWidth, cardHeight);
-                TestHudSkin.Fill(card, new Color(1f, 1f, 1f, 0.08f));
-                GUI.Label(new Rect(card.x, card.y + 22, card.width, 40), AwardTitles[i], TestHudSkin.Text(28, FontStyle.Bold, TextAnchor.MiddleCenter));
-                GUI.Label(new Rect(card.x, card.y + 82, card.width, 44), "—", TestHudSkin.Text(32, FontStyle.Normal, TextAnchor.MiddleCenter));
-            }
-
-            // Rematch: "리매치? (yes/total)  N초  [찬성]".
-            float voteY = inner.yMax - 70;
-            int seconds = Mathf.Max(0, Mathf.CeilToInt(round.RematchRemainingSeconds));
-            GUI.Label(new Rect(inner.x + 110, voteY, 520, 60), $"리매치? ({round.RematchYesCount}/{round.RematchVoterCount})",
-                TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleRight));
-            GUI.Label(new Rect(inner.x + 650, voteY, 110, 60), $"{seconds}초", TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
-
-            bool previousEnabled = GUI.enabled;
-            GUI.enabled = round.CanRequestRematch;
-            var button = new GUIStyle(TestHudSkin.Button(30)) { alignment = TextAnchor.MiddleCenter };
-            if (GUI.Button(new Rect(inner.x + 780, voteY, 200, 60), round.HasRequestedRematch ? "찬성함" : "찬성", button))
-                round.RequestRematch();
-            GUI.enabled = previousEnabled;
+            podium.Draw(round);
         }
-
-        private static readonly string[] AwardTitles = { "최다 비명상", "무성 생존상", "최고의 거짓말상" };
 
         private static Rect Inset(Rect rect) => new(rect.x + TestHudSkin.Padding, rect.y + TestHudSkin.Padding,
             rect.width - TestHudSkin.Padding * 2, rect.height - TestHudSkin.Padding * 2);
