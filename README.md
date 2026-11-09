@@ -65,12 +65,14 @@ FishNet과 Unity Multiplayer Services 패키지는 프로젝트에 포함되어 
 
 ## 착수 전 경고
 
-**잠수 시스템은 한 번도 구현된 적이 없다.** 수면 존 감지가 없어 이전 빌드는 모든 플레이어를
-"물 밖"으로 처리했다. 숨 게이지·질식·강제 부상이 전부 미검증이고, **v0.4에서 확정한
-수중 밸브·수면 차폐·배수구 설계가 전부 이 위에 얹혀 있다.**
+**잠수는 구현돼 있다(`Network/Player/PlayerMovement.Swimming.cs`).** 수면 판정은 맵 수면 높이와
+눈높이로 하고, 숨 게이지 · 숨 소진 시 강제 부상 · 수중 밸브 B·E 작업 조건은 서버가 판정한다.
+다만 EditMode 테스트는 없고 Play 모드 점검(`Network/Editor/SwimmingRegressionChecks.cs` 등)만 있다.
+**수중 밸브 · 수면 차폐 · 배수구 설계가 이 위에 얹혀 있다.**
 
-**2층도 존재한 적이 없다.** 물탱크실(밸브 C)과 관람석이 만들어진 적이 없어 층간 차폐 규칙이
-한 번도 돌아가지 않았다.
+**2층은 맵에 있다**(`IndoorPool_v1_2` 씬의 `Floor_2F`, 2층 관람 로비에 붕대 · 찰칵이 배치).
+층간 차폐는 소리(`Network/Audio/SoundWorld.cs`)가 바닥 · 천장을 벽 2개로, 음성(`Network/Voice/VoiceRouting.cs`)은
+1개로 세어 두 규칙이 다르다.
 
 상세는 기획서 §5.9-1(숨 게이지) · §6.1-1(수중 밸브) · §5.6(차폐)을 볼 것.
 (예전 우선순위 정리인 `02-구현검증노트.md`는 레포에서 사라졌다.)
@@ -85,8 +87,8 @@ FishNet과 Unity Multiplayer Services 패키지는 프로젝트에 포함되어 
 | 항목 | 상태 |
 |---|---|
 | 프로젝트 셋업 | 완료(Unity 6000.5.4f1) |
-| 어셈블리 정의 | 미착수(`.asmdef` 없음) |
-| 빌드 파이프라인 · 씬 부트스트랩 · 테스트 하네스 | 미착수(레포에 해당 코드 없음) |
-| 입력 시스템과 1인칭 카메라 | 미착수(레포에 해당 코드 없음) |
-| 음성 캡처와 밴드패스(기획서 §5.2) | 미착수(레포에 해당 코드 없음) |
-| 차폐 판정 순수 함수와 진단 로그 | 미착수(레포에 해당 코드 없음) |
+| 어셈블리 정의 | 완료(`Marco.Core.WinCondition` · `Marco.Core.WinCondition.Tests` · `Marco.Network` · `Marco.Network.Editor`) |
+| 빌드 파이프라인 · 씬 부트스트랩 · 테스트 하네스 | 일부 — EditMode 테스트(`Core/WinCondition/Tests`), Play 모드 점검(`Network/Editor/*Checks.cs`), 테스트 씬 생성 · 테스트 빌드 메뉴(`MARCO/Network/…`, `NetworkTestTools.cs`). 정식 빌드 파이프라인은 없음 |
+| 입력 시스템과 1인칭 카메라 | 완료(`Network/Player/PlayerMovement.cs` · `PlayerInteractor.cs`, 구 Input Manager) |
+| 음성 캡처와 밴드패스(기획서 §5.2) | 일부 — 마이크 캡처 · 음량 등급 분류는 구현(`Network/Vision/MicrophoneVisionController.cs`, `Network/Voice/`). 80~3,400Hz 밴드패스는 없음 |
+| 차폐 판정 순수 함수와 진단 로그 | 일부 — 차폐 판정은 구현(`SoundWorld.cs` · `VoiceRouting.cs`)됐지만 물리 레이캐스트에 묶여 있어 순수 함수 · 테스트는 없음 |

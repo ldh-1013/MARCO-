@@ -144,6 +144,8 @@ namespace Marco.Network.Lobby
         private void DrawInGameMenu()
         {
             if (Cursor.lockState == CursorLockMode.Locked) return;
+            // The result screen frees the cursor for its own vote button; leaving goes through the vote.
+            if (NetworkRound.Instance != null && NetworkRound.Instance.IsResultScreenShown) return;
             TestHudSkin.Begin();
             var rect = new Rect(TestHudSkin.Width - 300, TestHudSkin.Height - 170, 276, 146);
             TestHudSkin.Panel(rect);

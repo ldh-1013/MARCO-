@@ -540,6 +540,8 @@ namespace Marco.Network.Vision
                 DrawDarknessMask(radius);
 
             GUI.depth = 0;
+            // Hidden under the result screen (기획서 12.5).
+            if (Marco.Network.Round.NetworkRound.Instance != null && Marco.Network.Round.NetworkRound.Instance.IsResultScreenShown) return;
             GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
         }
 

@@ -195,7 +195,7 @@ namespace Marco.Core.WinCondition
             ReworkProgress = Clamp01(ReworkProgress);
         }
 
-        // TODO(기획 확인): 균등 간격(30초 ÷ 3회 = 10초마다)으로 임시 처리. 정확한 타이밍 미정.
+        // 기획서 6.1-2 "역류 구간 중 10초마다 1회, 총 3회" — 30초 ÷ 3회 = 10 · 20 · 30초에 발생.
         private void FireDueRippleEvents()
         {
             float intervalSeconds = _config.ReflowCloseDurationSeconds / _config.ReflowRippleEventCount;
