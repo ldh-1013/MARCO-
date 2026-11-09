@@ -32,16 +32,29 @@ namespace Marco.Network.Editor
                 if (animator != null && stage.idleClip != null) stage.idleClip.SampleAnimation(animator.gameObject, 0);
                 stage.SetSpeech(0);
                 var quiet = Capture(camera, "quiet");
+                if (quiet.Any(pixel => pixel.r > 3 || pixel.g > 3 || pixel.b > 3))
+                    throw new Exception("Silent CCTV feed must be black.");
                 stage.SetSpeech(1);
                 var speaking = Capture(camera, "speaking");
                 int changed = 0;
                 for (int i = 0; i < quiet.Length; i++)
                     if (Math.Abs(quiet[i].r - speaking[i].r) + Math.Abs(quiet[i].g - speaking[i].g) + Math.Abs(quiet[i].b - speaking[i].b) > 24) changed++;
                 if (changed < 100) throw new Exception("Speaking actor is not visible: " + changed + " changed pixels.");
+                stage.actorRoot.SetActive(false);
+                var surroundings = Capture(camera, "surroundings");
+                int revealedSurfaces = surroundings.Count(pixel => pixel.g > 20);
+                int stillDark = surroundings.Count(pixel => pixel.r <= 3 && pixel.g <= 3 && pixel.b <= 3);
+                if (revealedSurfaces < 1000) throw new Exception("Voice must reveal nearby pool surfaces, not only the actor.");
+                if (stillDark < surroundings.Length / 5) throw new Exception("Voice reveal must leave distant areas dark.");
+                stage.actorRoot.SetActive(true);
+                stage.SetSpeech(0);
+                var silentAgain = Capture(camera, "silent-again");
+                if (silentAgain.Any(pixel => pixel.r > 3 || pixel.g > 3 || pixel.b > 3))
+                    throw new Exception("CCTV must return to black after speech ends.");
                 var shader = Resources.Load<Shader>("LobbyCctvSurface");
                 var errors = ShaderUtil.GetShaderMessages(shader).Where(m => m.severity.ToString() == "Error").ToArray();
                 if (errors.Length > 0) throw new Exception(string.Join("\n", errors.Select(m => m.message)));
-                File.WriteAllText("Logs/LobbyCctv/result.txt", "PASS: pool feed rendered, actor visible, " + changed + " voice-reactive pixels, shader compiled.");
+                File.WriteAllText("Logs/LobbyCctv/result.txt", "PASS: silence black, " + revealedSurfaces + " surrounding surface pixels revealed, distant areas dark, return to silence black, shader compiled.");
             }
             catch (Exception error)
             {
