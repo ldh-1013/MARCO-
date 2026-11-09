@@ -9,7 +9,7 @@ namespace Marco.Network
     // (top center), valves (left), players (right), result (center). Before that, LobbyMenu covers
     // the screen. The host also gets restart here; RoundCheats (Tab, dev builds only) repeats it with the cheats.
     [RequireComponent(typeof(LanConnector))]
-    public sealed class NetworkTestHud : MonoBehaviour
+    public sealed partial class NetworkTestHud : MonoBehaviour
     {
         private const float SideWidth = 420, RowHeight = 44;
 
@@ -30,6 +30,8 @@ namespace Marco.Network
             if (round == null || round.Mode == RoundMode.NotStarted) return;
 
             TestHudSkin.Begin();
+            DrawRunnerInjury(round);
+            DrawSeekerReticle(round);
             DrawPlayers();
             DrawRoundStatus(round);
             DrawValves(round);

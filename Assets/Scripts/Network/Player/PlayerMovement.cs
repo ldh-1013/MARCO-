@@ -135,6 +135,7 @@ namespace Marco.Network.Player
         private void Update()
         {
             UpdateWaterPresentation();
+            TickShout();
             if (IsServerInitialized) { TickServerBreath(Time.deltaTime); TickServerSprintStamina(Time.deltaTime); }
             if (!IsOwner) return;
 

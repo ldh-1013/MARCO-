@@ -9,14 +9,11 @@ namespace Marco.Network.Lobby
         [SerializeField, Min(0.1f)] private float cuteHoldSeconds = 1.2f;
         [Tooltip("Entrance rhythm: successive gaps tighten from two beats to one beat.")]
         [SerializeField, Range(80, 160)] private float entranceTempoBpm = 112;
-        [SerializeField, Min(0.1f)] private float errorLeadSeconds = 0.9f;
-        [SerializeField, Min(0.1f)] private float glitchSeconds = 0.8f;
-        [SerializeField, Min(0.1f)] private float letterDelay = 0.65f;
+        [SerializeField, Min(0.1f)] private float glitchSeconds = 0.48f;
         private const float FirstBounceSeconds = 0.60f;
         private const float BounceSeconds = 1.35f;
         private float EntranceSeconds => LetterDropStart(5) + LetterFallSeconds(5) + BounceSeconds;
-        private bool requestedEarly;
-        [SerializeField, Min(0.1f)] private float fadeSeconds = 0.7f;
+        [SerializeField, Min(0.1f)] private float fadeSeconds = 0.15f;
         private enum Phase { Cute, Corroding, Metal, Leaving }
         private Phase phase;
         private float phaseStarted;
@@ -27,6 +24,7 @@ namespace Marco.Network.Lobby
         private Texture2D[] metalGlyphs;
         private GUIStyle caption;
         private Texture2D dot;
+        private Texture2D glitchNoise;
         public bool IsPlaying => enabled && !finished;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -48,7 +46,6 @@ namespace Marco.Network.Lobby
             animationTime = 0;
             EnsureMetalGlyphs();
             phase = Phase.Cute;
-            requestedEarly = false;
         }
 
         private void Update()
@@ -56,16 +53,40 @@ namespace Marco.Network.Lobby
             if (!IsPlaying) return;
             // A startup/import hitch must not fast-forward past M's entrance into A's.
             if (started >= 0) animationTime += Mathf.Min(Time.unscaledDeltaTime, .05f);
-            if (phase == Phase.Cute && started >= 0 && animationTime >= EntranceSeconds + (requestedEarly ? 0 : cuteHoldSeconds))
+            // Edge-triggered once per frame: held keys and IMGUI key-repeat must not
+            // advance multiple stages. anyKeyDown includes keyboard and mouse buttons.
+            if (started >= 0 && phase != Phase.Leaving && Input.anyKeyDown)
+            {
+                Advance();
+                return;
+            }
+            if (phase == Phase.Cute && started >= 0 && animationTime >= EntranceSeconds + cuteHoldSeconds)
             {
                 phase = Phase.Corroding;
                 phaseStarted = animationTime;
             }
-            // The exclamation mark is the single completion cue for both the logo and mood.
-            if (phase == Phase.Corroding && LetterProgress(5) >= 1)
+            // A short full-screen signal failure, then the entire metal title holds.
+            if (phase == Phase.Corroding && BurstProgress >= 1)
                 phase = Phase.Metal;
             if (phase == Phase.Leaving && animationTime - phaseStarted >= fadeSeconds)
                 finished = true;
+        }
+
+        private void Advance()
+        {
+            if (phase == Phase.Cute)
+            {
+                // Finish all drops and rebounds before starting the next visual stage.
+                animationTime = Mathf.Max(animationTime, EntranceSeconds);
+                phase = Phase.Corroding;
+                phaseStarted = animationTime;
+            }
+            else if (phase == Phase.Corroding || phase == Phase.Metal)
+            {
+                // Leaving draws the fully converted logo, including !, during the short fade.
+                phase = Phase.Leaving;
+                phaseStarted = animationTime;
+            }
         }
 
         private void OnGUI()
@@ -74,19 +95,9 @@ namespace Marco.Network.Lobby
             if (started < 0 && Event.current.type == EventType.Repaint) started = 0;
             float t = animationTime;
             var e = Event.current;
-            if (e.type == EventType.MouseDown && e.button == 0)
+            if (e.type == EventType.MouseDown || e.type == EventType.KeyDown)
             {
-                if (phase == Phase.Cute)
-                {
-                    // Even an early click lets all six letters finish their entrance.
-                    requestedEarly = true;
-                }
-                else if (phase == Phase.Metal)
-                {
-                    phase = Phase.Leaving;
-                    phaseStarted = animationTime;
-                }
-                // Consume clicks during transformation too, so double clicks cannot skip it.
+                // The transition is handled in Update; keep its input out of the lobby UI.
                 e.Use();
             }
             var matrix = GUI.matrix;
@@ -105,9 +116,8 @@ namespace Marco.Network.Lobby
             DrawCute(t);
             for (int letter = 0; letter < 6; letter++)
             {
-                float progress = LetterProgress(letter);
-                if (!ShowsMetal(letter, t)) continue;
-                bool tearing = progress < 1;
+                if (!MetalVisible) continue;
+                bool tearing = phase == Phase.Corroding;
                 Texture2D glyph = metalGlyphs[letter];
                 // Match the candy stroke's actual ink bounds, not a font's line box.
                 // Candy: 86 x 130 path + 27px stroke; exclamation: 27 x 157.
@@ -118,7 +128,7 @@ namespace Marco.Network.Lobby
                 for (int y = 0; y < 157; y += 2)
                 {
                     Color steel = Color.white;
-                    float tear = GlitchOffset(rect.y + y - 235, t, letter);
+                    float tear = GlitchOffset(rect.y + y - 235, t);
                     float bandHeight = Mathf.Min(2, rect.height - y);
                     var strip = new Rect(rect.x + tear, rect.y + y, rect.width, bandHeight);
                     float top = y / rect.height;
@@ -136,8 +146,10 @@ namespace Marco.Network.Lobby
             if (decay > 0)
                 for (int y = 0; y < 720; y += 4) Fill(new Rect(0, y, 1280, 1), new Color(0, 0, 0, .15f * decay));
             caption.normal.textColor = Color.Lerp(new Color(.22f, .48f, .49f), new Color(.43f, .48f, .46f), decay);
-            GUI.Label(new Rect(0, 620, 1280, 28), phase == Phase.Cute ? "CLICK TO START EARLY" : phase == Phase.Metal ? "CLICK TO ENTER LOBBY" : "", caption);
+            GUI.Label(new Rect(0, 620, 1280, 28), phase == Phase.Cute ? "CLICK OR ANY KEY TO CONTINUE"
+                : phase == Phase.Leaving ? "" : "CLICK OR ANY KEY TO ENTER LOBBY", caption);
             GUI.matrix = Matrix4x4.identity;
+            DrawFullScreenGlitch();
             if (fade > 0) Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, fade));
             GUI.matrix = matrix;
             GUI.color = color;
@@ -168,7 +180,7 @@ namespace Marco.Network.Lobby
             };
             for (int i = 0; i < paths.Length; i++)
             {
-                if (ShowsMetal(i, time)) continue;
+                if (MetalVisible) continue;
                 float life = 1;
                 float age = time - LetterDropStart(i);
                 if (age < 0) continue;
@@ -201,11 +213,11 @@ namespace Marco.Network.Lobby
                         for (int k = 0; k <= steps; k++)
                         {
                             Vector2 p = Vector2.Lerp(a, b, k / (float)steps);
-                            p.x += GlitchOffset(p.y - 235, time, i);
+                            p.x += GlitchOffset(p.y - 235, time);
                             GUI.DrawTexture(new Rect(p.x - width / 2, p.y - width / 2, width, width), dot);
                         }
                     }
-                    if (i == 5) GUI.DrawTexture(new Rect(offset.x + 30 - width / 2 + GlitchOffset(offset.y + 130 - 235, time, i), offset.y + 130 - width / 2, width, width), dot);
+                    if (i == 5) GUI.DrawTexture(new Rect(offset.x + 30 - width / 2 + GlitchOffset(offset.y + 130 - 235, time), offset.y + 130 - width / 2, width, width), dot);
                 }
                 GUI.matrix = letterMatrix;
             }
@@ -215,50 +227,61 @@ namespace Marco.Network.Lobby
         private void OnDestroy()
         {
             if (dot != null) Destroy(dot);
+            if (glitchNoise != null) Destroy(glitchNoise);
             if (metalGlyphs != null) foreach (var glyph in metalGlyphs) if (glyph != null) Destroy(glyph);
         }
 
-        private float LetterProgress(int index)
-        {
-            if (phase == Phase.Cute) return 0;
-            if (phase != Phase.Corroding) return 1;
-            return Mathf.Clamp01((animationTime - phaseStarted - index * letterDelay - errorLeadSeconds) / Mathf.Max(.1f, glitchSeconds));
-        }
+        private float BurstProgress => Mathf.Clamp01((animationTime - phaseStarted) / Mathf.Max(.1f, glitchSeconds));
 
-        private float AtmosphereProgress()
-        {
-            if (phase == Phase.Cute) return 0;
-            float last = LetterProgress(5);
-            if (last >= 1) return 1;
-            float letters = 0;
-            for (int i = 0; i < 6; i++)
-                letters += Mathf.SmoothStep(0, 1, LetterProgress(i));
-            // Most of the change follows the letters gradually. Reserve the final
-            // ten percent for the exact frame when ! locks and its signal errors stop.
-            return .82f * letters / 6 + .08f * Mathf.SmoothStep(0, 1, last);
-        }
+        // All six letters and the background hard-cut on the SAME frame. Never dissolve.
+        private bool MetalVisible => phase != Phase.Cute && (phase != Phase.Corroding || BurstProgress >= .42f);
+        private float AtmosphereProgress() => MetalVisible ? 1 : 0;
 
-        private bool ShowsMetal(int index, float time)
-        {
-            float progress = LetterProgress(index);
-            if (progress <= 0) return false;
-            if (progress >= 1) return true;
-            // Hard, frame-held substitutions instead of dissolving or melting the letter.
-            return Hash(Mathf.FloorToInt(time * 24), index + 81) < progress;
-        }
-
-        private float GlitchOffset(float y, float time, int index)
+        private float GlitchOffset(float y, float time)
         {
             if (phase != Phase.Corroding) return 0;
-            float age = animationTime - phaseStarted - index * letterDelay;
-            if (age <= 0 || LetterProgress(index) >= 1) return 0;
-            int tick = Mathf.FloorToInt(time * 24);
-            // Short signal failures separated by held, clean frames. No sine deformation.
-            if (Hash(tick, index + 31) < .38f) return 0;
-            int band = Mathf.FloorToInt(y / 13);
-            if (Hash(tick + index, band + 47) < .45f) return 0;
-            float strength = Mathf.Clamp01(age / .25f);
-            return Mathf.Round((Hash(tick + index * 7, band) - .5f) * 62 * strength);
+            int tick = Mathf.FloorToInt(time * 30);
+            int band = Mathf.FloorToInt(y / 16);
+            // Shared screen-space bands tear the whole title, rather than individual letters.
+            return Mathf.Round((Hash(tick, band + 47) - .5f) * 125);
+        }
+
+        private void DrawFullScreenGlitch()
+        {
+            if (phase != Phase.Corroding) return;
+            if (glitchNoise == null)
+            {
+                glitchNoise = new Texture2D(96, 64, TextureFormat.RGBA32, false) {
+                    name = "Intro signal noise", hideFlags = HideFlags.HideAndDontSave,
+                    wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Point
+                };
+                var pixels = new Color[96 * 64];
+                var random = new System.Random(191);
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    float value = (float)random.NextDouble();
+                    pixels[i] = new Color(value, value, value, 1);
+                }
+                glitchNoise.SetPixels(pixels);
+                glitchNoise.Apply(false, true);
+            }
+            int tick = Mathf.FloorToInt(animationTime * 30);
+            var full = new Rect(0, 0, Screen.width, Screen.height);
+            Color previous = GUI.color;
+            GUI.color = new Color(1, 1, 1, .32f + Hash(tick, 3) * .2f);
+            GUI.DrawTextureWithTexCoords(full, glitchNoise, new Rect(Hash(tick, 5), Hash(tick, 9), 5, 3));
+            for (int band = 0; band < 12; band++)
+            {
+                float y = Hash(tick, band + 12) * Screen.height;
+                float height = (band % 3 == 0 ? .065f : .008f) * Screen.height;
+                Fill(new Rect(0, y, Screen.width, height), new Color(.01f, .025f, .027f, .85f));
+                Fill(new Rect(0, y + height, Screen.width * (.3f + Hash(tick, band) * .7f), 2),
+                    band % 2 == 0 ? new Color(.12f, .8f, .8f, .7f) : new Color(.8f, .12f, .16f, .65f));
+            }
+            // One impact at the shared cut point; no repeated whole-screen flashing.
+            if (BurstProgress >= .42f && BurstProgress < .55f)
+                Fill(full, new Color(.55f, .65f, .62f, .42f));
+            GUI.color = previous;
         }
 
         private float LetterDropStart(int index)
