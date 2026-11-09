@@ -553,8 +553,9 @@ namespace Marco.Network.Round
             hatch.StatusChanged += status =>
             {
                 if (status != DrainHatchStatus.Completed) return;
-                foreach (int playerId in hatch.WorkerIds)
-                    if (TryGetAliveRunner(playerId, out var player)) player.SetStatus(PlayerStatus.Escaped);
+                // Copy: MarkEscaped ends their drain work, which removes them from WorkerIds.
+                foreach (int playerId in new List<int>(hatch.WorkerIds))
+                    if (TryGetAliveRunner(playerId, out var player)) MarkEscaped(player);
             };
         }
 
@@ -659,10 +660,21 @@ namespace Marco.Network.Round
         {
             if (round != null ? !round.NotifyRunnerEscaped(player.PlayerId) : !gate.IsOpen) return false;
 
+            MarkEscaped(player);
+            return true;
+        }
+
+        // Exit or drain hatch: the escapee becomes an Echo body and keeps nothing (3.3-3) — work,
+        // treatment on either side, and every item. The duck and the recorder follow on the next tick
+        // (TickDecoysServer / TickSoundCansServer drop any holder who is no longer alive), as after a tag.
+        private void MarkEscaped(NetworkPlayer player)
+        {
+            CancelHealingFor(player.PlayerId);
             ClearClickerHolding(player);
+            bandageCounts[player.PlayerId] = 0;
+            player.SendBandageCount(0);
             RemoveFromWork(player.PlayerId);
             player.SetStatus(PlayerStatus.Escaped);
-            return true;
         }
 
         // Local targeting hint; the server repeats role, status, distance and availability checks.
@@ -1187,8 +1199,15 @@ namespace Marco.Network.Round
             return target != null;
         }
 
+        // Every Runner request (valve, drain, exit, items, treatment) goes through this or the roster's
+        // IsAlive, so escapees and mid-round joiners — Echo bodies without interaction (3.3-3) — are
+        // rejected silently (14.2 P2).
         private bool TryGetAliveRunner(int playerId, out NetworkPlayer player) =>
             NetworkPlayer.TryGet(playerId, out player) && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
+
+        // TODO(소리·파문 파트 — 노크 구현 시, 기획서 3.2 · 3.3-3 · 14.2 P2): EchoKnock 서버 검증은 여기 둔다.
+        // 요청자가 탈출자(Escaped)거나 진행 중 난입자(Spectating)면 버린다 — 조용히 무시, 응답 없음.
+        // 노크 권한은 EchoBodyRules.CanKnock(status) == NetworkPlayer.IsEcho(Tagged)만. HasEchoBody로 판정하지 않는다.
 
         // RoundState already drops tagged/escaped players from valves, but not from the drain hatch,
         // and ValvesOnly mode has no RoundState at all.

@@ -42,7 +42,7 @@ namespace Marco.Network.Vision
             if (owner == null || owner != NetworkPlayer.Local) { Clear(); return; }
             var round = NetworkRound.Instance;
             bool active = round != null && round.Mode != RoundMode.NotStarted &&
-                round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.IsEcho);
+                round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.HasEchoBody);
             int water = world.WaterState(owner, out float level);
             bool grounded = world.TryFloorNear(owner, out var floor, .09f);
             var velocity = owner.GetComponent<CharacterController>()?.velocity ?? Vector3.zero;
@@ -122,7 +122,7 @@ namespace Marco.Network.Vision
                 int count = 0, oldest = -1;
                 for (int i = 0; i < rings.Count; i++)
                     if (rings[i].Sound) { count++; if (oldest < 0) oldest = i; }
-                if (count >= (owner.IsEcho ? 8 : 16)) Remove(oldest);
+                if (count >= (owner.HasEchoBody ? 8 : 16)) Remove(oldest);
             }
             else
                 for (int i = rings.Count-1; i >= 0; i--)

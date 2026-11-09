@@ -268,7 +268,7 @@ namespace Marco.Network.Round
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
             {
-                if (listener.Status != PlayerStatus.Alive && !listener.IsEcho) continue;
+                if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
                 if (IsSelfOnlySound(clip))
                 {
@@ -279,7 +279,7 @@ namespace Marco.Network.Round
                 if (!soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
                     out bool blocked, out float perceivedRadius) && !own) continue;
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
-                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.IsEcho ? 1.5f : 1f;
+                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? 1.5f : 1f;
                 float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
                 bool showPulse = !blocked && (clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));
@@ -289,7 +289,7 @@ namespace Marco.Network.Round
                     showPulse = !nextValvePulse.TryGetValue(key, out float next) || Time.time >= next;
                     if (showPulse) nextValvePulse[key] = underwater ? Time.time + 2.5f : float.PositiveInfinity;
                 }
-                if (listener.IsEcho) { if (showPulse) pulseSeconds = 3f; }
+                if (listener.HasEchoBody) { if (showPulse) pulseSeconds = 3f; }
                 else pulseSeconds *= durationScale;
                 SoundTarget(listener.Owner, clip, point, volume * gain, duration * durationScale, loopKey,
                     underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds);

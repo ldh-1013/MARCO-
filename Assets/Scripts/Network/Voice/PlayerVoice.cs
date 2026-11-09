@@ -110,12 +110,12 @@ namespace Marco.Network.Voice
                 if (listener == player) continue;
                 if (inGameVoice)
                 {
-                    if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.IsEcho) continue;
+                    if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
                         out bool blocked, out float radius)) continue;
-                    float life = listener.IsEcho ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
                     if (pulse && !blocked) VoicePulseTarget(listener.Owner, point, radius, life);
-                    if (!listener.IsEcho) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
+                    if (!listener.HasEchoBody) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
                     PlayVoiceTarget(listener.Owner, packet, radius, origin, 1f, false, false, Channel.Reliable);

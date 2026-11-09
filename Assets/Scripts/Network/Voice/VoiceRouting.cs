@@ -9,9 +9,10 @@ namespace Marco.Network.Voice
     // Microphone loudness grade (기획서 5.1): whisper −50~−30, talk −30~−15, shout −15 dBFS and up.
     public enum VoiceGrade : byte { Whisper, Talk, Shout }
 
-    // 기획서 13.2: three in-round channels with nothing crossing between them. Before the round and
+    // 기획서 13.2 (11-10): two in-round channels, nothing crossing — Game (alive Runners · Seeker,
+    // proximity) and Echo (eliminated Echoes, escapees, mid-round joiners). Before the round and
     // once the result is decided everyone talks together (6.3 결과 화면 전원 합류).
-    public enum VoiceChannel : byte { Everyone, Game, Echo, Escaped }
+    public enum VoiceChannel : byte { Everyone, Game, Echo }
 
     // Server-side rule for "does this listener hear that speaker". Values are tuned on the
     // player prefab's PlayerVoice; the server uses its own copy.
@@ -40,8 +41,7 @@ namespace Marco.Network.Voice
             return player.Status switch
             {
                 PlayerStatus.Alive => VoiceChannel.Game,
-                PlayerStatus.Tagged => VoiceChannel.Echo,
-                _ => VoiceChannel.Escaped, // escaped, or joined mid-round and spectating
+                _ => VoiceChannel.Echo, // tagged, escaped, joined mid-round (13.2 ②, 11-10)
             };
         }
 

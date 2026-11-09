@@ -6,22 +6,31 @@ using UnityEngine.Rendering;
 
 namespace Marco.Network.Character
 {
+    // Which see-through Echo body to draw (기획서 16.1): eliminated Echo = pale purple,
+    // escapee and mid-round joiner = cyan (3.3-3, 11-10).
+    public enum GhostLook : byte { None, Echo, Escapee }
+
     // Builds the role's registered character model under the player, replacing the capsule.
     // Ported from Prototype CharacterVisualPrototype; rebuilt whenever the role changes,
-    // because the Seeker is only drawn at round start. An Echo gets the same model with see-through
-    // ghost materials (Prototype SurvivorGhostPrototype).
+    // because the Seeker is only drawn at round start. An Echo body gets the same model with see-through
+    // ghost materials (Prototype SurvivorGhostPrototype), tinted by GhostLook.
     public sealed class CharacterBody : MonoBehaviour
     {
         [SerializeField] private CharacterAsset seekerAsset;
         [SerializeField] private CharacterAsset runnerAsset;
         [SerializeField] private Color ghostTint = new(0.65f, 0.25f, 1f, 0.3f);
+        // 16.1 탈출자 rim: #7FE7E0, the same see-through alpha as the Echo.
+        [SerializeField] private Color escapeeGhostTint = new(0x7F / 255f, 0xE7 / 255f, 0xE0 / 255f, 0.3f);
 
         private static Material marcoMinusCharacterTemplate;
 
         private readonly List<Material> runtimeMaterials = new();
         private GameObject model;
-        private bool ghost;
+        private GhostLook ghost;
         private bool seekerModel;
+
+        public GhostLook Ghost => ghost;
+        public Color GhostTintOf(GhostLook look) => look == GhostLook.Escapee ? escapeeGhostTint : ghostTint;
 
         public CharacterAsset Definition { get; private set; }
         public Transform BodyRoot => model == null ? null : model.transform;
@@ -34,7 +43,7 @@ namespace Marco.Network.Character
             Definition == null ? null : Definition.Resolve(BodyRoot, BodyAnimator, bone);
 
         // Returns false when the role has no registered model, so the caller keeps the capsule.
-        public bool Show(PlayerRole role, bool visible, bool asGhost)
+        public bool Show(PlayerRole role, bool visible, GhostLook asGhost)
         {
             var wanted = role == PlayerRole.Seeker ? seekerAsset : runnerAsset;
             bool isSeeker = role == PlayerRole.Seeker;
@@ -44,7 +53,7 @@ namespace Marco.Network.Character
             return model != null;
         }
 
-        private void Build(CharacterAsset asset, bool asGhost, bool isSeeker)
+        private void Build(CharacterAsset asset, GhostLook asGhost, bool isSeeker)
         {
             Clear();
             Definition = asset;
@@ -108,12 +117,14 @@ namespace Marco.Network.Character
             foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
             {
                 MakeCharacterMaterialsMarcoMinusCompatible(renderer);
-                if (ghost) MakeGhostMaterials(renderer);
+                if (ghost != GhostLook.None) MakeGhostMaterials(renderer, GhostTintOf(ghost));
             }
         }
 
-        // Translucent URP Lit copies that keep each material's texture, tinted with ghostTint.
-        private void MakeGhostMaterials(Renderer renderer)
+        // Translucent URP Lit copies in the look's flat colour. The source texture is left out on purpose:
+        // multiplied by the tint, the model's own colours won (cyan read yellow-green on the hair, purple read
+        // pink and blue), and 16.1 draws Echo bodies by their rim colour alone. Shading still gives the form.
+        private void MakeGhostMaterials(Renderer renderer, Color ghostTint)
         {
             var lit = Shader.Find("Universal Render Pipeline/Lit");
             var materials = renderer.sharedMaterials;
@@ -123,9 +134,7 @@ namespace Marco.Network.Character
                 if (source == null) continue;
                 var material = lit != null && lit.isSupported ? new Material(lit) : new Material(source);
                 material.name = source.name + " (ghost)";
-                Texture texture = source.HasProperty("_BaseMap") ? source.GetTexture("_BaseMap")
-                    : source.HasProperty("_MainTex") ? source.GetTexture("_MainTex") : null;
-                if (texture != null && material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+                if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", null);
                 if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", ghostTint);
                 material.SetFloat("_Surface", 1f);
                 material.SetFloat("_Blend", 0f);
