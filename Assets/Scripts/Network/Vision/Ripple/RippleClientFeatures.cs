@@ -6,6 +6,6 @@ namespace Marco.Network.Vision
     public static class RippleClientFeatures
     {
         // §5.4 direction hint: a ring-display sound whose world ring is hidden by occlusion lights the screen edge.
-        public static bool DirectionHint = false;
+        public static bool DirectionHint = true;
     }
 }
