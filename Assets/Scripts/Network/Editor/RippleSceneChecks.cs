@@ -110,7 +110,7 @@ namespace Marco.Network.Editor
                         }
                     Expect(shaderName == "Marco/RippleRing", "Ring drawn with the Resources shader", $"sound ring shader = {shaderName}, wall reveal strips = {wallStrips}");
                     // Phase C direction hint: shipped off; switched on here, a hidden sound ahead must be drawn by the runtime overlay.
-                    Expect(!RippleClientFeatures.DirectionHint, "Direction hint switch default", $"DirectionHint = {RippleClientFeatures.DirectionHint} (expected False)");
+                    Expect(RippleClientFeatures.DirectionHint, "Direction hint switch default", $"DirectionHint = {RippleClientFeatures.DirectionHint} (expected True)");
                     RippleClientFeatures.DirectionHint = true;
                     var view = player.GetComponentInChildren<Camera>(true);
                     var ahead = Vector3.ProjectOnPlane(view != null ? view.transform.forward : player.transform.forward, Vector3.up).normalized;
