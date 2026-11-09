@@ -29,6 +29,9 @@ namespace Marco.Network.Round.ResultPodium
             else if (!want && shown) Close();
             shown = want;
             if (stage == null) return;
+            // GameEnd can land a tick after the result: add the cards when it does.
+            if (!stage.HasAwards && round != null && round.RoundAwards != null)
+                stage.SetAwards(BuildAwards(round.RoundAwards, NetworkPlayer.All));
             stage.Resize(FeedWidth, FeedHeight);
             stage.Tick(Time.unscaledDeltaTime);
             stage.Camera.enabled = true;
@@ -42,7 +45,9 @@ namespace Marco.Network.Round.ResultPodium
             Close();
             if (assets == null) assets = ResultPodiumAssets.Load();
             if (assets == null) { Debug.LogWarning("[MARCO][Result] Resources/" + ResultPodiumAssets.ResourcePath + " missing; plain result screen."); return; }
-            stage = new ResultPodiumStage(result, BuildEntries(result, NetworkPlayer.All, NetworkPlayer.Local), assets, FeedWidth, FeedHeight);
+            var awards = NetworkRound.Instance != null && NetworkRound.Instance.RoundAwards != null
+                ? BuildAwards(NetworkRound.Instance.RoundAwards, NetworkPlayer.All) : null;
+            stage = new ResultPodiumStage(result, BuildEntries(result, NetworkPlayer.All, NetworkPlayer.Local), assets, FeedWidth, FeedHeight, awards);
             if (!stage.IsValid) Close();
         }
 
@@ -72,9 +77,27 @@ namespace Marco.Network.Round.ResultPodium
                     Outcome = seeker ? "술래" : echo ? "메아리" : player.Status == PlayerStatus.Escaped ? "탈출" : "생존",
                     OutcomeColor = seeker ? SeekerLabelColor : echo ? EchoColor : player.Status == PlayerStatus.Escaped ? EscapedColor : AliveColor,
                     IsLocal = player == local,
+                    PlayerId = player.PlayerId,
                 });
             }
             return entries;
+        }
+
+        // GameEnd awards (14.3) → cards. Winner names come from the synced nicknames, like the podium labels.
+        public static List<PodiumAward> BuildAwards(IReadOnlyList<AwardWire> awards, IEnumerable<NetworkPlayer> players)
+        {
+            var names = new Dictionary<int, string>();
+            foreach (var player in players)
+                if (player != null) names[player.PlayerId] = string.IsNullOrEmpty(player.Nickname) ? $"P{player.PlayerId}" : player.Nickname;
+            var cards = new List<PodiumAward>();
+            foreach (var award in awards)
+            {
+                var ids = award.Winners ?? new int[0];
+                var winnerNames = new string[ids.Length];
+                for (int i = 0; i < ids.Length; i++) winnerNames[i] = names.TryGetValue(ids[i], out var name) ? name : $"P{ids[i]}";
+                cards.Add(new PodiumAward { Kind = award.Kind, WinnerIds = ids, WinnerNames = winnerNames, Value = award.Value });
+            }
+            return cards;
         }
 
         // From NetworkTestHud.OnGUI (TestHudSkin coordinates).

@@ -122,6 +122,7 @@ namespace Marco.Network.Round
                 healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? 2.0 : 2.25);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
                     channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId);
+                RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? 6f : 9f, 1.2f); // 기획서 8.2 — 치료자만
             }
         }
 
@@ -160,6 +161,7 @@ namespace Marco.Network.Round
                 Vector3 ringPoint = position;
                 ringPoint.y = swimming ? surface + .025f : source.GetComponent<CharacterController>().bounds.min.y + .025f;
                 float radius = (fast ? 6f : 2f) * (swimming ? 1f : soundWorld.SurfaceMultiplier(floor, position));
+                RecordAwardNoise(id, AwardNoise.Footstep, radius, fast ? .8f : .4f); // 기획서 8.2 — 발소리 · 헤엄 1회
                 foreach (var listener in NetworkPlayer.All)
                 {
                     if (listener == source || listener.Status != PlayerStatus.Alive || listener.IsEcho) continue;
@@ -222,6 +224,7 @@ namespace Marco.Network.Round
             var origin = player.transform.position;
             origin.y = surface + .1f;
             EmitSound("Hurt", origin, 22f, 1f, 1.5f, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, 22f, 1.5f); // 기획서 8.2
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
                 if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out _))
@@ -260,6 +263,7 @@ namespace Marco.Network.Round
             motion.NextBreath = motion.StillSeconds + 15f;
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
             EmitSound(clip, position, 0f, .65f, .6f, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, AwardRules.BreathRadiusAt(motion.StillSeconds), .6f); // 기획서 8.2 — 3m→9m
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,

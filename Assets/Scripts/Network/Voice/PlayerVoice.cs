@@ -105,6 +105,7 @@ namespace Marco.Network.Voice
             Vector3 origin = VoiceOrigin();
             bool pulse = inGameVoice && (Time.time >= nextServerPulse || grade > lastServerPulse);
             if (pulse) { nextServerPulse = Time.time + duration; lastServerPulse = grade; }
+            if (pulse) round.RecordAwardNoise(player.PlayerId, AwardNoise.Voice, baseRadius, duration); // 기획서 8.2
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener == player) continue;

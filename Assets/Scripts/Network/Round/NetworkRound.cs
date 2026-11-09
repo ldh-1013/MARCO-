@@ -296,6 +296,7 @@ namespace Marco.Network.Round
                 TickAudioServer();
                 TickDecoysServer();
                 TickSoundCansServer();
+                TickAwardsServer();
             }
             if (IsServerInitialized) TickClickerRespawns();
             // The map's GamePoints can finish registering after the network scene object starts.
@@ -381,6 +382,7 @@ namespace Marco.Network.Round
                 if (player.TryGetComponent(out PlayerMovement movement)) movement.ResetSprintStamina();
             }
             MovePlayersToSpawn();
+            BeginAwards();
             foreach (var player in NetworkPlayer.All)
             {
                 bandageCounts[player.PlayerId] = 0;
@@ -487,6 +489,7 @@ namespace Marco.Network.Round
             seekerSpeedBoosted.Value = false;
             seekerPopulationSpeedMultiplier.Value = 1f;
             startSchedule.Reset();
+            ResetAwards();
             SyncStartPhase();
         }
 
@@ -589,6 +592,7 @@ namespace Marco.Network.Round
             if (round.Result == RoundResult.InProgress) return;
             // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
             TimeManager.OnTick -= OnServerTick;
+            FinishAwards();
             BeginRematchVote();
         }
 
@@ -674,6 +678,7 @@ namespace Marco.Network.Round
             bandageCounts[player.PlayerId] = 0;
             player.SendBandageCount(0);
             RemoveFromWork(player.PlayerId);
+            AwardEscaped(player.PlayerId);
             player.SetStatus(PlayerStatus.Escaped);
         }
 
@@ -1127,6 +1132,7 @@ namespace Marco.Network.Round
                 ? Hit(target) : SwingResult.Missed;
             nextTagTimes[seekerId] = Time.time + (result == SwingResult.Missed ? tagMissCooldown : tagHitCooldown);
             if (result != SwingResult.Missed) Debug.Log($"[MARCO] P{seekerId} hit P{target.PlayerId}: {result}");
+            if (result != SwingResult.Missed) AwardSeekerHit();
             return result;
         }
 
@@ -1173,6 +1179,7 @@ namespace Marco.Network.Round
 
             ClearClickerHolding(target);
             RemoveFromWork(target.PlayerId);
+            AwardTagged(target.PlayerId);
             target.SetStatus(PlayerStatus.Tagged);
             return true;
         }
@@ -1246,6 +1253,7 @@ namespace Marco.Network.Round
             // A spectator never entered RoundState's count; reporting them would count as a tag.
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;
             if (round != null && !spectating) round.NotifyPlayerLeft(conn.ClientId);
+            AwardPlayerLeft(conn.ClientId);
         }
 
         // One world pickup at each marked map-design location. Its wrap-and-cross model is generated

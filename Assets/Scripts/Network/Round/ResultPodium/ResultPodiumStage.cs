@@ -21,14 +21,17 @@ namespace Marco.Network.Round.ResultPodium
         public string Outcome;
         public Color OutcomeColor;
         public bool IsLocal;
+        // Matches award winners (PodiumAward.WinnerIds) to the character under which their badges go.
+        public int PlayerId;
     }
 
     // 표시 전용. Builds the result podium far below the map (Y=-20000, apart from the lobby CCTV at
     // -10000) on its own layer and films it into a RenderTexture: a dark stage, the winning side's banner,
-    // everyone in one row with win/lose poses, and their name/result/award slot under them.
-    // Each client builds it locally from what it already knows; nothing here is networked.
+    // everyone in one row with win/lose poses, their name/result and award badges under them, and the three
+    // award cards below (ResultPodiumStage.Awards). Each client builds it locally from what it already
+    // knows (synced role/status and the round's awards); nothing here is networked.
     // Tick drives everything from one clock, so the editor check can sample any moment.
-    public sealed class ResultPodiumStage : IDisposable
+    public sealed partial class ResultPodiumStage : IDisposable
     {
         public const int Layer = 30;
         public static readonly Vector3 Origin = new(0, -20000, 0);
@@ -63,7 +66,7 @@ namespace Marco.Network.Round.ResultPodium
         private static Font font;
 
         public ResultPodiumStage(RoundResult result, IReadOnlyList<PodiumEntry> entries, ResultPodiumAssets assets,
-            int width, int height)
+            int width, int height, IReadOnlyList<PodiumAward> awards = null)
         {
             this.result = result;
             team = result switch { RoundResult.RunnersWin => RunnersColor, RoundResult.SeekersWin => SeekersColor, _ => VoidColor };
@@ -105,6 +108,7 @@ namespace Marco.Network.Round.ResultPodium
 
             BuildCamera(width, height);
             SetLayer(root.transform);
+            if (awards != null) SetAwards(awards);
             Tick(0f);
         }
 
@@ -342,9 +346,7 @@ namespace Marco.Network.Round.ResultPodium
             Quad("Outcome plate", new Vector3(0, LabelTop - .36f, .02f), new Vector3(1.0f, .25f, 1),
                 Shape(2, new Color(entry.OutcomeColor.r * .3f, entry.OutcomeColor.g * .3f, entry.OutcomeColor.b * .3f, .85f), Color.clear), info);
             Text(entry.Outcome, new Vector3(0, LabelTop - .36f, 0), .17f, entry.OutcomeColor, info, true);
-            // Award icon slot (기획서 8): empty until the award logic exists.
-            Quad("Award slot", new Vector3(0, LabelTop - .74f, .02f), new Vector3(.36f, .36f, 1),
-                Shape(3, new Color(1, 1, 1, .35f), Color.clear), info);
+            // Award badges (기획서 8) go under the outcome once the awards are known (BuildBadges).
             info.localScale = Vector3.zero;
         }
 
@@ -367,6 +369,7 @@ namespace Marco.Network.Round.ResultPodium
 
             foreach (var actor in actors) TickActor(actor, t);
             TickConfetti(t);
+            TickAwards(t);
 
             // Slow push-in.
             float push = 1 - Mathf.SmoothStep(0, 1, Mathf.Clamp01(t / 3f));
@@ -562,11 +565,12 @@ namespace Marco.Network.Round.ResultPodium
             Camera.targetTexture = Feed;
             Camera.aspect = width / (float)height;
 
-            // Frame banner top to award slots, leaving the bottom ~18% for the rematch vote bar.
+            // Frame banner top to the award cards, leaving the bottom ~18% for the rematch vote bar.
             float tan = Mathf.Tan(FieldOfView * .5f * Mathf.Deg2Rad);
-            float contentTop = BannerY + BannerHeight, contentBottom = LabelBottom;
+            float contentTop = BannerY + BannerHeight, contentBottom = CardsBottom;
             float bannerWidth = EstimateWidth(ResultTitle(result), BannerHeight) + 2.8f;
-            float visibleHeight = Mathf.Max((contentTop - contentBottom) / .76f, Mathf.Max(rowWidth, bannerWidth) * 1.1f / Camera.aspect);
+            float widest = Mathf.Max(Mathf.Max(rowWidth, bannerWidth), CardsWidth);
+            float visibleHeight = Mathf.Max((contentTop - contentBottom) / .76f, widest * 1.1f / Camera.aspect);
             cameraDistance = visibleHeight / (2 * tan);
             cameraHeight = contentTop + visibleHeight * .05f - visibleHeight / 2;
         }

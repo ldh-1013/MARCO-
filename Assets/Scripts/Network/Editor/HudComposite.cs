@@ -74,7 +74,7 @@ namespace Marco.Network.Editor
         }
 
         // rect in IMGUI space (top-left origin); the texture's rows run bottom-up.
-        private static void Fill(Color[] pixels, Rect rect, Color color)
+        internal static void Fill(Color[] pixels, Rect rect, Color color)
         {
             int x0 = Mathf.Clamp(Mathf.RoundToInt(rect.xMin), 0, Width), x1 = Mathf.Clamp(Mathf.RoundToInt(rect.xMax), 0, Width);
             int y0 = Mathf.Clamp(Mathf.RoundToInt(rect.yMin), 0, Height), y1 = Mathf.Clamp(Mathf.RoundToInt(rect.yMax), 0, Height);
@@ -86,7 +86,7 @@ namespace Marco.Network.Editor
         }
 
         // Centered in rect (TextAnchor.MiddleCenter), glyphs copied from the font atlas.
-        private static void Text(Color[] pixels, Rect rect, string text, int size, bool bold, Color color)
+        internal static void Text(Color[] pixels, Rect rect, string text, int size, bool bold, Color color)
         {
             var font = FontFor(size, bold);
             font.RequestCharactersInTexture(text, size, bold ? FontStyle.Bold : FontStyle.Normal);
