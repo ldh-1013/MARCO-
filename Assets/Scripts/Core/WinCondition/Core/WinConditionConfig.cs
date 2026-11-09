@@ -65,7 +65,7 @@ namespace Marco.Core.WinCondition
         public float ValveNoWorkerDecayPerSecond = 0.10f;
 
         // 역류로 완전히 닫히면(진행도 0) 다시 Closed 상태로 돌아가 처음부터 작업해야 하는가.
-        // TODO(기획 확인): 아직 공식 답변 없음. 우선 "돌아간다"로 가정.
+        // 기획서 6.1-2 "완전 폐쇄 후 → Closed로 복귀(진행도 0)" — 돌아간다.
         public bool ValveFullyReflowsBackToClosed = true;
 
         // ── 밸브 활성화 / 게이트 (v0.6: 인원과 무관하게 항상 고정값) ───────────────────────────────
@@ -83,7 +83,7 @@ namespace Marco.Core.WinCondition
         public float ReflowCloseDurationSeconds = 30f;
 
         // 역류가 진행되는 동안 물소리 파문 알림을 몇 번 보내는지 (파문 자체는 남경 파트, 여기서는 이벤트 횟수만 관리)
-        // TODO(기획 확인): 30초 동안 균등 간격으로 3번 알리는 것으로 임시 처리. 정확한 타이밍 미정.
+        // 기획서 6.1-2 "역류 구간 중 10초마다 1회, 총 3회" (30초 ÷ 3회).
         public int ReflowRippleEventCount = 3;
 
         // ── 종반 압박 (SuddenDeath, 기획서 6.2-1 · 부록 A [종반 압박]) ───────────────────────────────

@@ -1,13 +1,15 @@
 using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Round;
+using Marco.Network.Round.ResultPodium;
 using UnityEngine;
 
 namespace Marco.Network
 {
     // Temporary IMGUI HUD for the test scenes once the round has started: round timer and gate
     // (top center), valves (left), players (right), result (center). Before that, LobbyMenu covers
-    // the screen. The host also gets restart here; RoundCheats (Tab, dev builds only) repeats it with the cheats.
+    // the screen. The host gets restart here in ValvesOnly mode; a decided round goes to the result
+    // screen's rematch vote. RoundCheats (Tab, dev builds only) keeps its own restart with the cheats.
     [RequireComponent(typeof(LanConnector))]
     public sealed class NetworkTestHud : MonoBehaviour
     {
@@ -20,8 +22,14 @@ namespace Marco.Network
         private static readonly Color RotatingColor = new(1f, 0.85f, 0.2f);
 
         private LanConnector connector;
+        private ResultPodiumView podium;
 
-        private void Awake() => connector = GetComponent<LanConnector>();
+        private void Awake()
+        {
+            connector = GetComponent<LanConnector>();
+            podium = GetComponent<ResultPodiumView>();
+            if (podium == null) podium = gameObject.AddComponent<ResultPodiumView>();
+        }
 
         private void OnGUI()
         {
@@ -37,6 +45,7 @@ namespace Marco.Network
             DrawRunnerInventory();
             DrawHealingProgress();
             DrawBreath();
+            DrawValveDiveHint();
             DrawRoundStart(round);
             DrawResult(round);
         }
@@ -76,8 +85,9 @@ namespace Marco.Network
         {
             const float width = 640, buttonHeight = 52;
             bool lastSurvivor = round.InLastSurvivorPhase;
-            // ValvesOnly never decides a result, so the host can restart it at any time.
-            bool hostButton = connector.IsHost && (round.Result != RoundResult.InProgress || round.Mode == RoundMode.ValvesOnly);
+            // ValvesOnly never decides a result, so the host can restart it at any time. A decided Full
+            // round restarts through the result screen's rematch vote instead (기획서 12.5).
+            bool hostButton = connector.IsHost && round.Mode == RoundMode.ValvesOnly;
             float height = (lastSurvivor ? 220 : 130) + (hostButton ? buttonHeight + 12 : 0);
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Margin, width, height);
             TestHudSkin.Panel(rect);
@@ -138,6 +148,17 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
             GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
             GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
+        }
+
+        // Underwater valve (B · E) pressed without diving: shown for any B · E, active or not.
+        private static void DrawValveDiveHint()
+        {
+            var player = NetworkPlayer.Local;
+            // Kept up even once diving: a press made right after going under can still reach the server
+            // before our position does, and the player should then know to press again.
+            if (player == null || !player.TryGetComponent(out PlayerInteractor interactor) || !interactor.ShowsValveDiveHint) return;
+            GUI.Label(new Rect(TestHudSkin.Width * .5f - 300, TestHudSkin.Height * .5f + 60, 600, 36),
+                "Ctrl로 잠수해서 돌리세요", TestHudSkin.Text(24, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         private static void DrawBreath()
@@ -393,22 +414,13 @@ namespace Marco.Network
             return "";
         }
 
-        // Center (slightly high, clear of the cheat panel at the bottom): the decided result, large.
-        private static void DrawResult(NetworkRound round)
+        // Center: result screen (기획서 12.5) — podium (banner, everyone posing in a row, name/result/award
+        // slot) with the rematch vote at the bottom; see ResultPodiumView. The sound map time-lapse and
+        // clip saving are post-MVP and not drawn.
+        private void DrawResult(NetworkRound round)
         {
-            if (round.Result == RoundResult.InProgress) return;
-
-            const float width = 900, height = 220;
-            var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.4f - height / 2, width, height);
-            TestHudSkin.Panel(rect);
-            var style = new GUIStyle(TestHudSkin.Text(110, FontStyle.Bold, TextAnchor.MiddleCenter));
-            style.normal.textColor = round.Result switch
-            {
-                RoundResult.RunnersWin => RunnerColor,
-                RoundResult.SeekersWin => SeekerColor,
-                _ => MutedColor,
-            };
-            GUI.Label(rect, ResultLabel(round.Result), style);
+            if (!round.IsResultScreenShown) return;
+            podium.Draw(round);
         }
 
         private static Rect Inset(Rect rect) => new(rect.x + TestHudSkin.Padding, rect.y + TestHudSkin.Padding,
@@ -437,8 +449,8 @@ namespace Marco.Network
 
         private static string ResultLabel(RoundResult result) => result switch
         {
-            RoundResult.RunnersWin => "도망자 승",
-            RoundResult.SeekersWin => "술래 승",
+            RoundResult.RunnersWin => "도망자 승리",
+            RoundResult.SeekersWin => "술래 승리",
             RoundResult.Void => "무효",
             _ => "진행 중",
         };
