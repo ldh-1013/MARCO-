@@ -45,6 +45,7 @@ namespace Marco.Network
             DrawValves(round);
             DrawRunnerHealth(round);
             DrawRunnerInventory();
+            DrawShoutGauge(round);
             DrawHealingProgress();
             DrawBreath();
             DrawValveDiveHint();

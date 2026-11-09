@@ -10,9 +10,15 @@ namespace Marco.Network.Lobby
         public Camera feedCamera;
         public GameObject actorRoot;
         public AnimationClip idleClip;
-        private Renderer[] actorRenderers;
+        [Header("CCTV voice reveal (presentation only)")]
+        [SerializeField] private Vector2 revealRadius = new(3, 24);
+        [SerializeField, Min(0)] private float revealIntensity = 2.5f;
+        [SerializeField, Min(.1f)] private float revealFalloff = 1.7f;
+        private Renderer[] stageRenderers;
         private MaterialPropertyBlock properties;
         private PlayableGraph idle;
+        private float lastLevel = -1;
+        private Vector3 lastOrigin;
 
         private void Awake()
         {
@@ -37,12 +43,26 @@ namespace Marco.Network.Lobby
         public void SetSpeech(float level)
         {
             if (actorRoot == null) return;
-            actorRenderers ??= actorRoot.GetComponentsInChildren<Renderer>(true);
+            stageRenderers ??= GetComponentsInChildren<Renderer>(true);
             properties ??= new MaterialPropertyBlock();
-            foreach (var renderer in actorRenderers)
+            if (feedCamera != null) feedCamera.backgroundColor = Color.black;
+            level = Mathf.Clamp01(level);
+            if (level < .001f) level = 0;
+            Vector3 origin = actorRoot.transform.position + Vector3.up * .8f;
+            if (Mathf.Approximately(lastLevel, level) && lastOrigin == origin) return;
+            lastLevel = level;
+            lastOrigin = origin;
+            foreach (var renderer in stageRenderers)
             {
+                if (renderer == null) continue;
                 renderer.GetPropertyBlock(properties);
-                properties.SetFloat("_Brightness", Mathf.Lerp(.12f, 1.65f, Mathf.Clamp01(level)));
+                // These properties are local to the lobby copy. Never touch the game's
+                // microphone-light globals, so a lobby preview cannot reveal the real map.
+                properties.SetFloat("_Brightness", 1);
+                properties.SetVector("_RevealOrigin", origin);
+                properties.SetFloat("_RevealRadius", level > 0 ? Mathf.Lerp(revealRadius.x, revealRadius.y, level) : 0);
+                properties.SetFloat("_RevealIntensity", level * revealIntensity);
+                properties.SetFloat("_RevealFalloff", revealFalloff);
                 renderer.SetPropertyBlock(properties);
             }
         }

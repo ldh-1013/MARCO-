@@ -197,6 +197,33 @@ namespace Marco.Network.Editor
                 if (phase == 10)
                 {
                     Capture("Runner-healed");
+                    player.SetRole(PlayerRole.Seeker);
+                    until = now + .3; phase = 11; return;
+                }
+                if (phase == 11)
+                {
+                    var movement = player.GetComponent<PlayerMovement>();
+                    typeof(PlayerMovement).GetField("localShoutRequested", Private).SetValue(movement, true);
+                    typeof(PlayerMovement).GetMethod("BeginShoutServer", Private).Invoke(movement, null);
+                    Check((bool)Field(movement, "shoutPending") && movement.IsPreparingShout,
+                        "Owner shout request enters preparation and locks movement");
+                    Capture("Seeker-shout-preparing");
+                    typeof(PlayerMovement).GetMethod("CancelShoutServer", Private).Invoke(movement, null);
+                    Check(!(bool)Field(movement, "shoutPending") && !movement.IsPreparingShout && movement.ShoutCooldownRemaining == 0,
+                        "Releasing shout cancels preparation without consuming cooldown");
+                    typeof(PlayerMovement).GetField("localShoutRequested", Private).SetValue(movement, true);
+                    typeof(PlayerMovement).GetMethod("BeginShoutServer", Private).Invoke(movement, null);
+                    typeof(PlayerMovement).GetField("shoutEnds", Private).SetValue(movement, Time.time - .01f);
+                    // Movement is disabled for fixed screenshots; TickShout still runs the real server completion.
+                    Cursor.lockState = CursorLockMode.None;
+                    typeof(PlayerMovement).GetField("localShoutRequested", Private).SetValue(movement, false);
+                    typeof(PlayerMovement).GetMethod("TickShout", Private).Invoke(movement, null);
+                    Check(!(bool)Field(movement, "shoutPending") && !movement.IsPreparingShout &&
+                        movement.ShoutCooldownRemaining > 44 && movement.ShoutCooldownFraction > .98f,
+                        "Completed preparation starts the 45-second cooldown and unlocks movement");
+                    Capture("Seeker-shout-cooldown");
+                    typeof(PlayerMovement).GetMethod("BeginShoutServer", Private).Invoke(movement, null);
+                    Check(!(bool)Field(movement, "shoutPending"), "Server rejects shouting during cooldown");
                     Debug.Log("[CombatHudChecks] PASS: " + checks + " checks; captures=" + output);
                     Finish(0);
                 }

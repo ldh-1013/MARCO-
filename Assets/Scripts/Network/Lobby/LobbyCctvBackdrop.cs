@@ -52,7 +52,7 @@ namespace Marco.Network.Lobby
             }
             UpdatePreviewMicrophone();
             float target = Time.unscaledTime < speechUntil ? desiredSpeech : 0;
-            speech = Mathf.Lerp(speech, target, 1 - Mathf.Exp(-Time.unscaledDeltaTime / (target > speech ? .055f : .32f)));
+            speech = Mathf.Lerp(speech, target, 1 - Mathf.Exp(-Time.unscaledDeltaTime / (target > speech ? .2f : .3f)));
             if (sceneStage != null) sceneStage.SetSpeech(speech);
         }
 

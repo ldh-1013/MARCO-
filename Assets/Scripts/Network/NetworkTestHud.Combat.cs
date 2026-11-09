@@ -11,6 +11,55 @@ namespace Marco.Network
     {
         private Texture2D injuryEdges;
 
+        private static void DrawShoutGauge(NetworkRound round)
+        {
+            var player = NetworkPlayer.Local;
+            if (Event.current.type != EventType.Repaint || player == null || player.Role != PlayerRole.Seeker ||
+                player.Status != PlayerStatus.Alive || round.Result != RoundResult.InProgress ||
+                !player.TryGetComponent(out PlayerMovement movement)) return;
+
+            int oldDepth = GUI.depth;
+            GUI.depth = -3;
+            Vector2 center = new(TestHudSkin.Width * .5f, TestHudSkin.Height * .5f);
+            bool preparing = movement.IsPreparingShout;
+            bool cooling = movement.ShoutCooldownRemaining > 0;
+            bool locked = round.IsStartLocked(player.Role);
+            Color accent = locked ? MutedColor : preparing ? RotatingColor : SeekerColor;
+            float fraction = locked ? 0 : preparing ? movement.ShoutPreparationFraction
+                : cooling ? movement.ShoutCooldownFraction : 1;
+
+            // Outside the 28px tag cooldown ring: a continuous right-hand semicircle.
+            DrawShoutArc(center, 1, new Color(0, 0, 0, .8f), 7);
+            DrawShoutArc(center, 1, new Color(1, 1, 1, .2f), 3);
+            DrawShoutArc(center, fraction, accent, 3);
+            var label = new GUIStyle(TestHudSkin.Text(14, FontStyle.Bold, TextAnchor.MiddleCenter));
+            label.normal.textColor = accent;
+            GUI.Label(new Rect(center.x + 60, center.y - 21, 74, 22), "R · 외침", label);
+            GUI.Label(new Rect(center.x + 60, center.y + 1, 74, 22), locked ? "대기"
+                : preparing ? "준비 중" : cooling ? $"{Mathf.CeilToInt(movement.ShoutCooldownRemaining)}초" : "홀드", label);
+            GUI.depth = oldDepth;
+        }
+
+        private static void DrawShoutArc(Vector2 center, float fraction, Color color, float thickness)
+        {
+            const float radius = 48;
+            const int segments = 64;
+            float progress = Mathf.Clamp01(fraction) * segments;
+            Matrix4x4 previous = GUI.matrix;
+            for (int i = 0; i < Mathf.CeilToInt(progress); i++)
+            {
+                float start = -Mathf.PI * .5f + Mathf.PI * i / segments;
+                float end = -Mathf.PI * .5f + Mathf.PI * Mathf.Min(i + 1, progress) / segments;
+                Vector2 from = center + new Vector2(Mathf.Cos(start), Mathf.Sin(start)) * radius;
+                Vector2 to = center + new Vector2(Mathf.Cos(end), Mathf.Sin(end)) * radius;
+                Vector2 delta = to - from;
+                GUI.matrix = previous * Matrix4x4.TRS(new Vector3(from.x, from.y, 0),
+                    Quaternion.Euler(0, 0, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg), Vector3.one);
+                TestHudSkin.Fill(new Rect(0, -thickness * .5f, delta.magnitude + .5f, thickness), color);
+            }
+            GUI.matrix = previous;
+        }
+
         private static void DrawSeekerReticle(NetworkRound round)
         {
             var player = NetworkPlayer.Local;
