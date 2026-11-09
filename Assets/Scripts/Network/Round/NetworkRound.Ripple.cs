@@ -84,9 +84,22 @@ namespace Marco.Network.Round
             RippleSafe("DrainWorkPulse", () =>
             {
                 if (DrainHatchView.TryGet(id, out var hatch) && hatch != null)
-                    EmitSound("DrainWork", hatch.transform.position, PulseSpec.DrainWork, 0f, PulseSpec.DrainWorkPeriod,
-                        underwater: true, playAudio: false, forcePulse: true);
+                {
+                    if (RippleServerFeatures.DrainWorkAudible) EmitDrainWorkSound(hatch.transform.position);
+                    else
+                        EmitSound("DrainWork", hatch.transform.position, PulseSpec.DrainWork, 0f, PulseSpec.DrainWorkPeriod,
+                            underwater: true, playAudio: false, forcePulse: true);
+                }
             });
+        }
+
+        // §6.5-3: the drain work pulse sounds like the underwater valve's forced pulse — the same clip and volume
+        // (ValveUnderwater, 0.5), same judged path (12m, water surface × 0.5, Seeker × 1.2). Above the surface the
+        // ring stays hidden (§5.4) but the muffled sound and the direction hint arrive, so there is no silent escape.
+        private void EmitDrainWorkSound(Vector3 point)
+        {
+            RippleSafe("DrainWorkSound", () => EmitSound("ValveUnderwater", point, PulseSpec.DrainWork, .5f, PulseSpec.DrainWorkPeriod,
+                underwater: true, forcePulse: true));
         }
 
         // S8: the 0:30 exit pulses go through the normal judged path — distance, walls, Seeker × 1.2 — like
