@@ -144,6 +144,7 @@ namespace Marco.Network.Player
 
         private void ResetSwimmingServer()
         {
+            ResetShoutServer();
             serverBreath = MaxBreath; lastBreathUse = -10f; serverPenaltyUntil = 0;
             serverDiveHeld = serverForcedSurface = false;
             if (IsOwner) { breath = MaxBreath; forcedSurface = false; penaltyUntil = 0; diveReported = false; }

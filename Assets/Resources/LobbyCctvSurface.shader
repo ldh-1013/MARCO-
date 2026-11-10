@@ -7,6 +7,10 @@ Shader "MARCO/LobbyCctvSurface"
         _Brightness("Brightness", Float) = .65
         _Subject("Subject", Float) = 0
         _Water("Water", Float) = 0
+        _RevealOrigin("Voice origin", Vector) = (0,0,0,0)
+        _RevealRadius("Voice radius", Float) = 0
+        _RevealIntensity("Voice intensity", Float) = 0
+        _RevealFalloff("Voice falloff", Float) = 1.7
     }
     SubShader
     {
@@ -20,8 +24,9 @@ Shader "MARCO/LobbyCctvSurface"
             #pragma fragment frag
             #include "UnityCG.cginc"
             sampler2D _BaseMap;
-            float4 _BaseMap_ST, _BaseColor;
+            float4 _BaseMap_ST, _BaseColor, _RevealOrigin;
             float _Brightness, _Subject, _Water;
+            float _RevealRadius, _RevealIntensity, _RevealFalloff;
             struct Input { float4 vertex:POSITION; float3 normal:NORMAL; float2 uv:TEXCOORD0; };
             struct Output { float4 vertex:SV_POSITION; float3 normal:TEXCOORD0; float2 uv:TEXCOORD1; float3 world:TEXCOORD2; };
             Output vert(Input v)
@@ -44,8 +49,12 @@ Shader "MARCO/LobbyCctvSurface"
                     float waves = sin(i.world.x * 4 + _Time.y * .7) * sin(i.world.z * 6 - _Time.y * .4);
                     grey = .26 + .045 * waves;
                 }
-                // Character-only gain: speaking reveals the body without lighting the pool.
-                float level = lerp(grey, max(grey,.42), _Subject) * shade * _Brightness;
+                // Same radial attenuation shape as the in-game microphone light:
+                // silence is black; voice reveals the subject AND nearby surfaces.
+                float distanceToVoice = distance(i.world, _RevealOrigin.xyz);
+                float attenuation = _RevealRadius > .001
+                    ? pow(saturate(1 - distanceToVoice / _RevealRadius), max(.1, _RevealFalloff)) : 0;
+                float level = lerp(grey, max(grey,.42), _Subject) * shade * _Brightness * attenuation * _RevealIntensity;
                 return float4(level * float3(.78,.97,.89), 1);
             }
             ENDCG

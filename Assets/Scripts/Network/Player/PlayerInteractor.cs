@@ -29,11 +29,14 @@ namespace Marco.Network.Player
         // after the server's own cooldown and never sends a request the server would reject.
         private bool swingPending;
         private float nextSwingTime;
+        private float swingCooldownDuration;
         private const float ValveDiveHintSeconds = 2.5f;
         private float valveDiveHintUntil;
 
         // Seeker only: seconds left on the swing cooldown, for the HUD.
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
+        public float SwingCooldownFraction => Mathf.Clamp01(SwingCooldownRemaining / Mathf.Max(0.01f, swingCooldownDuration));
+        public bool SwingPending => swingPending;
         // Owner only: the server just turned down an underwater valve (B · E) because we were not diving.
         public bool ShowsValveDiveHint => Time.time < valveDiveHintUntil;
         public int SelectedItemSlot => selectedItemSlot;
@@ -233,6 +236,8 @@ namespace Marco.Network.Player
             workingTreatment = false;
             workingBandage = false;
             swingPending = false;
+            nextSwingTime = 0;
+            swingCooldownDuration = 0;
             aimingDecoy = false;
             decoyPreview?.Dispose();
             decoyPreview = null;
@@ -348,7 +353,8 @@ namespace Marco.Network.Player
             swingPending = false;
             var round = NetworkRound.Instance;
             if (round == null || result == SwingResult.Rejected) return;
-            nextSwingTime = Time.time + (result == SwingResult.Missed ? round.TagMissCooldown : round.TagHitCooldown);
+            swingCooldownDuration = result == SwingResult.Missed ? round.TagMissCooldown : round.TagHitCooldown;
+            nextSwingTime = Time.time + swingCooldownDuration;
         }
     }
 }

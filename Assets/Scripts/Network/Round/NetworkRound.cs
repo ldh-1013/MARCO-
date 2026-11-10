@@ -1167,22 +1167,35 @@ namespace Marco.Network.Round
             return true;
         }
 
-        // Nearest alive Runner within range (3D distance) and the horizontal ±tagHalfAngle cone, with
+        // Nearest alive Runner body surface within range (3D) and the horizontal ±tagHalfAngle cone, with
         // no wall in between. The Seeker's client calls it with TagRadius, the server with its limit.
         public bool TryFindTagTarget(Transform seeker, float range, out NetworkPlayer target)
         {
+            Physics.SyncTransforms();
             target = null;
             float best = range * range;
+            var seekerBody = seeker.GetComponent<CharacterController>();
+            Vector3 origin = seekerBody != null && seekerBody.enabled ? seekerBody.bounds.center : seeker.position;
             var forward = Vector3.ProjectOnPlane(seeker.forward, Vector3.up);
             foreach (var player in NetworkPlayer.All)
             {
                 if (player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) continue;
-                var offset = player.transform.position - seeker.position;
+                if (player.transform == seeker) continue;
+                var body = player.GetComponent<CharacterController>();
+                if (body == null || !body.enabled) continue;
+                var offset = body.ClosestPoint(origin) - origin;
                 if (offset.sqrMagnitude > best || Vector3.Angle(forward, Vector3.ProjectOnPlane(offset, Vector3.up)) > tagHalfAngle) continue;
-                // A wall (or another player) between them blocks the swing; the line starts inside
-                // the Seeker's own CharacterController, which a linecast does not report.
-                if (Physics.Linecast(seeker.position, player.transform.position, out var blocker, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                    && !blocker.transform.IsChildOf(player.transform)) continue;
+                bool blocked = false;
+                float distance = offset.magnitude;
+                if (distance > 0.001f)
+                    foreach (var blocker in Physics.RaycastAll(origin, offset / distance, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        if (blocker.transform.IsChildOf(seeker) || blocker.transform.IsChildOf(player.transform)) continue;
+                        blocked = true;
+                        break;
+                    }
+                if (blocked) continue;
                 best = offset.sqrMagnitude;
                 target = player;
             }

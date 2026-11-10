@@ -62,6 +62,7 @@ namespace Marco.Network.Player
         public bool IsRoomHost => roomHost.Value;
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
+        public float LastInjuryTime { get; private set; } = -1;
         public int BandageCount { get; private set; }
         public int ClickerCount { get; private set; }
         public int DecoyCount { get; private set; }
@@ -182,7 +183,12 @@ namespace Marco.Network.Player
             HealingProgressTarget(Owner, active, isBandage, progress);
 
         [TargetRpc]
-        private void HealthTarget(NetworkConnection conn, int halves) => HealthHalves = halves;
+        private void HealthTarget(NetworkConnection conn, int halves)
+        {
+            int previous = HealthHalves < 0 ? (NetworkRound.Instance != null ? NetworkRound.Instance.FullHalves : halves) : HealthHalves;
+            if (halves > 0 && halves < previous) LastInjuryTime = Time.time;
+            HealthHalves = halves;
+        }
 
         [TargetRpc]
         private void BandageCountTarget(NetworkConnection conn, int count) => BandageCount = count;

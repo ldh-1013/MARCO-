@@ -26,7 +26,14 @@ namespace Marco.Network.Editor
                 var instances = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true))
                     .Select(t => t.gameObject).ToArray();
                 Build("Duck", Find("Assets/Object/오리.fbx"), .27f, true);
-                Build("Recorder", Find("Assets/Object/녹음기.fbx"), .24f, false);
+                // The decorative recorder was removed from the map. Its registered pickup
+                // already preserves the supplied materials, so keep using that baked asset.
+                var recorder = instances.FirstOrDefault(instance =>
+                    PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instance) == "Assets/Object/녹음기.fbx" &&
+                    PrefabUtility.IsAnyPrefabInstanceRoot(instance));
+                if (recorder != null) Build("Recorder", recorder, .24f, false);
+                else if (AssetDatabase.LoadAssetAtPath<GameObject>(Folder + "/Recorder.prefab") == null)
+                    throw new InvalidOperationException("Missing registered recorder pickup: " + Folder + "/Recorder.prefab");
                 GameObject Find(string path) => instances.FirstOrDefault(instance =>
                     PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instance) == path &&
                     PrefabUtility.IsAnyPrefabInstanceRoot(instance)) ?? throw new InvalidOperationException("Missing map instance: " + path);

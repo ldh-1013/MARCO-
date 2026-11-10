@@ -11,7 +11,7 @@ namespace Marco.Network
     // the screen. The host gets restart here in ValvesOnly mode; a decided round goes to the result
     // screen's rematch vote. RoundCheats (Tab, dev builds only) keeps its own restart with the cheats.
     [RequireComponent(typeof(LanConnector))]
-    public sealed class NetworkTestHud : MonoBehaviour
+    public sealed partial class NetworkTestHud : MonoBehaviour
     {
         private const float SideWidth = 420, RowHeight = 44;
 
@@ -38,11 +38,14 @@ namespace Marco.Network
             if (round == null || round.Mode == RoundMode.NotStarted) return;
 
             TestHudSkin.Begin();
+            DrawRunnerInjury(round);
+            DrawSeekerReticle(round);
             DrawPlayers();
             DrawRoundStatus(round);
             DrawValves(round);
             DrawRunnerHealth(round);
             DrawRunnerInventory();
+            DrawShoutGauge(round);
             DrawHealingProgress();
             DrawBreath();
             DrawValveDiveHint();
