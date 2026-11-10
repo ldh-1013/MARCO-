@@ -109,7 +109,7 @@ namespace Marco.Network.Editor
                             if ((bool)type.GetField("HasWall").GetValue(ring)) wallStrips++;
                         }
                     Expect(shaderName == "Marco/RippleRing", "Ring drawn with the Resources shader", $"sound ring shader = {shaderName}, wall reveal strips = {wallStrips}");
-                    // Phase C direction hint: shipped off; switched on here, a hidden sound ahead must be drawn by the runtime overlay.
+                    // Phase C direction hint: shipped on; switched on here, a hidden sound ahead must be drawn by the runtime overlay.
                     Expect(RippleClientFeatures.DirectionHint, "Direction hint switch default", $"DirectionHint = {RippleClientFeatures.DirectionHint} (expected True)");
                     RippleClientFeatures.DirectionHint = true;
                     var view = player.GetComponentInChildren<Camera>(true);
@@ -170,7 +170,7 @@ namespace Marco.Network.Editor
             var switches = new List<string>();
             foreach (var field in typeof(RippleServerFeatures).GetFields(Flags))
                 if (field.FieldType == typeof(bool)) switches.Add(field.Name + "=" + field.GetValue(null));
-            Expect(switches.Count == 11 && !(bool)typeof(RippleServerFeatures).GetField("VoiceActivityGate").GetValue(null),
+            Expect(switches.Count == 12 && !(bool)typeof(RippleServerFeatures).GetField("VoiceActivityGate").GetValue(null),
                 "RippleServerFeatures switches", string.Join(", ", switches));
 
             int exits = 0, hatches = 0, valves = 0;
