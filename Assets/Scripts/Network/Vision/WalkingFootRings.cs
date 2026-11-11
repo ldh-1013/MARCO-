@@ -119,7 +119,7 @@ namespace Marco.Network.Vision
                 var velocity = ownerBody != null ? ownerBody.velocity : Vector3.zero;
                 float speed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
                 fast = MovementPulseClock.IsFastMovement(owner.Role, speed, water == 1);
-                clock.Advance(owner.transform.position, Time.deltaTime, active && !owner.IsEcho && water != 2 && (grounded || water == 1), fast, out emit);
+                clock.Advance(owner.transform.position, Time.deltaTime, active && !owner.HasEchoBody && water != 2 && (grounded || water == 1), fast, out emit);
                 fast = clock.Fast;
             }
             if (!active) { Clear(); return; }
@@ -326,7 +326,7 @@ namespace Marco.Network.Vision
                     : RippleVisualSettings.CoreWidth + RippleVisualSettings.TrailWidth);
                 RippleMesh.ApplyShape(ring.Properties, ring.Shape, request.DoubleEdge);
                 // Walls light up only for ring-display rings, never for an Echo listener (§3.2-1).
-                ring.HasWall = sound && !owner.IsEcho && RippleMesh.WriteWall(ring.WallMesh);
+                ring.HasWall = sound && !owner.HasEchoBody && RippleMesh.WriteWall(ring.WallMesh);
                 if (ring.HasWall)
                 {
                     RippleMesh.ApplyShape(ring.WallProperties, ring.Shape, false);
@@ -509,7 +509,7 @@ namespace Marco.Network.Vision
         // A ring is the local player's own when it starts at the local player's position. Valve rings never are.
         private bool IsSelf(Vector3 point)
         {
-            if (owner == null || owner.Status != PlayerStatus.Alive || owner.IsEcho) return false;
+            if (owner == null || owner.Status != PlayerStatus.Alive || owner.HasEchoBody) return false;
             Vector3 position = owner.transform.position;
             float dx = point.x - position.x, dz = point.z - position.z;
             if (dx * dx + dz * dz > RippleVisualSettings.SelfDistance * RippleVisualSettings.SelfDistance) return false;

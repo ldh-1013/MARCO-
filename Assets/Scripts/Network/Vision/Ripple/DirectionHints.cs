@@ -134,7 +134,7 @@ namespace Marco.Network.Vision
             var local = NetworkPlayer.Local;
             var round = NetworkRound.Instance;
             if (local == null || round == null) return false;
-            return DirectionHintRules.CanShow(local.Status == PlayerStatus.Alive, local.IsEcho,
+            return DirectionHintRules.CanShow(local.Status == PlayerStatus.Alive, local.HasEchoBody,
                 round.Mode != RoundMode.NotStarted && round.Result == RoundResult.InProgress);
         }
 
