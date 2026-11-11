@@ -14,7 +14,7 @@ namespace Marco.Network.Audio
         private readonly HashSet<MonoBehaviour> walls = new();
         private sealed class Part
         {
-            public string Category, Zone;
+            public string Category, Zone, DesignId;
             public MonoBehaviour Component;
             public bool Occluder;
         }
@@ -30,6 +30,7 @@ namespace Marco.Network.Audio
                 {
                     Category = type.GetField("category")?.GetValue(component) as string,
                     Zone = type.GetField("zone")?.GetValue(component) as string,
+                    DesignId = type.GetField("designId")?.GetValue(component) as string,
                     Occluder = type.GetField("soundOccluder")?.GetValue(component) is bool flag && flag,
                     Component = component
                 };
@@ -120,6 +121,7 @@ namespace Marco.Network.Audio
             {
                 if (part.Category == "Stair") return "MetalStairs";
                 if (part.Category == "Obstacle" && part.Zone == "ST") return "Carpet";
+                if (part.Category == "Obstacle" && part.DesignId is "h03" or "h05" or "h07" or "h11" or "l03" or "l04" or "l05" or "l06") return "WoodBench";
                 if (part.Category != "Floor") return "";
                 switch (part.Zone)
                 {
@@ -133,6 +135,11 @@ namespace Marco.Network.Audio
                     default: return "";
                 }
             }
+            // The imported wooden bench instances have colliders but no PoolV12Part.
+            for (var root = floor.transform; root != null; root = root.parent)
+                if (root.name == "긴나무의자" || root.name.StartsWith("긴나무의자 (", System.StringComparison.Ordinal))
+                    return "WoodBench";
+
             var renderer = floor.GetComponent<Renderer>();
             string name = renderer != null && renderer.sharedMaterial != null ? renderer.sharedMaterial.name : "";
             if (name == "Tile") return "Tile";
@@ -152,7 +159,7 @@ namespace Marco.Network.Audio
         {
             "Tile" => 3,
             "Concrete" => 4,
-            "Carpet" or "Mat" or "Metal" or "MetalStairs" => 1,
+            "Carpet" or "Mat" or "Metal" or "MetalStairs" or "WoodBench" => 1,
             _ => 0
         };
 
@@ -229,7 +236,7 @@ namespace Marco.Network.Audio
         {
             perceivedRadius = radius;
             playbackPoint = origin;
-            if (listener.IsEcho)
+            if (listener.HasEchoBody)
             {
                 gain = 1;
                 muffled = false;

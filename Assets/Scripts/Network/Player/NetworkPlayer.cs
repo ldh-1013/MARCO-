@@ -14,9 +14,10 @@ namespace Marco.Network.Player
 
     // Turns the camera/input on only for the local owner's capsule and swaps out the scene camera.
     // Also carries the server-assigned PlayerRole and round status, synced to every client:
-    // role picks the character model (or the capsule color when none is registered), an escaped
-    // player is hidden, and a tagged Runner becomes an Echo (기획서 3.2): a see-through ghost without
-    // collision that only other Echoes can see.
+    // role picks the character model (or the capsule color when none is registered). A tagged Runner
+    // (Echo, 기획서 3.2), an escapee and a mid-round joiner (3.3-3 · 13.3) wear the Echo body: a
+    // see-through ghost without collision that survivors never see and other Echo bodies do —
+    // purple for the eliminated Echo, cyan for the other two (EchoBodyRules).
     // Lives are not here on purpose: the server sends them to the owner alone (기획서 14.2).
     public sealed class NetworkPlayer : NetworkBehaviour
     {
@@ -47,6 +48,7 @@ namespace Marco.Network.Player
         private CharacterBody character;
         private CharacterController controller;
         private Camera sceneCamera;
+        private Escape.EscapeeTransition escapeTransition;
 
         public int PlayerId => OwnerId;
         public PlayerRole Role => role.Value;
@@ -57,7 +59,14 @@ namespace Marco.Network.Player
         public bool IsPlacingSoundCan => placingSoundCan.Value;
         public Vector3 SoundCanPlacementPoint => soundCanPlacementPoint.Value;
         public float SoundCanPlacementProgress => soundCanPlacementProgress.Value;
+        // The eliminated Echo (tagged). Win/loss, counting, tag targets, knock and awards read this.
         public bool IsEcho => status.Value == PlayerStatus.Tagged;
+        // Wears the Echo body: tagged, escaped or joined mid-round (3.3-3). Body, flight, rendering,
+        // collision and mutual visibility read this; nothing about who won or who may knock does.
+        public bool HasEchoBody => EchoBodyRules.HasEchoBody(status.Value);
+        public bool IsEscapee => status.Value == PlayerStatus.Escaped;
+        // Owner only: the 1.0 s escape fade is still covering the screen (no movement, living body kept).
+        public bool IsEscapeFading => escapeTransition != null && escapeTransition.FreezesMovement;
         public string Nickname => nickname.Value;
         public bool IsRoomHost => roomHost.Value;
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
@@ -92,16 +101,28 @@ namespace Marco.Network.Player
             character = GetComponent<CharacterBody>();
             controller = GetComponent<CharacterController>();
             role.OnChange += (_, _, _) => ApplyLook();
-            status.OnChange += (_, _, _) => OnStatusChanged();
+            status.OnChange += (previous, next, _) => OnStatusChanged(previous, next);
             crouching.OnChange += (_, _, _) => ApplyCrouchState();
         }
 
-        // Whether Echoes are visible depends on the local player's own status, so a change to it
-        // re-applies every player's look.
-        private void OnStatusChanged()
+        // Whether Echo bodies are visible depends on the local player's own status, so a change to it
+        // re-applies every player's look. The owner's own escape starts the cyan fade first, which holds
+        // the living body until the screen is covered (연출.md 5).
+        private void OnStatusChanged(PlayerStatus previous, PlayerStatus next)
         {
+            if (this == Local && escapeTransition != null)
+            {
+                if (EchoBodyRules.HasEscapeFade(previous, next)) escapeTransition.Begin();
+                else if (!EchoBodyRules.HasEchoBody(next)) escapeTransition.Cancel();
+            }
             if (this != Local) ApplyLook();
-            else foreach (var player in spawned) player.ApplyLook();
+            else RefreshLooks();
+        }
+
+        // Re-applies every player's look (EscapeeTransition calls it when the body switches under the fade).
+        public void RefreshLooks()
+        {
+            foreach (var player in spawned) player.ApplyLook();
         }
 
         [ServerRpc]
@@ -238,6 +259,8 @@ namespace Marco.Network.Player
             if (!IsOwner) return;
 
             Local = this;
+            // Added at runtime so the player prefab stays untouched.
+            escapeTransition = GetComponent<Escape.EscapeeTransition>() ?? gameObject.AddComponent<Escape.EscapeeTransition>();
             foreach (var player in spawned) player.ApplyLook();
             sceneCamera = Camera.main;
             if (sceneCamera != null && sceneCamera.gameObject != ownerCamera) sceneCamera.gameObject.SetActive(false);
@@ -259,20 +282,31 @@ namespace Marco.Network.Player
             Cursor.lockState = CursorLockMode.None;
         }
 
+        // The status this machine shows for the player: the owner keeps its living body under the escape fade.
+        private PlayerStatus ShownStatus =>
+            escapeTransition != null && escapeTransition.HoldsLivingBody ? PlayerStatus.Alive : status.Value;
+
         private void ApplyLook()
         {
-            // Runners and the Seeker never render Echoes; Echoes see each other.
-            bool visible = status.Value != PlayerStatus.Escaped && (!IsEcho || (Local != null && Local.IsEcho));
-            // An Echo is tag-proof and passes through walls and players on every machine.
-            controller.enabled = !IsEcho;
+            PlayerStatus shown = ShownStatus;
+            // Survivors never render Echo bodies; Echo bodies see each other (EchoBodyRules).
+            bool visible = EchoBodyRules.IsBodyVisible(shown, Local != null ? Local.ShownStatus : null);
+            // An Echo body is tag-proof and passes through walls and players on every machine.
+            controller.enabled = EchoBodyRules.HasCollision(shown);
             // A registered model replaces the capsule; the capsule stays as the fallback.
-            bool modelShown = character != null && character.Show(role.Value, visible, IsEcho);
+            var ghost = EchoBodyRules.LookOf(shown);
+            bool modelShown = character != null && character.Show(role.Value, visible, ghost);
             body.enabled = visible && !modelShown;
-            body.material.color = status.Value == PlayerStatus.Tagged ? echoColor : role.Value switch
+            body.material.color = ghost switch
             {
-                PlayerRole.Seeker => seekerColor,
-                PlayerRole.Echo => echoColor,
-                _ => runnerColor,
+                GhostLook.Echo => echoColor,
+                GhostLook.Escapee => runnerColor,
+                _ => role.Value switch
+                {
+                    PlayerRole.Seeker => seekerColor,
+                    PlayerRole.Echo => echoColor,
+                    _ => runnerColor,
+                },
             };
         }
     }

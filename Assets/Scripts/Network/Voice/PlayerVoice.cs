@@ -112,17 +112,18 @@ namespace Marco.Network.Voice
             bool pulse = inGameVoice && (RippleServerFeatures.VoiceRepulseOnChange ? serverPulseGate.ShouldPulse(grade, Time.time, duration)
                 : (Time.time >= nextServerPulse || grade > lastServerPulse));
             if (pulse) { nextServerPulse = Time.time + duration; lastServerPulse = grade; }
+            if (pulse) round.RecordAwardNoise(player.PlayerId, AwardNoise.Voice, baseRadius, duration); // 기획서 8.2
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener == player) continue;
                 if (inGameVoice)
                 {
-                    if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.IsEcho) continue;
+                    if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
                         out bool blocked, out float radius)) continue;
-                    float life = listener.IsEcho ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
                     if (pulse && !blocked) VoicePulseTarget(listener.Owner, point, radius, life);
-                    if (!listener.IsEcho) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
+                    if (!listener.HasEchoBody) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
                     PlayVoiceTarget(listener.Owner, packet, radius, origin, 1f, false, false, Channel.Reliable);
@@ -150,7 +151,9 @@ namespace Marco.Network.Voice
             voiceSource.transform.position = point;
             voiceSource.volume = gain;
             voiceSource.rolloffMode = serverGain ? AudioRolloffMode.Custom : AudioRolloffMode.Linear;
-            voiceFilter.enabled = blocked;
+            // Keep the legacy server-side filter when local occlusion is disabled. When the
+            // receiver DSP is active it owns wall filtering, avoiding two low-pass filters in series.
+            voiceFilter.enabled = blocked && !VoiceOcclusionSettings.IsEnabled;
 
             lock (audioQueueLock)
             {

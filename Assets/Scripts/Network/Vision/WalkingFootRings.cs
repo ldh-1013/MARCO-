@@ -106,7 +106,7 @@ namespace Marco.Network.Vision
             if (owner == null || owner != NetworkPlayer.Local) { Clear(); return; }
             var round = NetworkRound.Instance;
             bool active = round != null && round.Mode != RoundMode.NotStarted &&
-                round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.IsEcho);
+                round.Result == RoundResult.InProgress && (owner.Status == PlayerStatus.Alive || owner.HasEchoBody);
             // Maps with pool audio emit the owner's floor rings from RoundAudioPlayback; only other maps need
             // this clock (and its per-frame floor/water probes, which allocate).
             bool fast = false, emit = false;
@@ -291,7 +291,7 @@ namespace Marco.Network.Vision
             bool sound = request.Kind == Kind.Sound;
             if (sound)
             {
-                int cap = owner.IsEcho ? RippleVisualSettings.EchoSoundRingCap : RippleVisualSettings.SoundRingCap;
+                int cap = owner.HasEchoBody ? RippleVisualSettings.EchoSoundRingCap : RippleVisualSettings.SoundRingCap;
                 while (true)
                 {
                     int count = 0, oldest = -1;

@@ -117,7 +117,7 @@ namespace Marco.Network.Audio
                 result = name == "SeekerDrone" ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
                 if (result != original) ownedLoops.Add(result);
             }
-            if (result != null && (name is "Carpet" or "Mat" or "Metal" or "MetalStairs" || IsBreathClip(name)))
+            if (result != null && (name is "Carpet" or "Mat" or "Metal" or "MetalStairs" or "WoodBench" || IsBreathClip(name)))
             {
                 var original = result;
                 result = LoopClip.TrimCue(original, IsBreathClip(name) ? .6f : .34f);
