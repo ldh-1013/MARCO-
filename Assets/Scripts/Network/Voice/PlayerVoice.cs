@@ -144,7 +144,9 @@ namespace Marco.Network.Voice
             voiceSource.transform.position = point;
             voiceSource.volume = gain;
             voiceSource.rolloffMode = serverGain ? AudioRolloffMode.Custom : AudioRolloffMode.Linear;
-            voiceFilter.enabled = blocked;
+            // Keep the legacy server-side filter when local occlusion is disabled. When the
+            // receiver DSP is active it owns wall filtering, avoiding two low-pass filters in series.
+            voiceFilter.enabled = blocked && !VoiceOcclusionSettings.IsEnabled;
 
             lock (audioQueueLock)
             {
