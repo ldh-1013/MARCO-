@@ -364,20 +364,29 @@ namespace Marco.Network.Editor
         }
 
         // An open floor spot at `distance` from target with a clear line to it.
+        // An open spot `distance` from the target that a player could really stand on: nothing solid within eye
+        // height + margin above it (a prop top under a ceiling slab is no place to stand — the eye would sit inside
+        // the slab), and among those the walkable floor, not a prop top more than 1 m above the lowest one.
+        const float StandEyeHeight = 1.65f, StandMargin = .55f;
         static bool Spot(Vector3 target, float distance, out Vector3 spot)
         {
+            var open = new List<Vector3>();
+            float lowest = float.MaxValue;
             for (int i = 0; i < 16; i++)
             {
                 float angle = i * Mathf.PI / 8f;
                 var candidate = target + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance;
                 if (!Physics.Raycast(candidate + Vector3.up * 2.5f, Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore)) continue;
                 if (floor.normal.y < .7f || Physics.CheckSphere(floor.point + Vector3.up * 1f, .35f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                if (Physics.Raycast(floor.point + Vector3.up * .1f, Vector3.up, StandEyeHeight + StandMargin, ~0, QueryTriggerInteraction.Ignore)) continue;
                 var eye = floor.point + Vector3.up * 1.5f;
                 var towards = (target - eye).normalized;
                 if (Physics.Linecast(eye, target - towards * .4f, ~0, QueryTriggerInteraction.Ignore)) continue;
-                spot = floor.point + Vector3.up * 1.05f;
-                return true;
+                open.Add(floor.point);
+                lowest = Mathf.Min(lowest, floor.point.y);
             }
+            foreach (var point in open)
+                if (point.y - lowest <= 1f) { spot = point + Vector3.up * 1.05f; return true; }
             spot = default;
             return false;
         }
