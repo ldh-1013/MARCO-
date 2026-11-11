@@ -83,7 +83,7 @@ namespace Marco.Network.Voice
             var packet = VoiceCodec.Encode(samples);
             if (packet == null) return;
             var round = NetworkRound.Instance;
-            if (round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
+            if (grade != VoiceGrade.Whisper && round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
                 (Time.time >= nextLocalPulse || grade > lastLocalPulse))
             {
                 var (radius, duration) = PulseSpec(grade);
@@ -115,7 +115,8 @@ namespace Marco.Network.Voice
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
                         out bool blocked, out float radius)) continue;
                     float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
-                    if (pulse && !blocked) VoicePulseTarget(listener.Owner, point, radius, life);
+                    if (pulse && grade != VoiceGrade.Whisper && !blocked)
+                        VoicePulseTarget(listener.Owner, point, radius, life);
                     if (!listener.HasEchoBody) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
