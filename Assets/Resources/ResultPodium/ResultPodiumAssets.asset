@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 442787ed8dac5c8428220ba56fb732a3, type: 3}
+  m_Name: ResultPodiumAssets
+  m_EditorClassIdentifier: Marco.Network::Marco.Network.Round.ResultPodium.ResultPodiumAssets
+  runner: {fileID: 11400000, guid: a1843cb9fa4ca55478b0444985269744, type: 2}
+  seeker: {fileID: 11400000, guid: 90d6ae4a7f752224db95f465c791fe37, type: 2}
+  runnerWin: {fileID: 7400000, guid: e2538d48c03da46a8b0c3b59d39a4cab, type: 3}
+  runnerLose: {fileID: 7400000, guid: c7df2ec8d896a4a15abc7636d440631b, type: 3}

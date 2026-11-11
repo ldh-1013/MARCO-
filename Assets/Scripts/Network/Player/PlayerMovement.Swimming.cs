@@ -11,6 +11,8 @@ namespace Marco.Network.Player
     {
         public const float MaxBreath = 14f;
         public const float SwimmingEyeOffset = .25f;
+        // Ctrl descent keeps going until the eye is this far under, well past the work threshold (eye −0.03).
+        private const float DiveSettleDepth = .3f;
         private readonly SoundWorld swimWorld = new();
         private bool swimming, serverDiveHeld, diveReported, forcedSurface, serverForcedSurface;
         private float breath = MaxBreath, serverBreath = MaxBreath, lastBreathUse = -10f;
@@ -98,9 +100,10 @@ namespace Marco.Network.Player
             if (SwimPenaltyRemaining > 0f) speed *= .8f;
             // Ctrl initiates a descent, then looking up/down steers. Releasing always surfaces.
             float targetY = waterSurface - .1f;
-            float vy = dive ? (IsDiving ? direction.y * speed : -2.5f) :
+            bool settled = WaterEyeHeight < waterSurface - DiveSettleDepth;
+            float vy = dive ? (settled ? direction.y * speed : -2.5f) :
                 Mathf.Clamp((targetY - transform.position.y) / Mathf.Max(Time.deltaTime, .001f), -2.5f, 3.5f);
-            if (dive && IsDiving && input.sqrMagnitude < .001f) vy = 0f;
+            if (dive && settled && input.sqrMagnitude < .001f) vy = 0f;
             controller.Move((Vector3.ProjectOnPlane(direction, Vector3.up) * speed + Vector3.up * vy) * Time.deltaTime);
             if (allowed && !IsDiving && Input.GetKeyDown(KeyCode.Space)) TryLeavePool(input);
             return true;
@@ -141,6 +144,7 @@ namespace Marco.Network.Player
 
         private void ResetSwimmingServer()
         {
+            ResetShoutServer();
             serverBreath = MaxBreath; lastBreathUse = -10f; serverPenaltyUntil = 0;
             serverDiveHeld = serverForcedSurface = false;
             if (IsOwner) { breath = MaxBreath; forcedSurface = false; penaltyUntil = 0; diveReported = false; }

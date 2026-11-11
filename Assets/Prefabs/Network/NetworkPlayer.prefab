@@ -120,7 +120,7 @@ MonoBehaviour:
   falloffPower: 1.7
   brightenTimeConstant: 0.2
   darkenTimeConstant: 0.3
-  showMicrophoneFootDots: 1
+  showMicrophoneFootDots: 0
   microphoneFootDotShader: {fileID: 4800000, guid: 36e3edb3afac4c54a114aa0ddf47be19, type: 3}
   microphoneFootDotColor: {r: 0.72, g: 0.9, b: 1, a: 1}
   microphoneFootDotRadius: 0.25

@@ -314,6 +314,12 @@ namespace Marco.Network.Round
         {
             var root = new GameObject("소리통");
             root.transform.SetParent(transform, false);
+            var prefab = Resources.Load<GameObject>("ItemVisuals/Recorder");
+            if (prefab != null)
+            {
+                Instantiate(prefab, root.transform, false);
+                return root;
+            }
             CreateBandageCube(root.transform, "녹음기", new Vector3(.16f, .18f, .09f), Vector3.zero, soundCanMaterial);
             CreateBandageCube(root.transform, "마이크", new Vector3(.1f, .04f, .1f), Vector3.up * .12f, soundCanMaterial);
             return root;

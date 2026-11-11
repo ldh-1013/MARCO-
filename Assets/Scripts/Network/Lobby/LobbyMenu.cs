@@ -27,6 +27,9 @@ namespace Marco.Network.Lobby
         private NetworkPlayer nicknameSentFor;
         private bool wasOpen = true;
         private string relayJoinInput = "";
+        private LobbyIntro intro;
+        private LobbyCctvBackdrop backdrop;
+        public bool ShowsBackdrop => IsOpen && (intro == null || !intro.IsPlaying);
 
         private bool Joined => connector.Status == LanConnectionStatus.Connected;
         private static bool GameStarted => NetworkRound.Instance != null && NetworkRound.Instance.Mode != RoundMode.NotStarted;
@@ -37,6 +40,10 @@ namespace Marco.Network.Lobby
         {
             connector = GetComponent<LanConnector>();
             relay = GetComponent<UnityRelayLobby>();
+            intro = GetComponent<LobbyIntro>();
+            if (intro == null) intro = gameObject.AddComponent<LobbyIntro>();
+            backdrop = GetComponent<LobbyCctvBackdrop>();
+            if (backdrop == null) backdrop = gameObject.AddComponent<LobbyCctvBackdrop>();
         }
 
         private void Update()
@@ -107,6 +114,7 @@ namespace Marco.Network.Lobby
 
         private void OnGUI()
         {
+            if (intro != null && intro.IsPlaying) return;
             if (!IsOpen)
             {
                 DrawInGameMenu();
@@ -117,7 +125,7 @@ namespace Marco.Network.Lobby
             TestHudSkin.Begin();
             var full = new Rect(0, 0, TestHudSkin.Width, TestHudSkin.Height);
             TestHudSkin.Panel(full);
-            TestHudSkin.Fill(full, Color.black);
+            backdrop.Draw(full);
 
             GUI.depth = 0;
             Matrix4x4 previousMatrix = GUI.matrix;
@@ -136,6 +144,8 @@ namespace Marco.Network.Lobby
         private void DrawInGameMenu()
         {
             if (Cursor.lockState == CursorLockMode.Locked) return;
+            // The result screen frees the cursor for its own vote button; leaving goes through the vote.
+            if (NetworkRound.Instance != null && NetworkRound.Instance.IsResultScreenShown) return;
             TestHudSkin.Begin();
             var rect = new Rect(TestHudSkin.Width - 300, TestHudSkin.Height - 170, 276, 146);
             TestHudSkin.Panel(rect);
@@ -149,6 +159,7 @@ namespace Marco.Network.Lobby
         private void DrawRoom()
         {
             var panel = new Rect(200, 130, 600, 440);
+            TestHudSkin.Fill(panel, new Color(0, 0, 0, .72f));
             GUILayout.BeginArea(panel);
             GUILayout.Space(15);
             int members = 0;

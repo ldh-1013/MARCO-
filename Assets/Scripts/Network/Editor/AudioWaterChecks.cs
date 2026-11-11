@@ -96,12 +96,12 @@ namespace Marco.Network.Editor
                     Require(Water(player) == 1, "Short/crouching Runner in shallow water should retain surface cue");
                     player.GetComponent<PlayerMovement>().ApplyCrouchPresentation(false);
                     Teleport(player, new Vector3(4.5f, -.8f, 51));
-                    Require(Water(player) == 2, "A fully submerged listener near valve E must be excluded");
+                    Require(Water(player) == 2, "A listener whose eyes are below the pool surface must count as submerged (depth only, not valve proximity)");
                     Teleport(player, new Vector3(7, -2.45f, 47));
                     Require(Water(player) == 2, "Circular sump must use pool surface, not lower trigger top");
                     Teleport(player, new Vector3(1, 1.05f, 40));
                     Require(Water(player) == 0, "Dry deck classified as water");
-                    Debug.Log("[AudioWaterChecks] PASS: seeker movement sound, Runner repeated surface movement cues, seeker-only drone, stop, deep areas, crouch, sump, underwater valve and dry deck.");
+                    Debug.Log("[AudioWaterChecks] PASS: seeker movement sound, Runner repeated surface movement cues, seeker-only drone, stop, deep areas, crouch, sump, submerged by depth and dry deck.");
                     Finish(0); return;
                 }
                 if (phase == 5 && now >= until)

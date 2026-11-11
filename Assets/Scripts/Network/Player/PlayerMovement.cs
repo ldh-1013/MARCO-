@@ -135,6 +135,7 @@ namespace Marco.Network.Player
         private void Update()
         {
             UpdateWaterPresentation();
+            TickShout();
             if (IsServerInitialized) { TickServerBreath(Time.deltaTime); TickServerSprintStamina(Time.deltaTime); }
             if (!IsOwner) return;
 
@@ -177,6 +178,14 @@ namespace Marco.Network.Player
                 return;
             }
 
+            if (IsPreparingShout)
+            {
+                IsSprinting = false;
+                ReportSprintIntent(false);
+                verticalVelocity = 0;
+                return;
+            }
+
             // Role reveal / Seeker hold at round start (기획서 부록 A [라운드 시작]): looking around stays free.
             bool startLocked = NetworkRound.Instance != null && NetworkRound.Instance.IsStartLocked(player.Role);
             bool canCrouchRole = !IsSwimming && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
@@ -210,10 +219,11 @@ namespace Marco.Network.Player
                 ref sprintRecoveryDelayRemaining, wantsSprint, Time.deltaTime);
 
             // CharacterController.SimpleMove includes gravity but cannot jump. Move preserves its
-            // grounded behavior while giving both living roles an owner-controlled jump arc.
+            // grounded behavior while giving living runners an owner-controlled jump arc.
             bool grounded = controller.isGrounded;
             if (grounded && verticalVelocity < 0f) verticalVelocity = -2f;
-            if (locked && !player.IsTreatmentLocked && !startLocked && player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
+            if (locked && !player.IsTreatmentLocked && !startLocked && player.Role == PlayerRole.Runner &&
+                player.Status == PlayerStatus.Alive && grounded && Input.GetKeyDown(KeyCode.Space))
                 verticalVelocity = Mathf.Sqrt(2f * gravity * jumpHeight);
             verticalVelocity -= gravity * Time.deltaTime;
 

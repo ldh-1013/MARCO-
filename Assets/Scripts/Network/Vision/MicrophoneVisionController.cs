@@ -57,7 +57,7 @@ namespace Marco.Network.Vision
         [SerializeField, Min(0.01f)] private float brightenTimeConstant = 0.2f;
         [SerializeField, Min(0.01f)] private float darkenTimeConstant = 0.3f;
         [Header("Microphone dots under feet")]
-        [SerializeField] private bool showMicrophoneFootDots = true;
+        [SerializeField] private bool showMicrophoneFootDots = false;
         // A reference (not Shader.Find) so builds include it.
         [SerializeField] private Shader microphoneFootDotShader;
         [SerializeField] private Color microphoneFootDotColor = new Color(0.72f, 0.9f, 1f, 1f);
@@ -540,6 +540,8 @@ namespace Marco.Network.Vision
                 DrawDarknessMask(radius);
 
             GUI.depth = 0;
+            // Hidden under the result screen (기획서 12.5).
+            if (Marco.Network.Round.NetworkRound.Instance != null && Marco.Network.Round.NetworkRound.Instance.IsResultScreenShown) return;
             GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
         }
 

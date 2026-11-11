@@ -26,6 +26,10 @@ namespace Marco.Network.Round
     // Escape and tagging still work there, but no result is ever decided.
     public enum RoundMode : byte { NotStarted, ValvesOnly, Full }
 
+    // Server reply to a valve press. NeedsDive is decided before the active set is consulted and is
+    // the same for B and E whether active or not, so it never reveals which valves are active.
+    public enum ValveWorkReply : byte { Accepted, Jammed, NeedsDive }
+
     // No "active" flag: the active set stays on the server (기획서 6.1-0 · 14.3 ValveActivated, 10-26).
     // Inactive valves simply stay Closed at 0, like an untouched active one.
     public struct ValveSnapshot
@@ -306,6 +310,7 @@ namespace Marco.Network.Round
             UpdateSuddenDeathDrone();
             UpdateDecoyViews();
             UpdateSoundCanViews();
+            UpdateResultScreenClient();
             EnsureBandageViews();
             EnsureClickerViews();
             for (int i = 0; i < bandageViews.Count; i++)
@@ -352,6 +357,8 @@ namespace Marco.Network.Round
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
             TimeManager.OnTick -= OnServerTick;
+            TimeManager.OnTick -= OnRematchTick;
+            rematchVote = null;
             ClearCore();
         }
 
@@ -440,7 +447,8 @@ namespace Marco.Network.Round
             }
         }
 
-        // Host's "다시 시작": throw the finished Core objects away and assemble a fresh round.
+        // Rematch vote passed (or the host's ValvesOnly "다시 시작"): throw the finished Core objects away
+        // and assemble a fresh round with roles drawn again.
         [Server]
         public void RestartRound()
         {
@@ -456,6 +464,7 @@ namespace Marco.Network.Round
             ResetAudioServer();
             CancelAllHealingActions();
             TimeManager.OnTick -= OnServerTick;
+            EndRematchVote();
             ClearCore();
             nextTagTimes.Clear();
             ResetLives();
@@ -576,7 +585,10 @@ namespace Marco.Network.Round
             if (round == null) return;
             remainingSeconds.Value = round.RemainingSeconds;
             SyncLastSurvivorPhase(round.LastSurvivorPhase);
-            if (round.Result != RoundResult.InProgress) TimeManager.OnTick -= OnServerTick;
+            if (round.Result == RoundResult.InProgress) return;
+            // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
+            TimeManager.OnTick -= OnServerTick;
+            BeginRematchVote();
         }
 
         private void SyncStartPhase()
@@ -596,15 +608,22 @@ namespace Marco.Network.Round
 
         // Role is checked inside ValveInteractionService via IPlayerRoster; distance is checked here
         // against the server's copy of the player transform (client-authoritative movement for now).
+        // Underwater valves (B · E) answer NeedsDive to an alive Runner who is not diving, checked before
+        // the active set so the reply is identical for active and inactive ones.
         [Server]
-        public bool TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
+        public ValveWorkReply TryBeginWork(int playerId, ValveId id, Vector3 playerPosition)
         {
-            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return false;
-            if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return false;
-            if (!view.IsInRange(playerPosition, interactRange)) return false;
-            if (SoundMap && (id == ValveId.B || id == ValveId.E) &&
-                (!NetworkPlayer.TryGet(playerId, out var swimmer) || !swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)) return false;
-            return valves.TryBeginWork(playerId, id);
+            if (NetworkPlayer.TryGet(playerId, out var placing) && placing.IsPlacingSoundCan) return ValveWorkReply.Jammed;
+            if (valves == null || !startSchedule.HasInGameStarted || !ValveView.TryGet(id, out var view)) return ValveWorkReply.Jammed;
+            if (!view.IsInRange(playerPosition, interactRange)) return ValveWorkReply.Jammed;
+            if (SoundMap && (id == ValveId.B || id == ValveId.E))
+            {
+                if (!NetworkPlayer.TryGet(playerId, out var swimmer)) return ValveWorkReply.Jammed;
+                if (!swimmer.GetComponent<PlayerMovement>().CanWorkUnderwater)
+                    return swimmer.Role == PlayerRole.Runner && swimmer.Status == PlayerStatus.Alive && !IsStartLocked(swimmer.Role)
+                        ? ValveWorkReply.NeedsDive : ValveWorkReply.Jammed;
+            }
+            return valves.TryBeginWork(playerId, id) ? ValveWorkReply.Accepted : ValveWorkReply.Jammed;
         }
 
         [Server]
@@ -1146,22 +1165,35 @@ namespace Marco.Network.Round
             return true;
         }
 
-        // Nearest alive Runner within range (3D distance) and the horizontal ±tagHalfAngle cone, with
+        // Nearest alive Runner body surface within range (3D) and the horizontal ±tagHalfAngle cone, with
         // no wall in between. The Seeker's client calls it with TagRadius, the server with its limit.
         public bool TryFindTagTarget(Transform seeker, float range, out NetworkPlayer target)
         {
+            Physics.SyncTransforms();
             target = null;
             float best = range * range;
+            var seekerBody = seeker.GetComponent<CharacterController>();
+            Vector3 origin = seekerBody != null && seekerBody.enabled ? seekerBody.bounds.center : seeker.position;
             var forward = Vector3.ProjectOnPlane(seeker.forward, Vector3.up);
             foreach (var player in NetworkPlayer.All)
             {
                 if (player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) continue;
-                var offset = player.transform.position - seeker.position;
+                if (player.transform == seeker) continue;
+                var body = player.GetComponent<CharacterController>();
+                if (body == null || !body.enabled) continue;
+                var offset = body.ClosestPoint(origin) - origin;
                 if (offset.sqrMagnitude > best || Vector3.Angle(forward, Vector3.ProjectOnPlane(offset, Vector3.up)) > tagHalfAngle) continue;
-                // A wall (or another player) between them blocks the swing; the line starts inside
-                // the Seeker's own CharacterController, which a linecast does not report.
-                if (Physics.Linecast(seeker.position, player.transform.position, out var blocker, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                    && !blocker.transform.IsChildOf(player.transform)) continue;
+                bool blocked = false;
+                float distance = offset.magnitude;
+                if (distance > 0.001f)
+                    foreach (var blocker in Physics.RaycastAll(origin, offset / distance, distance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        if (blocker.transform.IsChildOf(seeker) || blocker.transform.IsChildOf(player.transform)) continue;
+                        blocked = true;
+                        break;
+                    }
+                if (blocked) continue;
                 best = offset.sqrMagnitude;
                 target = player;
             }
