@@ -124,6 +124,7 @@ namespace Marco.Network.Player
                 movement.FearTarget(target.Owner, 0);
                 if (movement.IsDiving || suppressedRunners.Contains(target.PlayerId)) continue;
                 movement.ScreamCount++;
+                NetworkRound.Instance?.RecordAwardNoise(target.PlayerId, AwardNoise.Scream, 9f, 1f); // 기획서 8.1 · 8.2
                 movement.EmitAbilitySound(true);
             }
         }

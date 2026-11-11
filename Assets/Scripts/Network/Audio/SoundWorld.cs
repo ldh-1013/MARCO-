@@ -236,7 +236,7 @@ namespace Marco.Network.Audio
         {
             perceivedRadius = radius;
             playbackPoint = origin;
-            if (listener.IsEcho)
+            if (listener.HasEchoBody)
             {
                 gain = 1;
                 muffled = false;

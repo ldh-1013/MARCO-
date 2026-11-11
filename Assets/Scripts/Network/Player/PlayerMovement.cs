@@ -8,7 +8,8 @@ using UnityEngine;
 namespace Marco.Network.Player
 {
     // Owner-only first-person movement. Position/rotation reach other clients through the
-    // client-authoritative NetworkTransform. Echoes fly freely through walls instead.
+    // client-authoritative NetworkTransform. Echo bodies (Echo · escapee · mid-round joiner) fly
+    // freely through walls instead.
     [RequireComponent(typeof(CharacterController))]
     public sealed partial class PlayerMovement : NetworkBehaviour
     {
@@ -157,10 +158,13 @@ namespace Marco.Network.Player
             }
             if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(Mathf.Clamp(pitch + placementLookDown, -70, 85), 0, 0);
 
-            if (player.IsEcho)
+            // Every Echo body flies the same way (3.2 · 3.3-3): eliminated Echo, escapee, mid-round joiner.
+            if (player.HasEchoBody)
             {
                 IsSprinting = false;
                 ReportSprintIntent(false);
+                // The escapee stands still while its own screen fades to cyan (연출.md 5).
+                if (player.IsEscapeFading) return;
                 if (echoRiseRemaining > 0f)
                 {
                     echoRiseRemaining = Mathf.Max(0, echoRiseRemaining - Time.deltaTime);

@@ -65,6 +65,15 @@ namespace Marco.Network.Player
             var round = NetworkRound.Instance;
             if (round == null) { aimingDecoy = false; return; }
 
+            // An Echo knock (3.2, G — sound part) belongs above this line and checks player.IsEcho.
+            // Every other Echo body input is ignored: escapees and mid-round joiners have no valve,
+            // drain, item, tag, treatment or knock (3.3-3). The server rejects them too (TryGetAliveRunner).
+            if (player.HasEchoBody)
+            {
+                DropLocalWork();
+                return;
+            }
+
             bool locked = Cursor.lockState == CursorLockMode.Locked;
             bool held = Input.GetKey(KeyCode.E) && locked;
             float range = round.InteractRange;
@@ -136,6 +145,18 @@ namespace Marco.Network.Player
             if (locked && useClickerPressed && !workingBandage && player.Role == PlayerRole.Runner &&
                 player.Status == PlayerStatus.Alive && player.ClickerCount > 0 && !player.IsPlacingSoundCan)
                 UseClickerServer();
+        }
+
+        // Escaped (or tagged) mid-action: the server already dropped the work, so only forget it here.
+        // No release RPCs — the server ignores them for a player who is no longer alive anyway.
+        private void DropLocalWork()
+        {
+            workingValve = null;
+            workingDrain = null;
+            workingTreatment = false;
+            workingBandage = false;
+            aimingDecoy = false;
+            CancelSoundCanCapture();
         }
 
         private bool CanAimDecoy(NetworkRound round, bool locked) => locked && selectedItemSlot == 3 &&

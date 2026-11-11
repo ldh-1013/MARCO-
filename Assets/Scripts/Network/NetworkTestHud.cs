@@ -45,7 +45,9 @@ namespace Marco.Network
                 !local.HasHealingAction && round.Result == RoundResult.InProgress)
                 RuinedUi.Reticle(new Vector2(TestHudSkin.Width * .5f, TestHudSkin.Height * .5f), Color.white, 24);
             DrawPlayers();
-            DrawRoundStatus(round);
+            float statusBottom = DrawRoundStatus(round);
+            DrawEchoBodyBanner(round, statusBottom);
+            DrawLureNotice(round, statusBottom);
             DrawValves(round);
             DrawRunnerHealth(round);
             DrawRunnerInventory();
@@ -87,15 +89,52 @@ namespace Marco.Network
             GUI.Label(new Rect(rect.x, rect.y + 116, rect.width, 52), detail, TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
+        // Top center, under the round panel (기획서 12.4 탈출자 화면 · 연출.md 5): "탈출 성공" in the HUD's own
+        // white — no knock count, cooldown ring or 20 s lock, since an escapee never knocks (3.3-3).
+        // A mid-round joiner wears the same body (13.3) and is told when they take part instead.
+        // The eliminated Echo's own HUD (knock) belongs to the sound part and is not drawn here.
+        private static void DrawEchoBodyBanner(NetworkRound round, float top)
+        {
+            string title = EchoBodyBannerTitle(round, NetworkPlayer.Local);
+            if (title == null) return;
+            var rect = EchoBodyBannerRect(TestHudSkin.Width, top);
+            TestHudSkin.Panel(rect);
+            GUI.Label(EchoBodyBannerTitleRect(rect), title, TestHudSkin.Text(40, FontStyle.Bold, TextAnchor.MiddleCenter));
+            GUI.Label(EchoBodyBannerDetailRect(rect), EchoBodyBannerDetail, TestHudSkin.Text(20, FontStyle.Normal, TextAnchor.MiddleCenter));
+        }
+
+        // Layout and text are public so the batch-mode render check (no IMGUI there) draws the same banner.
+        public const string EchoBodyBannerDetail = "Space 상승 · Left Ctrl 하강 · 벽 통과";
+        public const float RoundPanelHeight = 130;
+
+        public static string EchoBodyBannerTitle(NetworkRound round, NetworkPlayer player)
+        {
+            if (round == null || player == null || round.Result != RoundResult.InProgress) return null;
+            if (player.IsEscapee) return "탈출 성공";
+            if (player.Status == PlayerStatus.Spectating) return "다음 판부터 참가";
+            return null;
+        }
+
+        // canvasWidth: the 1920-wide reference canvas (TestHudSkin.Width); top: bottom of the round panel.
+        public static Rect EchoBodyBannerRect(float canvasWidth, float top)
+        {
+            const float width = 640, height = 100;
+            return new Rect((canvasWidth - width) / 2, top + 12, width, height);
+        }
+
+        public static Rect EchoBodyBannerTitleRect(Rect banner) => new(banner.x, banner.y + 10, banner.width, 52);
+        public static Rect EchoBodyBannerDetailRect(Rect banner) => new(banner.x, banner.y + 62, banner.width, 28);
+
         // Top center: time, gate, last-survivor phase, and the host's start/restart button.
-        private void DrawRoundStatus(NetworkRound round)
+        // Returns the panel's bottom edge so the escapee banner can sit right under it.
+        private float DrawRoundStatus(NetworkRound round)
         {
             const float width = 640, buttonHeight = 52;
             bool lastSurvivor = round.InLastSurvivorPhase;
             // ValvesOnly never decides a result, so the host can restart it at any time. A decided Full
             // round restarts through the result screen's rematch vote instead (기획서 12.5).
             bool hostButton = connector.IsHost && round.Mode == RoundMode.ValvesOnly;
-            float height = (lastSurvivor ? 220 : 130) + (hostButton ? buttonHeight + 12 : 0);
+            float height = (lastSurvivor ? 220 : RoundPanelHeight) + (hostButton ? buttonHeight + 12 : 0);
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Margin, width, height);
             TestHudSkin.Panel(rect);
             var inner = Inset(rect);
@@ -110,7 +149,7 @@ namespace Marco.Network
             gateStyle.normal.textColor = round.GateOpen ? OpenColor : SeekerColor;
             GUI.Label(new Rect(inner.x, inner.y + 56, inner.width, 36), round.GateOpen ? "게이트 열림" : "게이트 닫힘", gateStyle);
 
-            if (!lastSurvivor) return;
+            if (!lastSurvivor) return rect.yMax;
             float y = inner.y + 100;
             GUI.Label(new Rect(inner.x, y, inner.width, 36), $"최후 생존자 페이즈 · {FormatTime(round.LastSurvivorRemainingSeconds)}",
                 TestHudSkin.Text(26, FontStyle.Bold, TextAnchor.MiddleCenter));
@@ -123,6 +162,7 @@ namespace Marco.Network
             }
             else GUI.Label(new Rect(inner.x, y + 44, inner.width, 28), "배수구 없음 (게이트 열림)",
                 TestHudSkin.Text(22, FontStyle.Normal, TextAnchor.MiddleCenter));
+            return rect.yMax;
         }
 
         private static void DrawHostButton(NetworkRound round, Rect rect)
@@ -163,7 +203,8 @@ namespace Marco.Network
             var player = NetworkPlayer.Local;
             // Kept up even once diving: a press made right after going under can still reach the server
             // before our position does, and the player should then know to press again.
-            if (player == null || !player.TryGetComponent(out PlayerInteractor interactor) || !interactor.ShowsValveDiveHint) return;
+            if (player == null || player.HasEchoBody ||
+                !player.TryGetComponent(out PlayerInteractor interactor) || !interactor.ShowsValveDiveHint) return;
             GUI.Label(new Rect(TestHudSkin.Width * .5f - 300, TestHudSkin.Height * .5f + 60, 600, 36),
                 "Ctrl로 잠수해서 돌리세요", TestHudSkin.Text(24, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
@@ -386,7 +427,7 @@ namespace Marco.Network
         {
             PlayerStatus.Escaped => "탈출",
             PlayerStatus.Tagged => "메아리",
-            PlayerStatus.Spectating => "관전 (다음 판부터)",
+            PlayerStatus.Spectating => "난입 (다음 판부터)",
             _ => "생존",
         };
 

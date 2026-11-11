@@ -296,6 +296,7 @@ namespace Marco.Network.Round
                 TickAudioServer();
                 TickDecoysServer();
                 TickSoundCansServer();
+                TickAwardsServer();
             }
             if (IsServerInitialized) TickClickerRespawns();
             // The map's GamePoints can finish registering after the network scene object starts.
@@ -381,6 +382,7 @@ namespace Marco.Network.Round
                 if (player.TryGetComponent(out PlayerMovement movement)) movement.ResetSprintStamina();
             }
             MovePlayersToSpawn();
+            BeginAwards();
             foreach (var player in NetworkPlayer.All)
             {
                 bandageCounts[player.PlayerId] = 0;
@@ -487,6 +489,7 @@ namespace Marco.Network.Round
             seekerSpeedBoosted.Value = false;
             seekerPopulationSpeedMultiplier.Value = 1f;
             startSchedule.Reset();
+            ResetAwards();
             SyncStartPhase();
         }
 
@@ -553,8 +556,9 @@ namespace Marco.Network.Round
             hatch.StatusChanged += status =>
             {
                 if (status != DrainHatchStatus.Completed) return;
-                foreach (int playerId in hatch.WorkerIds)
-                    if (TryGetAliveRunner(playerId, out var player)) player.SetStatus(PlayerStatus.Escaped);
+                // Copy: MarkEscaped ends their drain work, which removes them from WorkerIds.
+                foreach (int playerId in new List<int>(hatch.WorkerIds))
+                    if (TryGetAliveRunner(playerId, out var player)) MarkEscaped(player);
             };
         }
 
@@ -588,6 +592,7 @@ namespace Marco.Network.Round
             if (round.Result == RoundResult.InProgress) return;
             // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
             TimeManager.OnTick -= OnServerTick;
+            FinishAwards();
             BeginRematchVote();
         }
 
@@ -659,10 +664,22 @@ namespace Marco.Network.Round
         {
             if (round != null ? !round.NotifyRunnerEscaped(player.PlayerId) : !gate.IsOpen) return false;
 
-            ClearClickerHolding(player);
-            RemoveFromWork(player.PlayerId);
-            player.SetStatus(PlayerStatus.Escaped);
+            MarkEscaped(player);
             return true;
+        }
+
+        // Exit or drain hatch: the escapee becomes an Echo body and keeps nothing (3.3-3) — work,
+        // treatment on either side, and every item. The duck and the recorder follow on the next tick
+        // (TickDecoysServer / TickSoundCansServer drop any holder who is no longer alive), as after a tag.
+        private void MarkEscaped(NetworkPlayer player)
+        {
+            CancelHealingFor(player.PlayerId);
+            ClearClickerHolding(player);
+            bandageCounts[player.PlayerId] = 0;
+            player.SendBandageCount(0);
+            RemoveFromWork(player.PlayerId);
+            AwardEscaped(player.PlayerId);
+            player.SetStatus(PlayerStatus.Escaped);
         }
 
         // Local targeting hint; the server repeats role, status, distance and availability checks.
@@ -1115,6 +1132,7 @@ namespace Marco.Network.Round
                 ? Hit(target) : SwingResult.Missed;
             nextTagTimes[seekerId] = Time.time + (result == SwingResult.Missed ? tagMissCooldown : tagHitCooldown);
             if (result != SwingResult.Missed) Debug.Log($"[MARCO] P{seekerId} hit P{target.PlayerId}: {result}");
+            if (result != SwingResult.Missed) AwardSeekerHit();
             return result;
         }
 
@@ -1161,6 +1179,7 @@ namespace Marco.Network.Round
 
             ClearClickerHolding(target);
             RemoveFromWork(target.PlayerId);
+            AwardTagged(target.PlayerId);
             target.SetStatus(PlayerStatus.Tagged);
             return true;
         }
@@ -1200,8 +1219,15 @@ namespace Marco.Network.Round
             return target != null;
         }
 
+        // Every Runner request (valve, drain, exit, items, treatment) goes through this or the roster's
+        // IsAlive, so escapees and mid-round joiners — Echo bodies without interaction (3.3-3) — are
+        // rejected silently (14.2 P2).
         private bool TryGetAliveRunner(int playerId, out NetworkPlayer player) =>
             NetworkPlayer.TryGet(playerId, out player) && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
+
+        // TODO(소리·파문 파트 — 노크 구현 시, 기획서 3.2 · 3.3-3 · 14.2 P2): EchoKnock 서버 검증은 여기 둔다.
+        // 요청자가 탈출자(Escaped)거나 진행 중 난입자(Spectating)면 버린다 — 조용히 무시, 응답 없음.
+        // 노크 권한은 EchoBodyRules.CanKnock(status) == NetworkPlayer.IsEcho(Tagged)만. HasEchoBody로 판정하지 않는다.
 
         // RoundState already drops tagged/escaped players from valves, but not from the drain hatch,
         // and ValvesOnly mode has no RoundState at all.
@@ -1227,6 +1253,7 @@ namespace Marco.Network.Round
             // A spectator never entered RoundState's count; reporting them would count as a tag.
             bool spectating = NetworkPlayer.TryGet(conn.ClientId, out var player) && player.Status == PlayerStatus.Spectating;
             if (round != null && !spectating) round.NotifyPlayerLeft(conn.ClientId);
+            AwardPlayerLeft(conn.ClientId);
         }
 
         // One world pickup at each marked map-design location. Its wrap-and-cross model is generated
