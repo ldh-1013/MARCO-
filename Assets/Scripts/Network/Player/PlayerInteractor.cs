@@ -355,6 +355,8 @@ namespace Marco.Network.Player
             if (round == null || result == SwingResult.Rejected) return;
             swingCooldownDuration = result == SwingResult.Missed ? round.TagMissCooldown : round.TagHitCooldown;
             nextSwingTime = Time.time + swingCooldownDuration;
+            if (result == SwingResult.Missed) round.PlaySeekerSwingAudio();
+            else round.PlaySeekerAttackAudio();
         }
     }
 }

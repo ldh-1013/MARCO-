@@ -320,6 +320,12 @@ namespace Marco.Network.Round
             rings?.ShowSound(point, radius, duration, voiceFromSeeker);
         }
 
+        internal void PlaySeekerSwingAudio() =>
+            soundPlayback?.Play("SeekerSwing", Vector3.zero, .85f, 0f, -1, false, -1, true);
+
+        internal void PlaySeekerAttackAudio() =>
+            soundPlayback?.Play("SeekerAttack", Vector3.zero, .7f, 0f, -1, false, -1, true);
+
         internal void NotifyOtherSound() => soundPlayback?.NotifyOtherSound();
 
         [TargetRpc]
