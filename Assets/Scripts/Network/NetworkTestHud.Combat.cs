@@ -77,12 +77,7 @@ namespace Marco.Network
             bool reachable = !waiting && !cooling && !locked && (vision == null || vision.IsCenterVisible) &&
                 round.TryFindTagTarget(player.transform, round.TagRadius, out _);
             Color color = waiting || cooling || locked ? new Color(0.6f, 0.65f, 0.7f) : reachable ? SeekerColor : Color.white;
-            TestHudSkin.Fill(new Rect(center.x - 4, center.y - 4, 8, 8), new Color(0, 0, 0, 0.8f));
-            TestHudSkin.Fill(new Rect(center.x - 2, center.y - 2, 4, 4), color);
-            TestHudSkin.Fill(new Rect(center.x - 13, center.y - 1, 6, 2), color);
-            TestHudSkin.Fill(new Rect(center.x + 7, center.y - 1, 6, 2), color);
-            TestHudSkin.Fill(new Rect(center.x - 1, center.y - 13, 2, 6), color);
-            TestHudSkin.Fill(new Rect(center.x - 1, center.y + 7, 2, 6), color);
+            RuinedUi.Reticle(center, color);
             const int segments = 96;
             int remaining = Mathf.CeilToInt(interactor.SwingCooldownFraction * segments);
             int spinner = Mathf.FloorToInt(Time.unscaledTime * 60) % segments;

@@ -40,6 +40,10 @@ namespace Marco.Network
             TestHudSkin.Begin();
             DrawRunnerInjury(round);
             DrawSeekerReticle(round);
+            var local = NetworkPlayer.Local;
+            if (local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive &&
+                !local.HasHealingAction && round.Result == RoundResult.InProgress)
+                RuinedUi.Reticle(new Vector2(TestHudSkin.Width * .5f, TestHudSkin.Height * .5f), Color.white, 24);
             DrawPlayers();
             DrawRoundStatus(round);
             DrawValves(round);
@@ -210,27 +214,13 @@ namespace Marco.Network
                 return;
             }
 
-            const int segments = 80;
-            const float radius = 48f, dotSize = 7f;
             var center = new Vector2(TestHudSkin.Width * 0.5f, TestHudSkin.Height * 0.5f);
-            int litSegments = Mathf.RoundToInt(player.HealingActionProgress * segments);
-            Color active = player.HealingActionIsBandage
-                ? new Color(1f, 0.75f, 0.2f, 0.96f)
-                : new Color(0.35f, 0.8f, 1f, 0.96f);
-            Color inactive = new Color(0f, 0f, 0f, 0.58f);
-
-            for (int i = 0; i < segments; i++)
-            {
-                float angle = (i / (float)segments * Mathf.PI * 2f) - Mathf.PI * 0.5f;
-                var point = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-                TestHudSkin.Fill(new Rect(point.x - dotSize * 0.5f, point.y - dotSize * 0.5f, dotSize, dotSize),
-                    i < litSegments ? active : inactive);
-            }
+            RuinedUi.HealingRing(new Rect(center.x - 54, center.y - 54, 108, 108), player.HealingActionProgress);
 
             string label = player.HealingActionIsBandage ? "붕대 감는 중" : "동료 치료 중";
-            GUI.Label(new Rect(center.x - 78, center.y - 22, 156, 24), label,
+            GUI.Label(new Rect(center.x - 100, center.y + 60, 200, 24), label,
                 TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
-            GUI.Label(new Rect(center.x - 50, center.y + 1, 100, 28),
+            GUI.Label(new Rect(center.x - 42, center.y - 14, 84, 28),
                 $"{player.HealingActionProgress:P0}",
                 TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
@@ -251,27 +241,10 @@ namespace Marco.Network
                 TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleRight));
 
             float barX = panel.x + 16, barY = panel.y + 44, barWidth = panel.width - 32;
-            const float barHeight = 18, gap = 5;
-            float segmentWidth = (barWidth - gap * (totalHalves - 1)) / totalHalves;
-            float healthRatio = currentHalves / (float)totalHalves;
-            Color fill = healthRatio > 0.5f
-                ? new Color(0.35f, 0.82f, 0.56f, 0.94f)
-                : healthRatio > 0.25f
-                    ? new Color(1f, 0.67f, 0.22f, 0.94f)
-                    : new Color(0.96f, 0.29f, 0.27f, 0.96f);
-
-            for (int i = 0; i < totalHalves; i++)
-            {
-                var segment = new Rect(barX + i * (segmentWidth + gap), barY, segmentWidth, barHeight);
-                TestHudSkin.Fill(segment, new Color(1f, 1f, 1f, 0.18f));
-                float amount = Mathf.Clamp01(currentHalves - i);
-                if (amount > 0f)
-                    TestHudSkin.Fill(new Rect(segment.x, segment.y, segment.width * amount, segment.height), fill);
-            }
+            RuinedUi.Health(new Rect(barX, barY, barWidth, 18), currentHalves);
             float staminaRatio = player.TryGetComponent(out PlayerMovement movement)
                 ? movement.SprintStaminaRatio : 1f;
-            TestHudSkin.Bar(new Rect(barX, panel.yMax + 10, barWidth, 16), staminaRatio,
-                new Color(0.36f, 0.72f, 1f, 0.95f));
+            RuinedUi.Stamina(new Rect(barX, panel.yMax + 10, barWidth, 12), staminaRatio);
         }
 
         private static void DrawRunnerInventory()
@@ -279,7 +252,7 @@ namespace Marco.Network
             var player = NetworkPlayer.Local;
             if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
 
-            const float width = 404, height = 160;
+            const float width = 404, height = 182;
             var panel = new Rect(TestHudSkin.Width - TestHudSkin.Margin - width,
                 TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
             TestHudSkin.Panel(panel);
@@ -302,19 +275,18 @@ namespace Marco.Network
             decoyLabel.normal.textColor = selectedSlot == 3 ? new Color(1f, .72f, .3f) : Color.white;
             GUI.Label(new Rect(panel.x + 208, panel.y + 26, 88, 20), "3 · 오리", decoyLabel);
             var decoyRect = new Rect(panel.x + 220, panel.y + 47, 64, 64);
-            TestHudSkin.Fill(decoyRect, selectedSlot == 3 ? new Color(.4f, .25f, .08f, .9f) : new Color(0, 0, 0, .42f));
-            GUI.Label(decoyRect, $"◉\n{player.DecoyCount}", TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
+            RuinedUi.Item(decoyRect, 3, player.DecoyCount > 0, selectedSlot == 3);
             var canLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
             canLabel.normal.textColor = selectedSlot == 4 ? new Color(1f, .72f, .3f) : Color.white;
             GUI.Label(new Rect(panel.x + 308, panel.y + 26, 88, 20), "4 · 소리통", canLabel);
             var canRect = new Rect(panel.x + 320, panel.y + 47, 64, 64);
-            TestHudSkin.Fill(canRect, selectedSlot == 4 ? new Color(.4f, .25f, .08f, .9f) : new Color(0, 0, 0, .42f));
+            RuinedUi.Item(canRect, 4, player.SoundCanStage != SoundCanStage.None, selectedSlot == 4);
             string canStatus = player.SoundCanStage switch
             {
                 SoundCanStage.Empty => "녹음 전", SoundCanStage.Recording => $"{player.SoundCanRecordingProgress:P0}",
                 SoundCanStage.Recorded => "설치 전", SoundCanStage.Placing => "설치 중", SoundCanStage.Placed => "리모컨", SoundCanStage.Playing => "재생 중", _ => "없음"
             };
-            GUI.Label(canRect, canStatus, TestHudSkin.Text(14, FontStyle.Bold, TextAnchor.MiddleCenter));
+            GUI.Label(new Rect(canRect.x - 10, canRect.yMax, canRect.width + 20, 18), canStatus, TestHudSkin.Text(12, FontStyle.Bold, TextAnchor.MiddleCenter));
             string usage = selectedSlot switch
             {
                 1 => "G 홀드: 붕대 사용", 2 => "Q/우클릭: 찰칵이 사용", 3 => "G 홀드: 궤도 · 떼면 투척",
@@ -327,50 +299,18 @@ namespace Marco.Network
                     SoundCanStage.Playing => "녹음된 목소리 재생 중", _ => "E: 소리통 줍기"
                 }
             };
-            GUI.Label(new Rect(panel.x + 8, panel.y + 115, panel.width - 16, 20), usage,
+            GUI.Label(new Rect(panel.x + 8, panel.y + 137, panel.width - 16, 20), usage,
                 TestHudSkin.Text(14, FontStyle.Normal, TextAnchor.MiddleCenter));
             if (selectedSlot == 4 && interactor != null && !string.IsNullOrEmpty(interactor.SoundCanHint))
-                GUI.Label(new Rect(panel.x + 8, panel.y + 136, panel.width - 16, 20), interactor.SoundCanHint,
+                GUI.Label(new Rect(panel.x + 8, panel.y + 158, panel.width - 16, 20), interactor.SoundCanHint,
                     TestHudSkin.Text(12, FontStyle.Normal, TextAnchor.MiddleCenter));
         }
 
         private static void DrawBandageSlot(Rect rect, int count, bool selected)
-        {
-            TestHudSkin.Fill(rect, new Color(0f, 0f, 0f, 0.42f));
-            Color border = selected ? new Color(1f, 0.78f, 0.2f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);
-            TestHudSkin.Fill(new Rect(rect.x, rect.y, rect.width, 2), border);
-            TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2), border);
-            TestHudSkin.Fill(new Rect(rect.x, rect.y, 2, rect.height), border);
-            TestHudSkin.Fill(new Rect(rect.xMax - 2, rect.y, 2, rect.height), border);
-
-            Color bandage = count > 0 ? new Color(0.91f, 0.84f, 0.67f, 1f) : new Color(0.62f, 0.59f, 0.52f, 0.55f);
-            var icon = new Rect(rect.x + 16, rect.y + 11, 32, 17);
-            TestHudSkin.Fill(new Rect(icon.x - 2, icon.y - 2, icon.width + 4, icon.height + 4), new Color(0f, 0f, 0f, 0.45f));
-            TestHudSkin.Fill(icon, bandage);
-            Color hole = new(0.48f, 0.43f, 0.34f, count > 0 ? 0.8f : 0.4f);
-            for (int i = 0; i < 3; i++)
-                TestHudSkin.Fill(new Rect(icon.x + 7 + i * 9, icon.y + 6, 3, 3), hole);
-
-            GUI.Label(new Rect(rect.x, rect.y + 31, rect.width, 27), count.ToString(),
-                TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleCenter));
-        }
+            => RuinedUi.Item(rect, 1, count > 0, selected);
 
         private static void DrawClickerSlot(Rect rect, int count, bool selected)
-        {
-            TestHudSkin.Fill(rect, new Color(0f, 0f, 0f, 0.42f));
-            Color border = selected ? new Color(0.35f, 0.82f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);
-            TestHudSkin.Fill(new Rect(rect.x, rect.y, rect.width, 2), border);
-            TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2), border);
-            TestHudSkin.Fill(new Rect(rect.x, rect.y, 2, rect.height), border);
-            TestHudSkin.Fill(new Rect(rect.xMax - 2, rect.y, 2, rect.height), border);
-
-            Color body = count > 0 ? new Color(0.78f, 0.9f, 1f, 1f) : new Color(0.62f, 0.66f, 0.7f, 0.5f);
-            TestHudSkin.Fill(new Rect(rect.x + 18, rect.y + 14, 28, 25), body);
-            TestHudSkin.Fill(new Rect(rect.x + 22, rect.y + 9, 20, 6), body);
-            TestHudSkin.Fill(new Rect(rect.x + 26, rect.y + 20, 12, 12), new Color(0.18f, 0.3f, 0.42f, count > 0 ? 1f : 0.45f));
-            GUI.Label(new Rect(rect.x, rect.y + 38, rect.width, 20), count.ToString(),
-                TestHudSkin.Text(18, FontStyle.Bold, TextAnchor.MiddleCenter));
-        }
+            => RuinedUi.Item(rect, 2, count > 0, selected);
 
         // Right: every player with role and status, then the disconnect button.
         private void DrawPlayers()
