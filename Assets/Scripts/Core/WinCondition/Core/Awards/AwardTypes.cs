@@ -67,13 +67,18 @@ namespace Marco.Core.WinCondition
             _ => "최고의 낚시상",
         };
 
-        // The reason line on the card (12.5). value: screams, silence score, or lures.
+        // The reason line on the card (12.5), in words. value: screams, silence score, or lures.
+        // 낚시상 keeps the 8.3 wording as is ("술래를 N번 낚음").
         public static string Evidence(AwardKind kind, float value) => kind switch
         {
-            AwardKind.MostScreams => $"비명 {(int)Math.Round(value)}회",
-            AwardKind.SilentSurvivor => $"무성 점수 {value:0.00}",
+            AwardKind.MostScreams => $"비명 {(int)Math.Round(value)}번",
+            AwardKind.SilentSurvivor => "가장 조용히 움직임",
             _ => $"술래를 {(int)Math.Round(value)}번 낚음",
         };
+
+        // The small number under the words, only where the words leave it out (무성: the 8.2 score).
+        public static string EvidenceDetail(AwardKind kind, float value) =>
+            kind == AwardKind.SilentSurvivor ? $"무성 점수 {value:0.00}" : null;
 
         public const string NoWinner = "수상자 없음";
     }
