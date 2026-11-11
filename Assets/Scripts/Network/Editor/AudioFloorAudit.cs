@@ -43,7 +43,7 @@ namespace Marco.Network.Editor
             string[] names = { "Concrete_0", "Concrete_1", "Concrete_2", "Concrete_3", "Tile_0", "Tile_1", "Tile_2",
                 "Moan_0", "Moan_1", "Hurt", "Treat", "Valve", "Bandage", "Reflow", "EndDrone", "Heartbeat", "SeekerDrone", "SurfaceSwim",
                 "Carpet", "Mat", "Metal", "MetalStairs", "Breath_Seeker", "Breath_Runner", "ValveJam",
-                "ValveOpened", "DiveAmbience", "ValveUnderwater" };
+                "ValveOpened", "DiveAmbience", "ValveUnderwater", "SeekerAttack", "WoodBench", "SeekerSwing" };
             foreach (var name in names)
             {
                 var clip = Resources.Load<AudioClip>("MarcoSound/" + name);

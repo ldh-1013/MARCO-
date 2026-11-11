@@ -387,7 +387,7 @@
       "x": 46,
       "z": 2,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "LOB",
@@ -513,7 +513,7 @@
       "x": 47,
       "z": 9,
       "alongX": true,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "OF1",
@@ -527,7 +527,7 @@
       "x": 56,
       "z": 4.5,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "OF1",
@@ -541,7 +541,7 @@
       "x": 48,
       "z": 14,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "SC",
@@ -583,7 +583,7 @@
       "x": 48,
       "z": 23,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "SC",
@@ -611,7 +611,7 @@
       "x": 56,
       "z": 23,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "DR",
@@ -639,7 +639,7 @@
       "x": 9,
       "z": 20,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "C",
@@ -681,7 +681,7 @@
       "x": 46,
       "z": 17.5,
       "alongX": false,
-      "width": 1,
+      "width": 1.4,
       "kind": "일반",
       "connections": [
         "CL",

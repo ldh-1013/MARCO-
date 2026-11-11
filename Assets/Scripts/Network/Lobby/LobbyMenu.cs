@@ -18,7 +18,7 @@ namespace Marco.Network.Lobby
 
         private LanConnector connector;
         private UnityRelayLobby relay;
-        private string playerName = "Player";
+        private string playerName = "";
         private string status = "";
         private Vector2 rosterScroll;
         private bool showJoinInput;
@@ -150,9 +150,9 @@ namespace Marco.Network.Lobby
             var rect = new Rect(TestHudSkin.Width - 300, TestHudSkin.Height - 170, 276, 146);
             TestHudSkin.Panel(rect);
             GUI.depth = -10;
-            if (GUI.Button(new Rect(rect.x + 16, rect.y + 16, rect.width - 32, 52), "계속하기", TestHudSkin.Button(22)))
+            if (RuinedUi.Button(new Rect(rect.x + 16, rect.y + 16, rect.width - 32, 52), "계속하기", 22, light: true))
                 Cursor.lockState = CursorLockMode.Locked;
-            if (GUI.Button(new Rect(rect.x + 16, rect.y + 78, rect.width - 32, 52), "게임 나가기 · 로비로", TestHudSkin.Button(22)))
+            if (RuinedUi.Button(new Rect(rect.x + 16, rect.y + 78, rect.width - 32, 52), "게임 나가기 · 로비로", 22, light: true))
                 Leave("게임에서 나왔습니다.");
         }
 
@@ -164,7 +164,10 @@ namespace Marco.Network.Lobby
             GUILayout.Space(15);
             int members = 0;
             foreach (var player in NetworkPlayer.All) if (!string.IsNullOrEmpty(player.Nickname)) members++;
-            GUILayout.Label("참가자 " + members + "명");
+            GUILayout.BeginHorizontal();
+            RuinedUi.LayoutLabel("참가자", 90);
+            GUILayout.Label(members + "명", GUILayout.Height(28));
+            GUILayout.EndHorizontal();
             GUILayout.Label("역할 무작위 배정 · 헌터 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 서바이버");
             rosterScroll = GUILayout.BeginScrollView(rosterScroll, GUILayout.Height(210));
             foreach (var player in NetworkPlayer.All)
@@ -175,7 +178,7 @@ namespace Marco.Network.Lobby
             }
             GUILayout.EndScrollView();
             GUI.enabled = CanStartGame;
-            if (GUILayout.Button(connector.IsHost ? "게임 시작" : "방장의 시작을 기다리는 중", GUILayout.Height(40))) StartGame();
+            if (RuinedUi.LayoutButton(connector.IsHost ? "게임 시작" : "방장의 시작을 기다리는 중", 40, GUILayout.Height(40))) StartGame();
             GUI.enabled = true;
             if (connector.IsHost)
             {
@@ -183,8 +186,9 @@ namespace Marco.Network.Lobby
                 if (connector.UsingRelay)
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("방 코드 " + relay.CurrentLobbyCode, GUILayout.Width(220));
-                    if (GUILayout.Button("코드 복사", GUILayout.Width(100)))
+                    RuinedUi.LayoutLabel("방 코드", 90);
+                    GUILayout.Label(relay.CurrentLobbyCode, GUILayout.Width(130));
+                    if (RuinedUi.LayoutButton("코드 복사", 32, GUILayout.Width(100), GUILayout.Height(32)))
                         GUIUtility.systemCopyBuffer = relay.CurrentLobbyCode;
                     GUILayout.EndHorizontal();
                 }
@@ -192,12 +196,12 @@ namespace Marco.Network.Lobby
                 {
                     string address = connector.InviteAddress;
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("초대 IP", GUILayout.Width(60)); GUILayout.TextField(address);
-                    if (GUILayout.Button("IP 복사", GUILayout.Width(85))) GUIUtility.systemCopyBuffer = address;
+                    RuinedUi.LayoutLabel("초대 IP", 90); GUILayout.TextField(address);
+                    if (RuinedUi.LayoutButton("IP 복사", 32, GUILayout.Width(85), GUILayout.Height(32))) GUIUtility.systemCopyBuffer = address;
                     GUILayout.EndHorizontal();
                 }
             }
-            if (GUILayout.Button("방 나가기")) Leave("방에서 나왔습니다.");
+            if (RuinedUi.LayoutButton("방 나가기", 32, GUILayout.Height(32))) Leave("방에서 나왔습니다.");
             GUILayout.Space(15); GUILayout.Label(connector.UsingRelay ? relay.Status : status);
             GUILayout.EndArea();
         }
@@ -206,63 +210,93 @@ namespace Marco.Network.Lobby
         {
             bool canConnect = connector.Status != LanConnectionStatus.Connecting;
             GUI.enabled = canConnect && !showJoinInput;
-            var label = new GUIStyle(GUI.skin.label) { fontSize = 22 };
             var input = new GUIStyle(GUI.skin.textField) { fontSize = 24, alignment = TextAnchor.MiddleLeft };
             // Keep the nickname field inside the reference canvas.
             float nicknameX = Mathf.Clamp(nicknamePosition.x, 20, 680);
             float nicknameY = Mathf.Clamp(nicknamePosition.y, 20, 590);
-            var nicknameLabel = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter, fontSize = 20 };
-            var nicknameInput = new GUIStyle(input) { alignment = TextAnchor.MiddleCenter };
-            GUI.Label(new Rect(nicknameX, nicknameY, 300, 35), "닉네임", nicknameLabel);
-            playerName = GUI.TextField(new Rect(nicknameX, nicknameY + 42, 300, 48), playerName, 20, nicknameInput);
+            var nicknameInput = new GUIStyle(GUIStyle.none)
+            { font = input.font, fontSize = 24, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip };
+            foreach (var state in new[] { nicknameInput.normal, nicknameInput.hover, nicknameInput.focused, nicknameInput.active })
+            { state.background = null; state.textColor = new Color(.9f, .9f, .88f); }
+            var nicknameRect = new Rect(nicknameX, nicknameY, 300, 40);
+            GUI.SetNextControlName("LobbyNickname");
+            Color previousCursorColor = GUI.skin.settings.cursorColor;
+            GUI.skin.settings.cursorColor = Color.white;
+            playerName = GUI.TextField(nicknameRect, playerName, 20, nicknameInput);
+            GUI.skin.settings.cursorColor = previousCursorColor;
+            if (string.IsNullOrEmpty(playerName) && GUI.GetNameOfFocusedControl() != "LobbyNickname")
+                RuinedUi.Label(nicknameRect, "닉네임", 20, light: true);
             // Menu X is a real screen-edge margin, not a centered-canvas coordinate.
             float menuX = (Mathf.Clamp(menuPosition.x, 0, 100) - offsetX) / Mathf.Max(0.001f, scale);
             float menuY = Mathf.Clamp(menuPosition.y, 20, 380);
-            var menu = TextButtonStyle(menuFontSize);
             GUI.enabled = canConnect && !showJoinInput && relay.CanCreate;
-            if (GUI.Button(new Rect(menuX, menuY, 330, 65), "방 만들기", menu)) CreateRelayRoom();
+            if (RuinedUi.Button(new Rect(menuX, menuY, 330, 65), "방 만들기", menuFontSize, light: true)) CreateRelayRoom();
             GUI.enabled = canConnect && !showJoinInput;
-            if (GUI.Button(new Rect(menuX, menuY + 80, 330, 65), "Join", menu))
+            if (RuinedUi.Button(new Rect(menuX, menuY + 80, 330, 65), "방 찾기", menuFontSize, light: true))
             {
                 showJoinInput = true;
                 relay.RefreshRooms();
             }
-            if (showJoinInput)
-            {
-                GUI.enabled = true;
-                DrawDim(scale, offsetX, 0.7f);
-                GUI.Box(new Rect(200, 76, 600, 560), GUIContent.none);
-                GUI.Label(new Rect(235, 96, 530, 36), "방 코드 또는 공개 방 목록", label);
-                GUI.Label(new Rect(235, 138, 120, 34), "방 코드", label);
-                GUI.enabled = canConnect;
-                relayJoinInput = GUI.TextField(new Rect(350, 138, 270, 40), relayJoinInput, 8, input);
-                var action = TextButtonStyle(26);
-                if (GUI.Button(new Rect(632, 138, 130, 40), "코드 참가", action)) JoinRelayRoom();
-                GUI.enabled = true;
-                GUI.Label(new Rect(235, 188, 350, 30), relay.RoomListStatus, messageStyle());
-                if (GUI.Button(new Rect(620, 184, 142, 34), relay.IsRefreshingRooms ? "불러오는 중…" : "새로고침", action))
-                    relay.RefreshRooms();
-                roomListScroll = GUI.BeginScrollView(new Rect(235, 224, 527, 320), roomListScroll,
-                    new Rect(0, 0, 500, Mathf.Max(320, relay.AvailableRooms.Count * 52)));
-                for (int i = 0; i < relay.AvailableRooms.Count; i++)
-                {
-                    var room = relay.AvailableRooms[i];
-                    var row = new Rect(0, i * 52, 500, 46);
-                    GUI.Box(row, GUIContent.none);
-                    GUI.Label(new Rect(10, row.y + 4, 325, 38),
-                        room.Name + "  ·  " + room.Players.Count + "/" + room.MaxPlayers + "명", label);
-                    if (GUI.Button(new Rect(350, row.y + 5, 140, 36), "참가", action))
-                        relay.JoinRoomById(room.Id);
-                }
-                GUI.EndScrollView();
-                if (GUI.Button(new Rect(582, 566, 180, 42), "취소", action)) showJoinInput = false;
-                GUI.Label(new Rect(235, 614, 527, 30), relay.Status, messageStyle());
-            }
+            if (showJoinInput) DrawRoomBrowser(scale, offsetX, canConnect);
             if (connector.Status == LanConnectionStatus.Connecting) status = "방에 연결 중…";
             GUI.enabled = true;
             var message = new GUIStyle(GUI.skin.label) { fontSize = 17, wordWrap = true };
             string displayedStatus = string.IsNullOrEmpty(status) ? relay.Status : status;
             if (!string.IsNullOrEmpty(displayedStatus)) GUI.Label(new Rect(menuX, 650, 920, 45), displayedStatus, message);
+        }
+
+        private float firstVisibleRoom;
+
+        private void DrawRoomBrowser(float scale, float offsetX, bool canConnect)
+        {
+            GUI.enabled = true;
+            DrawDim(scale, offsetX, .7f);
+            var panel = new Rect(170, 38, 660, 600);
+            GUI.DrawTexture(panel, RuinedUi.Texture(RuinedUi.PaperAsset));
+            // Match the printed template. Paging in whole rows keeps buttons on the five printed lines.
+            Rect Map(float x, float y, float w, float h) => new Rect(panel.x + x * panel.width / 1315f,
+                panel.y + y * panel.height / 1197f, w * panel.width / 1315f, h * panel.height / 1197f);
+            RuinedUi.Label(Map(350, 145, 600, 80), "방 찾기", 34);
+            RuinedUi.Label(Map(155, 240, 230, 38), "방 코드", 18);
+            var input = new GUIStyle(GUI.skin.textField) { fontSize = 22, alignment = TextAnchor.MiddleLeft };
+            foreach (var state in new[] { input.normal, input.focused, input.hover, input.active })
+            { state.background = null; state.textColor = RuinedUi.Ink; }
+            GUI.enabled = canConnect;
+            relayJoinInput = GUI.TextField(Map(160, 290, 740, 58), relayJoinInput, 8, input);
+            if (RuinedUi.Button(Map(940, 284, 224, 68), "코드 참가", 20)) JoinRelayRoom();
+            GUI.enabled = true;
+            RuinedUi.Label(Map(160, 393, 760, 54), "공개 방 목록", 21);
+            GUI.enabled = !relay.IsRefreshingRooms;
+            if (RuinedUi.Button(Map(975, 394, 190, 53), relay.IsRefreshingRooms ? "불러오는 중…" : "새로고침", 18))
+                relay.RefreshRooms();
+            GUI.enabled = true;
+            int count = relay.AvailableRooms.Count;
+            int maxFirst = Mathf.Max(0, count - 5);
+            var listRect = Map(168, 488, 947, 470);
+            if (Event.current.type == EventType.ScrollWheel && listRect.Contains(Event.current.mousePosition))
+            {
+                firstVisibleRoom += Mathf.Sign(Event.current.delta.y);
+                Event.current.Use();
+            }
+            firstVisibleRoom = Mathf.Clamp(firstVisibleRoom, 0, maxFirst);
+            if (count > 5)
+                firstVisibleRoom = GUI.VerticalScrollbar(Map(1135, 488, 24, 470), firstVisibleRoom, 5, 0, count);
+            int first = Mathf.Clamp(Mathf.RoundToInt(firstVisibleRoom), 0, maxFirst);
+            var roomText = RuinedUi.InkText(17);
+            roomText.clipping = TextClipping.Clip;
+            for (int row = 0; row < 5 && first + row < count; row++)
+            {
+                var room = relay.AvailableRooms[first + row];
+                float y = 489 + row * 94;
+                GUI.Label(Map(185, y + 12, 740, 65), room.Name + "  ·  " + room.Players.Count + "/" + room.MaxPlayers + "명", roomText);
+                GUI.enabled = canConnect;
+                if (RuinedUi.Button(Map(950, y + 19, 145, 54), "참가", 20)) relay.JoinRoomById(room.Id);
+                GUI.enabled = true;
+            }
+            if (count == 0)
+                GUI.Label(Map(185, 500, 720, 155), relay.RoomListStatus, RuinedUi.InkText(17, true));
+            if (RuinedUi.Button(Map(913, 1019, 250, 69), "취소", 22)) showJoinInput = false;
+            GUI.Label(Map(160, 1000, 710, 110), relay.Status, RuinedUi.InkText(14, true));
         }
 
         private void JoinRelayRoom()
@@ -277,10 +311,6 @@ namespace Marco.Network.Lobby
             status = string.Empty;
             relay.CreateLobby(playerName);
         }
-
-        private Vector2 roomListScroll;
-
-        private static GUIStyle messageStyle() => new(GUI.skin.label) { fontSize = 15, wordWrap = true };
 
         private static void DrawDim(float scale, float offsetX, float alpha)
         {
