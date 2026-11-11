@@ -268,8 +268,9 @@ namespace Marco.Network.Round
             if (motion.StillSeconds < Mathf.Max(20f, motion.NextBreath)) return;
             motion.NextBreath = motion.StillSeconds + 15f;
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
-            EmitSound(clip, position, RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f, .65f, .6f, sourceId: player.PlayerId);
-            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, AwardRules.BreathRadiusAt(motion.StillSeconds), .6f); // 기획서 8.2 — 3m→9m
+            float breathRadius = RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f;
+            EmitSound(clip, position, breathRadius, .65f, .6f, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, breathRadius, .6f); // 기획서 8.2 · §3.6 — the radius actually emitted (3m→9m), 0.6s
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
