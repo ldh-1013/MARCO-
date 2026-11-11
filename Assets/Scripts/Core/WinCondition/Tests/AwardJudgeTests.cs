@@ -264,9 +264,12 @@ namespace Marco.Core.WinCondition.Tests
         [Test]
         public void EvidenceLines()
         {
-            Assert.AreEqual("비명 3회", AwardRules.Evidence(AwardKind.MostScreams, 3));
-            Assert.AreEqual("무성 점수 0.52", AwardRules.Evidence(AwardKind.SilentSurvivor, .5199f));
+            Assert.AreEqual("비명 3번", AwardRules.Evidence(AwardKind.MostScreams, 3));
+            Assert.AreEqual("가장 조용히 움직임", AwardRules.Evidence(AwardKind.SilentSurvivor, .5199f));
             Assert.AreEqual("술래를 2번 낚음", AwardRules.Evidence(AwardKind.BestLure, 2));
+            Assert.AreEqual("무성 점수 0.52", AwardRules.EvidenceDetail(AwardKind.SilentSurvivor, .5199f));
+            Assert.IsNull(AwardRules.EvidenceDetail(AwardKind.MostScreams, 3));
+            Assert.IsNull(AwardRules.EvidenceDetail(AwardKind.BestLure, 2));
         }
 
         [TestCase(0f, 3f)]

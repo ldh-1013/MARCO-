@@ -13,11 +13,14 @@ namespace Marco.Network.Editor
 {
     // MARCO > Result > Verify award cards (기획서 8 · 12.5 · 연출.md 6.2 · 7.2). Renders the result podium with
     // award cards in an isolated preview scene and saves screenshots to Logs/Awards:
-    //   three_winners / shared / no_winners / two_players   all three cards shown
-    //   three_winners_card1                                   0.8 s sequence: only the first card is up
-    //   lure_notice                                            the "낚았다!" HUD (composited, as in batch)
+    //   three_winners · shared · no_winners · two_players · six_players   all cards face up, settled
+    //   *_moment          a card just turned: spotlight + pop-up on every winner of it (shared = both)
+    //   three_winners_backs / three_winners_flip   backs up before the first flip / the second card mid-flip
+    //   icons             the three code-drawn icons, large, won (amber) and empty (grey)
+    //   lure_notice       the "낚았다!" HUD (composited, as in batch)
     // Checks: three cards always, revealed 0.8 s apart, inside the frame and clear of the vote bar and of
-    // the characters, readable (not too dark). Never opens or saves a scene. Batch mode with graphics:
+    // the characters, readable (not too dark), every card face up by 6 s of the 15 s vote, spotlights on
+    // exactly the winners of the card that just turned. Never opens or saves a scene. Batch mode with graphics:
     //   Unity.exe -batchmode -projectPath <repo> -executeMethod Marco.Network.Editor.AwardsRenderCheck.RunAndExit -logFile <log>
     public static class AwardsRenderCheck
     {
@@ -44,11 +47,21 @@ namespace Marco.Network.Editor
                 // Read-only: never re-saves the asset (the podium check's CreateAssets would touch it).
                 var assets = AssetDatabase.LoadAssetAtPath<ResultPodiumAssets>(AssetPath);
                 if (assets == null) throw new Exception("Missing " + AssetPath + " (MARCO > Result > Create podium assets).");
-                ok &= Capture(report, assets, "three_winners", RoundResult.RunnersWin, SixPlayers(RoundResult.RunnersWin), ThreeWinners(), CardsDone);
-                ok &= Capture(report, assets, "three_winners_card1", RoundResult.RunnersWin, SixPlayers(RoundResult.RunnersWin), ThreeWinners(), s => s.CardRevealTime(0) + .5f, expectCards: 1);
-                ok &= Capture(report, assets, "shared", RoundResult.SeekersWin, SixPlayers(RoundResult.SeekersWin), Shared(), CardsDone);
-                ok &= Capture(report, assets, "no_winners", RoundResult.SeekersWin, SixPlayers(RoundResult.SeekersWin), NoWinners(), CardsDone);
+                var runnersWin = SixPlayers(RoundResult.RunnersWin);
+                var seekersWin = SixPlayers(RoundResult.SeekersWin);
+                ok &= Capture(report, assets, "three_winners", RoundResult.RunnersWin, runnersWin, ThreeWinners(), CardsDone);
+                ok &= Capture(report, assets, "three_winners_backs", RoundResult.RunnersWin, runnersWin, ThreeWinners(), s => s.CardRevealTime(0) - .15f, expectCards: 0, expectLit: new string[0]);
+                ok &= Capture(report, assets, "three_winners_moment", RoundResult.RunnersWin, runnersWin, ThreeWinners(), Moment(0), expectCards: 1, expectLit: new[] { "재운" });
+                ok &= Capture(report, assets, "three_winners_flip", RoundResult.RunnersWin, runnersWin, ThreeWinners(), s => s.CardRevealTime(1) + .02f, expectCards: 2);
+                ok &= Capture(report, assets, "shared", RoundResult.SeekersWin, seekersWin, Shared(), CardsDone);
+                ok &= Capture(report, assets, "shared_moment", RoundResult.SeekersWin, seekersWin, Shared(), Moment(1), expectCards: 2, expectLit: new[] { "동현", "NamKyung_Long_Nickname" });
+                ok &= Capture(report, assets, "no_winners", RoundResult.SeekersWin, seekersWin, NoWinners(), CardsDone);
+                ok &= Capture(report, assets, "no_winners_moment", RoundResult.SeekersWin, seekersWin, NoWinners(), Moment(1), expectCards: 2, expectLit: new string[0]);
                 ok &= Capture(report, assets, "two_players", RoundResult.SeekersWin, TwoPlayers(), TwoPlayerAwards(), CardsDone);
+                ok &= Capture(report, assets, "two_players_moment", RoundResult.SeekersWin, TwoPlayers(), TwoPlayerAwards(), Moment(2), expectCards: 3, expectLit: new[] { "준제" });
+                ok &= Capture(report, assets, "six_players", RoundResult.SeekersWin, seekersWin, SixPlayerAwards(), CardsDone);
+                ok &= Capture(report, assets, "six_players_moment", RoundResult.SeekersWin, seekersWin, SixPlayerAwards(), Moment(0), expectCards: 1, expectLit: new[] { "승민" });
+                ok &= Icons(report);
                 ok &= LureNotice(report);
             }
             catch (Exception error)
@@ -63,7 +76,11 @@ namespace Marco.Network.Editor
             if (exit) EditorApplication.Exit(ok ? 0 : 1);
         }
 
-        private static float CardsDone(ResultPodiumStage stage) => stage.CardRevealTime(2) + 1.2f;
+        // Settled: every card up, the last spotlight gone.
+        private static float CardsDone(ResultPodiumStage stage) => stage.CardRevealTime(2) + 1.6f;
+
+        // Just after card `index` turned: its spotlight at full, the pop-up up.
+        private static Func<ResultPodiumStage, float> Moment(int index) => s => s.CardRevealTime(index) + .4f;
 
         // ---------------------------------------------------------------- line-ups (ids match the awards)
 
@@ -130,10 +147,20 @@ namespace Marco.Network.Editor
             Award(AwardKind.BestLure, 1, 1),
         };
 
+        // Seekers won, 6 players: 승민 (Echo) screamed most, nobody survived quietly enough to rank (all
+        // Runners tagged or under 1 m), 재운 lured three times.
+        private static List<PodiumAward> SixPlayerAwards() => new()
+        {
+            Award(AwardKind.MostScreams, 4, 4),
+            Award(AwardKind.SilentSurvivor, 0),
+            Award(AwardKind.BestLure, 3, 3),
+        };
+
         // ---------------------------------------------------------------- capture
 
         private static bool Capture(StringBuilder report, ResultPodiumAssets assets, string name, RoundResult result,
-            List<PodiumEntry> lineup, List<PodiumAward> awards, Func<ResultPodiumStage, float> when, int expectCards = 3)
+            List<PodiumEntry> lineup, List<PodiumAward> awards, Func<ResultPodiumStage, float> when, int expectCards = 3,
+            string[] expectLit = null)
         {
             Scene preview = EditorSceneManager.NewPreviewScene();
             ResultPodiumStage stage = null;
@@ -180,7 +207,17 @@ namespace Marco.Network.Editor
                     foreach (var (label, actor) in actors)
                         if (actor.Overlaps(rect)) { report.AppendLine($"  OVERLAP card {i + 1} / {label}"); ok = false; }
                 }
-                ok &= Expect(report, shown == expectCards, $"{expectCards} card(s) visible at this moment ({shown})");
+                ok &= Expect(report, shown == expectCards, $"{expectCards} card(s) face up at this moment ({shown})");
+                ok &= Expect(report, stage.CardsSettled <= 6f, $"all cards face up by {stage.CardsSettled:F2}s of the 15 s vote");
+                if (expectLit != null)
+                {
+                    var lit = stage.LitWinners();
+                    lit.Sort(StringComparer.Ordinal);
+                    var want = new List<string>(expectLit);
+                    want.Sort(StringComparer.Ordinal);
+                    ok &= Expect(report, string.Join(",", lit) == string.Join(",", want),
+                        $"spotlight on [{string.Join(", ", want)}] (lit: [{string.Join(", ", lit)}])");
+                }
 
                 // Vote bar area, as the podium check marks it.
                 int barRows = Mathf.RoundToInt(Height * 118f / 1080f);
@@ -202,6 +239,49 @@ namespace Marco.Network.Editor
                 stage?.Dispose();
                 EditorSceneManager.ClosePreviewScene(preview);
             }
+            return ok;
+        }
+
+        // The three code-drawn icons at 256 px on the podium's dark blue: top row tinted amber (won), bottom
+        // row grey (수상자 없음), as the glow shader tints them (texture × colour, alpha blended).
+        private static bool Icons(StringBuilder report)
+        {
+            const int cell = 300, size = AwardIconArt.Size;
+            var kinds = new[] { AwardKind.MostScreams, AwardKind.SilentSurvivor, AwardKind.BestLure };
+            var image = new Texture2D(cell * 3, cell * 2, TextureFormat.RGB24, false);
+            var pixels = new Color[cell * 3 * cell * 2];
+            var background = new Color(.02f, .022f, .05f);
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = background;
+            var amber = new Color(1f, .722f, .302f, 1f);
+            var grey = new Color(.91f, .91f, .91f, .28f);
+            bool ok = true;
+            for (int k = 0; k < kinds.Length; k++)
+            {
+                var icon = AwardIconArt.Get(kinds[k]);
+                var source = icon.GetPixels(0);
+                int covered = 0;
+                for (int row = 0; row < 2; row++)
+                {
+                    var tint = row == 1 ? amber : grey;
+                    int ox = k * cell + (cell - size) / 2, oy = row * cell + (cell - size) / 2;
+                    for (int y = 0; y < size; y++)
+                        for (int x = 0; x < size; x++)
+                        {
+                            var s = source[y * size + x] * tint;
+                            if (row == 1 && s.a > .5f) covered++;
+                            int i = (oy + y) * cell * 3 + ox + x;
+                            pixels[i] = Color.Lerp(pixels[i], new Color(s.r, s.g, s.b, 1), s.a);
+                        }
+                }
+                // A disc of radius ~.7 covers ~38 % of the square; anything far off means the drawing broke.
+                float share = covered / (float)(size * size);
+                ok &= Expect(report, share > .25f && share < .6f, $"icon {kinds[k]} covers {share:P0}");
+            }
+            image.SetPixels(pixels);
+            image.Apply();
+            File.WriteAllBytes($"{OutputFolder}/icons.png", image.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(image);
+            report.AppendLine("[icons] top: won amber · bottom: 수상자 없음 grey");
             return ok;
         }
 
