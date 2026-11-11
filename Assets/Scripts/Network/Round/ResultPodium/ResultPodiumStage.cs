@@ -40,7 +40,11 @@ namespace Marco.Network.Round.ResultPodium
         public static readonly Color VoidColor = new(0.72f, 0.74f, 0.8f);
 
         // Show order (seconds from the moment the round was decided).
-        private const float BannerPop = .55f, ActorsStart = .85f, Beat = .34f, DropTime = .32f, InfoPop = .28f;
+        private const float BannerPop = .55f, ActorsStart = .7f, DropTime = .32f, InfoPop = .28f;
+        // Time between two landings: .34 s, tighter from 6 players so the row is done before ~3 s (the 15 s vote clock
+        // runs from the result, 기획서 12.5).
+        private const float MaxBeat = .34f, RowSeconds = 1.7f, InfoStagger = .05f;
+        public const float LatestVoteReveal = 3.4f;
         private const float RiserHeight = .22f, RiserScale = .62f, LabelZ = -.75f, SeekerHeight = 1.9f;
         private const float BannerY = 3.15f, BannerHeight = .78f, LabelTop = -.28f, LabelBottom = -1.25f;
         private const float FieldOfView = 30f, Pitch = 7f;
@@ -96,13 +100,14 @@ namespace Marco.Network.Round.ResultPodium
                 if (actor != null) actors.Add(actor);
             }
             actors.Sort((a, b) => Mathf.Abs(b.X).CompareTo(Mathf.Abs(a.X)));
+            float beat = Mathf.Min(MaxBeat, RowSeconds / Mathf.Max(1, actors.Count));
             for (int i = 0; i < actors.Count; i++)
             {
-                actors[i].LandTime = ActorsStart + i * Beat + DropTime;
-                actors[i].InfoTime = ActorsStart + actors.Count * Beat + DropTime + .15f + i * .07f;
+                actors[i].LandTime = ActorsStart + i * beat + DropTime;
+                actors[i].InfoTime = ActorsStart + actors.Count * beat + DropTime + .1f + i * InfoStagger;
             }
-            float infoDone = ActorsStart + actors.Count * Beat + DropTime + .15f + actors.Count * .07f + InfoPop;
-            VoteRevealTime = Mathf.Min(infoDone + .2f, 3.6f);
+            float infoDone = ActorsStart + actors.Count * beat + DropTime + .1f + actors.Count * InfoStagger + InfoPop;
+            VoteRevealTime = Mathf.Min(infoDone + .2f, LatestVoteReveal);
             confettiAt = actors.Count > 0 ? actors[actors.Count - 1].LandTime : ActorsStart;
             if (result != RoundResult.Void) BuildConfetti();
 
@@ -261,6 +266,7 @@ namespace Marco.Network.Round.ResultPodium
                 Debug.LogWarning($"[MARCO][Result] No podium model for {entry.Body}; showing the label only.");
             }
 
+            actor.Top = MeasureTop(actor);
             BuildInfo(actor);
             return actor;
         }
@@ -316,6 +322,13 @@ namespace Marco.Network.Round.ResultPodium
             TryBounds(actor.Model, out bounds);
             actor.Model.position += Vector3.up * (actor.Anchor.position.y + hover - bounds.min.y);
             actor.ModelRest = actor.Model.localPosition;
+        }
+
+        // Height of the head above the actor's floor (riser top), for the award pop-up over it.
+        private static float MeasureTop(Actor actor)
+        {
+            if (actor.Model == null || !TryBounds(actor.Model, out var bounds)) return actor.Entry.Body == PodiumBody.Seeker ? SeekerHeight : 1.6f;
+            return Mathf.Clamp(bounds.max.y - actor.Anchor.position.y, .8f, 2.6f);
         }
 
         private static bool TryBounds(Transform model, out Bounds bounds)
@@ -763,7 +776,7 @@ namespace Marco.Network.Round.ResultPodium
         private sealed class Actor
         {
             public PodiumEntry Entry;
-            public float X, Width, LandTime, InfoTime;
+            public float X, Width, LandTime, InfoTime, Top;
             public Vector3 Home, ModelRest;
             public Transform Anchor, Model, Spot, Riser, Info;
             public Animator Animator;
