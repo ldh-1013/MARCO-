@@ -137,6 +137,8 @@ namespace Marco.Network.Voice
         {
             NetworkRound.Instance?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
             NetworkRound.Instance?.NotifyOtherSound();
+            if (snapshotA >= 0 || snapshotB >= 0)   // §5.5-2
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
         }
 
         [TargetRpc]

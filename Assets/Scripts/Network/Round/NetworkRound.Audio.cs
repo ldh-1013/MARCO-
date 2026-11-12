@@ -248,6 +248,9 @@ namespace Marco.Network.Round
             if (local == null) return;
             if (source != local.PlayerId) NotifyOtherSound();
             local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
+            // §5.5-2: the drowning ring lasts ShoutSeconds (WalkingFootRings.EmitWaterPulse).
+            if (snapshotA >= 0 || snapshotB >= 0)
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, Marco.Network.Vision.RippleVisualSettings.ShoutSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
         }
 
         private static bool IsSelfOnlySound(string clip) => !RippleServerFeatures.BreathAudible && (clip == "Breath" || clip.StartsWith("Breath_"));
@@ -330,6 +333,9 @@ namespace Marco.Network.Round
         {
             if (fromOther) NotifyOtherSound();
             if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);
+            // §5.5-2: the source snapshot goes with the ring (the server sent -1 for none).
+            if (pulseRadius > 0 && (snapshotA >= 0 || snapshotB >= 0))
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local);
             try { Marco.Network.Vision.DirectionHints.OnSound(clip, point, muffled, loopKey, actionId, fromOther, pulseRadius, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SoundTarget", exception); }
         }

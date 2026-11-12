@@ -165,6 +165,8 @@ namespace Marco.Network.Player
         {
             var round = NetworkRound.Instance;
             if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream);
+            if (!blocked && !self && (snapshotA >= 0 || snapshotB >= 0))   // §5.5-2
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
             if (self && scream) screamFlash = Time.time + .2f;
             // Keep survivor screams and seeker vocals separate, including missing assets.
