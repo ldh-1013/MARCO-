@@ -123,7 +123,8 @@ namespace Marco.Network.Voice
                         out bool blocked, out float radius)) continue;
                     float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
                     if (pulse && !blocked)
-                        VoicePulseTarget(listener.Owner, point, radius, life);
+                        VoicePulseTarget(listener.Owner, point, radius, life,
+                            SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
                     if (!listener.HasEchoBody) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
@@ -132,7 +133,7 @@ namespace Marco.Network.Voice
         }
 
         [TargetRpc]
-        private void VoicePulseTarget(NetworkConnection conn, Vector3 point, float radius, float duration)
+        private void VoicePulseTarget(NetworkConnection conn, Vector3 point, float radius, float duration, int snapshotA, int snapshotB)
         {
             NetworkRound.Instance?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
             NetworkRound.Instance?.NotifyOtherSound();

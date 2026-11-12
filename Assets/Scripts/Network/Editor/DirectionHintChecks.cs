@@ -434,7 +434,7 @@ namespace Marco.Network.Editor
         static void Send(NetworkRound round, NetworkPlayer player, string clip, Vector3 point, int loopKey, bool muffled, float radius, float seconds, bool fromOther = true)
         {
             var target = typeof(NetworkRound).GetMethod("SoundTarget", Flags);
-            target.Invoke(round, new object[] { player.Owner, clip, point, .5f, 1f, loopKey, muffled, -1, false, fromOther, radius, seconds });
+            target.Invoke(round, new object[] { player.Owner, clip, point, .5f, 1f, loopKey, muffled, -1, false, fromOther, radius, seconds, -1, -1 });
         }
 
         // SoundWorld snaps a hidden source to the nearest 45° around the listener (atan2(x, z), 0 = +Z).

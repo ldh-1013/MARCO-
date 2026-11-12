@@ -138,11 +138,12 @@ namespace Marco.Network.Player
             {
                 if (listener.Status != PlayerStatus.Alive) continue;
                 if (listener == player)
-                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true);
+                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
                 else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
                     out bool blocked, out float perceivedRadius))
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
-                        duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1), gain, blocked, scream, false);
+                        duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1), gain, blocked, scream, false,
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
             }
         }
 
@@ -160,7 +161,7 @@ namespace Marco.Network.Player
 
         [TargetRpc]
         private void AbilitySoundTarget(NetworkConnection connection, Vector3 point, float radius,
-            float duration, float gain, bool blocked, bool scream, bool self)
+            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB)
         {
             var round = NetworkRound.Instance;
             if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream);

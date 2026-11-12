@@ -102,18 +102,23 @@ namespace Marco.Network.Round
                 if (wounded && Time.time >= motion.NextMoan)
                 {
                     motion.NextMoan = Time.time + 6f;
-                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId);
+                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId, snapshotA: player.PlayerId);
                 }
                 motion.Wounded = wounded;
             }
 
             foreach (var id in rotatingSounds)
                 if (ValveView.TryGet(id, out var valve))
-                    EmitSound(id == ValveId.B || id == ValveId.E ? "ValveUnderwater" : "Valve",
+                {
+                    bool underwaterValve = id == ValveId.B || id == ValveId.E;
+                    int workerA = SourceSnapshotRules.None, workerB = SourceSnapshotRules.None;
+                    if (!underwaterValve) ValveWorkers(id, out workerA, out workerB);   // §5.5-2: the turning Runners
+                    EmitSound(underwaterValve ? "ValveUnderwater" : "Valve",
                         valve.transform.position,
                         ValveSoundRadius(id),
                         0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),
-                        100000 + (int)id, id == ValveId.B || id == ValveId.E);
+                        100000 + (int)id, underwaterValve, snapshotA: workerA, snapshotB: workerB);
+                }
 
             foreach (var pair in healingChannels)
             {
@@ -122,7 +127,8 @@ namespace Marco.Network.Round
                 if (healingSoundTimes.TryGetValue(pair.Key, out double next) && Time.realtimeSinceStartupAsDouble < next) continue;
                 healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? 2.0 : 2.25);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
-                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId);
+                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId,
+                    snapshotA: channel.ActorId, snapshotB: channel.IsBandage ? SourceSnapshotRules.None : channel.PatientId);
                 RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? 6f : 9f, 1.2f); // 기획서 8.2 — 치료자만
             }
             TickDrainWorkPulse();
@@ -274,7 +280,8 @@ namespace Marco.Network.Round
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
-            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1, bool playAudio = true, bool forcePulse = false)
+            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1, bool playAudio = true, bool forcePulse = false,
+            int snapshotA = SourceSnapshotRules.None, int snapshotB = SourceSnapshotRules.None)
         {
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
@@ -283,7 +290,8 @@ namespace Marco.Network.Round
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
                 if (IsSelfOnlySound(clip))
                 {
-                    SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f);
+                    SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f,
+                        SourceSnapshotRules.None, SourceSnapshotRules.None);
                     continue;
                 }
                 bool own = sourceId == listener.PlayerId;
@@ -302,14 +310,22 @@ namespace Marco.Network.Round
                 }
                 if (listener.HasEchoBody) { if (showPulse) pulseSeconds = 3f; }
                 else pulseSeconds *= durationScale;
+                // §5.5-2: the snapshot goes with the ring only (fail-closed: None on any doubt).
+                int seenA = SourceSnapshotRules.None, seenB = SourceSnapshotRules.None;
+                if (showPulse && SourceSnapshotRules.IsCharacterSound(clip))
+                {
+                    seenA = SourceSnapshotRules.ForListener(snapshotA, listener, blocked);
+                    seenB = SourceSnapshotRules.ForListener(snapshotB, listener, blocked);
+                }
                 SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain, duration * durationScale, loopKey,
-                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds);
+                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB);
             }
         }
 
         [TargetRpc]
         private void SoundTarget(NetworkConnection connection, string clip, Vector3 point, float volume,
-            float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds)
+            float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds,
+            int snapshotA, int snapshotB)
         {
             if (fromOther) NotifyOtherSound();
             if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);

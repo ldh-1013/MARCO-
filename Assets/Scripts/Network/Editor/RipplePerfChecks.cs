@@ -381,7 +381,7 @@ namespace Marco.Network.Editor
             {
                 float angle = i * Mathf.PI * 2f / 30f;
                 var point = player.transform.position + new Vector3(Mathf.Sin(angle), 0, Mathf.Cos(angle)) * 2f;
-                target.Invoke(round, new object[] { player.Owner, "", point, .5f, 1f, -1, true, -1, false, true, 0f, 2.5f });
+                target.Invoke(round, new object[] { player.Owner, "", point, .5f, 1f, -1, true, -1, false, true, 0f, 2.5f, -1, -1 });
             }
             hiddenSent = 30;
             var method = HintType?.GetMethod("OnVoice", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
