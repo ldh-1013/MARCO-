@@ -181,7 +181,9 @@ namespace Marco.Network.Vision
                 var mesh = Rent();
                 skin.BakeMesh(mesh, true);
                 var t = skin.transform;
-                slot.Parts.Add(new Part { Mesh = mesh, Pooled = true, Matrix = Matrix4x4.TRS(t.position, t.rotation, Vector3.one), SubMeshes = mesh.subMeshCount });
+                // BakeMesh leaves the renderer's own transform scale out (the Seeker's Demon-mesh sits at 100 × 0.5), so the
+                // draw matrix carries it; a scale-1 Runner is unchanged.
+                slot.Parts.Add(new Part { Mesh = mesh, Pooled = true, Matrix = Matrix4x4.TRS(t.position, t.rotation, t.lossyScale), SubMeshes = mesh.subMeshCount });
             }
             else if (renderer is MeshRenderer && renderer.TryGetComponent(out MeshFilter filter) && filter.sharedMesh != null)
                 slot.Parts.Add(new Part { Mesh = filter.sharedMesh, Pooled = false, Matrix = renderer.localToWorldMatrix, SubMeshes = filter.sharedMesh.subMeshCount });
