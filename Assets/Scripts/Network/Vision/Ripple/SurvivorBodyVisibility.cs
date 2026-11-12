@@ -23,7 +23,7 @@ namespace Marco.Network.Vision
         {
             public CharacterBody Character;
             public Transform Root;
-            public bool Built, Hidden;
+            public bool Built, Hidden, Touched;
             public readonly List<Renderer> Renderers = new(8);
         }
 
@@ -120,6 +120,14 @@ namespace Marco.Network.Vision
             if (!hide)
             {
                 if (entry.Hidden) Show(entry);
+                // A renderer this class once hid stays shown: the Seeker's clicker flash restores the value it saved
+                // (ours, true) when the flash ends, which can be after the round ended (MicrophoneVisionController).
+                else if (entry.Touched)
+                {
+                    var shown = entry.Renderers;
+                    for (int i = 0; i < shown.Count; i++)
+                        if (shown[i] != null && shown[i].forceRenderingOff) shown[i].forceRenderingOff = false;
+                }
                 return;
             }
             // Re-applied every frame: another local effect may hand a renderer back while the round runs.
@@ -130,6 +138,7 @@ namespace Marco.Network.Vision
                 if (renderer != null && !renderer.forceRenderingOff) renderer.forceRenderingOff = true;
             }
             entry.Hidden = true;
+            entry.Touched = true;
         }
 
         static void Show(Entry entry)
