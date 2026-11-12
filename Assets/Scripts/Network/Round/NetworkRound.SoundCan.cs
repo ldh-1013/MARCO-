@@ -277,6 +277,7 @@ namespace Marco.Network.Round
 
         private void ResetSoundCansServer(bool available)
         {
+            if (!IsServerStarted) return;   // OnStopServer after the server stopped: nothing to sync; OnStartServer resets again
             foreach (var can in soundCans.Values)
             {
                 if (can.Stage == SoundCanStage.Placing) FinishSoundCanPlacement(can, false);

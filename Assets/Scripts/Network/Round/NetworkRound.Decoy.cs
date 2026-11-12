@@ -97,6 +97,7 @@ namespace Marco.Network.Round
 
         private void ResetDecoysServer(bool available)
         {
+            if (!IsServerStarted) return;   // OnStopServer after the server stopped: nothing to sync; OnStartServer resets again
             decoyFlights.Clear();
             decoyTrails.Clear();
             decoyAccumulator = 0;
