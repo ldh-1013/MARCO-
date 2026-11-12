@@ -1068,6 +1068,7 @@ namespace Marco.Network.Round
         {
             if (!healingChannels.TryGetValue(actorId, out var channel)) return;
             healingChannels.Remove(actorId);
+            if (!IsServerStarted) return;   // OnStopServer after the server stopped: the players' SyncVars can no longer be written
             StopHealingAudio(actorId);
             if (NetworkPlayer.TryGet(channel.ActorId, out var actor))
             {
