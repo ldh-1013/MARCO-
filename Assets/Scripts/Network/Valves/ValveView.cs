@@ -63,6 +63,10 @@ namespace Marco.Network.Valves
 
         private void Awake()
         {
+            // The pipe FBX imports its own Camera (importCameras): same depth as the player camera, it could draw
+            // over it. Off on every instance, like CharacterBody.Prepare; a failure leaves everything as it was.
+            try { foreach (var camera in GetComponentsInChildren<Camera>(true)) camera.enabled = false; }
+            catch (System.Exception exception) { Debug.LogException(exception, this); }
             var toPivot = Quaternion.Inverse(pivot.rotation);
             restOffsets = new Vector3[spinParts.Length];
             restRotations = new Quaternion[spinParts.Length];
