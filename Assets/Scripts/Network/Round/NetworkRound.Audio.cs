@@ -236,7 +236,7 @@ namespace Marco.Network.Round
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
                 if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
-                    !(RippleServerFeatures.DrowningOcclusion && blocked))
+                    !(RippleServerFeatures.DrowningOcclusion && blocked) && CanTarget(listener))
                     DrowningPulseTarget(listener.Owner, point, player.PlayerId,
                         SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
         }
@@ -283,6 +283,14 @@ namespace Marco.Network.Round
             RecordAwardNoise(player.PlayerId, AwardNoise.Breath, breathRadius, .6f); // 기획서 8.2 · §3.6 — the radius actually emitted (3m→9m), 0.6s
         }
 
+        // A TargetRpc only reaches a live connection that still observes this object. A player whose client is
+        // leaving stays in NetworkPlayer.All until its despawn; sending to it then makes FishNet warn and drop it.
+        private bool CanTarget(NetworkPlayer listener)
+        {
+            var connection = listener != null ? listener.Owner : null;
+            return connection != null && connection.IsActive && Observers.Contains(connection);
+        }
+
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
             int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1, bool playAudio = true, bool forcePulse = false,
             int snapshotA = SourceSnapshotRules.None, int snapshotB = SourceSnapshotRules.None)
@@ -292,6 +300,7 @@ namespace Marco.Network.Round
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
+                if (!CanTarget(listener)) continue;   // a connection that is leaving (not an observer any more)
                 if (IsSelfOnlySound(clip))
                 {
                     SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f,
