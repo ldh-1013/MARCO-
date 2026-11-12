@@ -20,6 +20,7 @@ namespace Marco.Network
         {
             var player = NetworkPlayer.Local;
             if (player == null || !player.HasEchoBody || round.Result != RoundResult.InProgress || round.IsResultScreenShown) return;
+            if (TagBlackoutLocal.HidesCompass(player)) return;   // 연출.md 7.1: 0.5 s after the tag blackout
             if (compassOwner != player || compassView == null)
             {
                 compassOwner = player;

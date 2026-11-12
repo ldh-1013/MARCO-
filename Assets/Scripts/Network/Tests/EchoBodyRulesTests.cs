@@ -126,6 +126,37 @@ namespace Marco.Network.Tests
             Assert.IsFalse(EchoBodyRules.CanKnock(Alive));
         }
 
+        [TestCase(0f, 0f, true)]
+        [TestCase(2.99f, 2.99f, true)]
+        [TestCase(3f, 3f, false)]           // 3.0초: 조작 가능
+        [TestCase(1f, 3.1f, false)]         // 실시간 3.0 + 0.1초를 넘으면 무조건 해제
+        [TestCase(-.1f, 0f, false)]
+        [TestCase(float.NaN, 0f, false)]
+        [TestCase(1f, float.NaN, false)]
+        [TestCase(float.PositiveInfinity, 0f, false)]
+        public void TagBlackout_InputLockedForThreeSecondsOnly(float elapsed, float real, bool expected) =>
+            Assert.AreEqual(expected, EchoBodyRules.BlocksTagInput(elapsed, real));
+
+        [Test]
+        public void TagBlackout_WhiteFlashThenBlackThenClears()
+        {
+            Assert.AreEqual(1f, EchoBodyRules.TagBlackoutCover(0f, out float shade)); Assert.AreEqual(1f, shade);      // 백색
+            Assert.AreEqual(1f, EchoBodyRules.TagBlackoutCover(.1f, out shade)); Assert.AreEqual(1f, shade);
+            Assert.AreEqual(1f, EchoBodyRules.TagBlackoutCover(.325f, out shade)); Assert.AreEqual(.5f, shade, 1e-4f);  // 암전 중
+            Assert.AreEqual(1f, EchoBodyRules.TagBlackoutCover(.5f, out shade)); Assert.AreEqual(0f, shade);           // 완전 암전
+            Assert.AreEqual(1f, EchoBodyRules.TagBlackoutCover(2.99f, out shade)); Assert.AreEqual(0f, shade);
+            Assert.AreEqual(.5f, EchoBodyRules.TagBlackoutCover(3.25f, out shade), 1e-4f);                             // 소나 페이드 인
+            Assert.AreEqual(0f, EchoBodyRules.TagBlackoutCover(3.5f, out _));
+            Assert.AreEqual(0f, EchoBodyRules.TagBlackoutCover(float.PositiveInfinity, out _));
+            Assert.AreEqual(0f, EchoBodyRules.TagBlackoutCover(float.NaN, out _));
+            Assert.AreEqual(0f, EchoBodyRules.TagBlackoutCover(-1f, out _));
+            Assert.IsFalse(EchoBodyRules.TagCompassShown(3.4f));
+            Assert.IsTrue(EchoBodyRules.TagCompassShown(3.5f));
+            Assert.IsTrue(EchoBodyRules.TagCompassShown(float.PositiveInfinity));                                       // 탈출자 · 난입자
+            Assert.IsFalse(EchoBodyRules.HasTagBlackout(Escaped));
+            Assert.IsFalse(EchoBodyRules.HasTagBlackout(Joiner));
+        }
+
         [Test]
         public void KnockLocal_LockThenCountsAndResetsOnLeavingEcho()
         {

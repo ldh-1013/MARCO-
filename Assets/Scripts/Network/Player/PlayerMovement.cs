@@ -149,9 +149,11 @@ namespace Marco.Network.Player
                 Cursor.lockState = CursorLockMode.Locked;
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
+            // 3.1-1 · 연출.md 4.2: the eliminated Echo's own 3.0 s tag blackout ignores look and flight input.
+            bool tagBlackout = player.HasEchoBody && Marco.Network.Vision.TagBlackoutLocal.BlocksInput(player);
             placementLookDown = Mathf.MoveTowards(placementLookDown,
                 player.IsPlacingSoundCan ? Mathf.Max(0f, SoundCanConfig.PlacementLookDown - pitch) : 0f, Time.deltaTime * 120f);
-            if (locked)
+            if (locked && !tagBlackout)
             {
                 transform.Rotate(0, Input.GetAxis("Mouse X") * mouseSensitivity, 0);
                 pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 85);
@@ -173,7 +175,7 @@ namespace Marco.Network.Player
                     transform.position = position;
                     return;
                 }
-                if (!locked) return;
+                if (!locked || tagBlackout) return;
                 var look = cameraPivot != null ? cameraPivot.forward : transform.forward;
                 var fly = look * Input.GetAxisRaw("Vertical") + transform.right * Input.GetAxisRaw("Horizontal");
                 if (Input.GetKey(KeyCode.Space)) fly += Vector3.up;
