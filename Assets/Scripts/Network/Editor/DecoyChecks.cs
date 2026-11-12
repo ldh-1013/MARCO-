@@ -74,8 +74,12 @@ namespace Marco.Network.Editor
                     Check(!DecoyBallistics.Cast(approach + Vector3.up * .5f,
                         DecoyConfig.PickupPositions[i] - approach, out _), "Shelf duck pickup path is blocked");
                     camera.transform.position = approach + Vector3.up * .6f;
-                    var head = views[i].GetComponentsInChildren<Transform>().First(t => t.name == "머리");
-                    camera.transform.LookAt(head.position);
+                    // Aim at the duck's renderers (the imported Duck prefab has no "머리" part; the fallback duck does).
+                    var duckRenderers = views[i].GetComponentsInChildren<Renderer>();
+                    Check(duckRenderers.Length > 0, "Spawned duck has no renderer");
+                    var duckBounds = duckRenderers[0].bounds;
+                    foreach (var duckRenderer in duckRenderers) duckBounds.Encapsulate(duckRenderer.bounds);
+                    camera.transform.LookAt(duckBounds.center);
                     if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) continue;
                     var visible = Render(camera);
                     views[i].SetActive(false);
