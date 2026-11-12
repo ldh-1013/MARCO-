@@ -237,11 +237,12 @@ namespace Marco.Network.Round
             foreach (var listener in NetworkPlayer.All)
                 if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
                     !(RippleServerFeatures.DrowningOcclusion && blocked))
-                    DrowningPulseTarget(listener.Owner, point, player.PlayerId);
+                    DrowningPulseTarget(listener.Owner, point, player.PlayerId,
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
         }
 
         [TargetRpc]
-        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source)
+        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source, int snapshotA, int snapshotB)
         {
             var local = NetworkPlayer.Local;
             if (local == null) return;

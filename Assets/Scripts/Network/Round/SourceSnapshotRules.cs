@@ -8,7 +8,7 @@ namespace Marco.Network.Round
 {
     // §5.5-2 발생원 스냅샷 · §14.2 [10-05] showSourceSnapshot — which character a listener may see in the frozen
     // silhouette of a ring-display sound. Server only; the result rides at the end of the existing per-listener
-    // TargetRpc (SoundTarget · VoicePulseTarget · AbilitySoundTarget) as a PlayerId, or None.
+    // TargetRpc (SoundTarget · VoicePulseTarget · AbilitySoundTarget · DrowningPulseTarget) as a PlayerId, or None.
     //   R1 only character sources of ring-display sounds (whitelist below; voice and the ability vocals by path)
     //   R2 only when that listener got the ring unoccluded (blocked == false) — no source for an occluded sound (§5.4)
     //   R3 only living listeners without an Echo body; never the listener's own body; never a source that is not Alive
@@ -23,7 +23,7 @@ namespace Marco.Network.Round
         // Moan (the wounded Runner), Bandage (the user), Treat (healer and patient), Valve (the Runners turning a
         // ground valve — interpretation, see the report). Not listed → no snapshot: Walk · Sprint · swim (floor
         // rings), Breath (sound only), world sources (tag pulse, gate, reflow, underwater valve, drain, exit,
-        // last-survivor notice), items, and drowning (its ring goes through DrowningPulseTarget, outside the three paths).
+        // last-survivor notice) and items. Drowning (the drowning Runner) is decided at DrowningPulseTarget, its own ring path.
         public static bool IsCharacterSound(string clip) =>
             clip != null && (clip == "Bandage" || clip == "Treat" || clip == "Valve" || clip.StartsWith("Moan_", StringComparison.Ordinal));
 
