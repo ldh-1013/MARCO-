@@ -221,7 +221,7 @@ namespace Marco.Network.Vision
                     tint = doubleEdge ? RippleVisualSettings.Seeker : RippleVisualSettings.Runner;
                 }
                 else Classify(point, out tint, out doubleEdge);
-                RequestSound(point, radius, duration, tint, doubleEdge, IsSelf(point), Label.Sound);
+                RequestSound(point, radius, duration, tint, doubleEdge, IsSelf(point) || IsEchoOwnVoice(point, voiceFromSeeker), Label.Sound);
             }
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.ShowSound", exception, this); }
         }
@@ -522,6 +522,16 @@ namespace Marco.Network.Vision
             float feet = ownerBody != null ? ownerBody.bounds.min.y : position.y - 1f;
             if (point.y < feet - .5f || point.y > feet + 2.5f) return false;
             return !NearValve(point);
+        }
+
+        // §3.2-1 목소리 시야 (11-10): an Echo body's own voice ring (PlayerVoice, local only) starts straight above its
+        // own body (VoiceOrigin); it is drawn as the own ring (same rule as a Runner's own ring), not as sonar.
+        private bool IsEchoOwnVoice(Vector3 point, bool? voice)
+        {
+            if (!voice.HasValue || owner == null || !owner.HasEchoBody) return false;
+            Vector3 position = owner.transform.position;
+            float dx = point.x - position.x, dz = point.z - position.z;
+            return dx * dx + dz * dz < .0025f;
         }
 
         // Server-path rings carry no source role: colour them by the nearest living, non-Echo player within

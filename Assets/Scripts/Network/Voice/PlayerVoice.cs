@@ -88,7 +88,7 @@ namespace Marco.Network.Voice
             var packet = VoiceCodec.Encode(samples);
             if (packet == null) return;
             var round = NetworkRound.Instance;
-            if (round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
+            if (round is { UsesPoolAudio: true } && (VoiceRouting.ChannelOf(player) == VoiceChannel.Game || (player.HasEchoBody && round.Result == RoundResult.InProgress)) &&
                 (RippleServerFeatures.VoiceRepulseOnChange ? localPulseGate.ShouldPulse(grade, Time.time, PulseSpec(grade).duration)
                     : (Time.time >= nextLocalPulse || grade > lastLocalPulse)))
             {
