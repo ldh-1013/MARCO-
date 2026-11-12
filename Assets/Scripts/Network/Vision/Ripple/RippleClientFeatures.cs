@@ -7,5 +7,8 @@ namespace Marco.Network.Vision
     {
         // §5.4 direction hint: a ring-display sound whose world ring is hidden by occlusion lights the screen edge.
         public static bool DirectionHint = true;
+        // §5.5-2 · §16.1 [10-05] source snapshot: other characters' real bodies are hidden on a survivor's screen and
+        // shown only as the frozen silhouette of a ring-display sound they made. Off = both skipped, behaviour as before.
+        public static bool SourceSnapshot = true;
     }
 }
