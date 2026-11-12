@@ -18,7 +18,7 @@ namespace Marco.Network.Character
     {
         [SerializeField] private CharacterAsset seekerAsset;
         [SerializeField] private CharacterAsset runnerAsset;
-        [SerializeField] private Color ghostTint = new(0.65f, 0.25f, 1f, 0.3f);
+        [SerializeField] private Color ghostTint = new(0.718f, 0.612f, 1f, 0.3f);   // 16.1 탈락 메아리 #B79CFF
         // 16.1 탈출자 rim: #7FE7E0, the same see-through alpha as the Echo.
         [SerializeField] private Color escapeeGhostTint = new(0x7F / 255f, 0xE7 / 255f, 0xE0 / 255f, 0.3f);
 

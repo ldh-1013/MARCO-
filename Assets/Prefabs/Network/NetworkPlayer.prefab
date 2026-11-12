@@ -410,7 +410,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Marco.Network::Marco.Network.Character.CharacterBody
   seekerAsset: {fileID: 11400000, guid: 90d6ae4a7f752224db95f465c791fe37, type: 2}
   runnerAsset: {fileID: 11400000, guid: a1843cb9fa4ca55478b0444985269744, type: 2}
-  ghostTint: {r: 0.65, g: 0.25, b: 1, a: 0.3}
+  ghostTint: {r: 0.718, g: 0.612, b: 1, a: 0.3}
 --- !u!114 &6334129176910509045
 MonoBehaviour:
   m_ObjectHideFlags: 0

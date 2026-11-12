@@ -692,8 +692,8 @@ namespace Marco.Network.Round.ResultPodium
             return material;
         }
 
-        // Same flat see-through purple as the in-game Echo (NetworkPlayer prefab CharacterBody.ghostTint 0.65, 0.25, 1, 0.3,
-        // no texture), a little lighter and more opaque so it still reads against the dark podium backdrop;
+        // Same flat see-through purple as the in-game Echo (NetworkPlayer prefab CharacterBody.ghostTint #B79CFF = 0.718, 0.612,
+        // 1, 0.3, 16.1; no texture), more opaque so it still reads against the dark podium backdrop;
         // depth-unsorted, double-sided alpha blend like CharacterBody.MakeGhostMaterials.
         private static readonly Color EchoTint = new(.78f, .45f, 1f);
         private const float EchoAlpha = .5f;
