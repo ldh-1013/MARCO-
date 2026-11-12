@@ -104,5 +104,42 @@ namespace Marco.Network.Tests
             Assert.IsTrue(EchoBodyRules.CanInteract(after));
             Assert.IsFalse(EchoBodyRules.HasEscapeFade(during, after));
         }
+
+        // 노크 서버 판정 3~6 (부록 A [메아리]: 전환 후 20초 잠금 · 쿨다운 25초 · 라운드당 5회 · 대기 중 1건).
+        [TestCase(10f, 0f, float.NegativeInfinity, 0, false, false)]   // 잠금 20초 안
+        [TestCase(20f, 0f, float.NegativeInfinity, 0, false, true)]    // 잠금 끝
+        [TestCase(40f, 0f, 20f, 1, false, false)]                     // 쿨다운 25초 안
+        [TestCase(45f, 0f, 20f, 1, false, true)]                      // 쿨다운 끝
+        [TestCase(500f, 0f, 100f, 5, false, false)]                   // 6번째
+        [TestCase(500f, 0f, 100f, 4, false, true)]                    // 5번째
+        [TestCase(500f, 0f, 100f, 1, true, false)]                    // 이미 대기 중
+        [TestCase(float.NaN, 0f, float.NegativeInfinity, 0, false, false)]   // 비정상 입력: 거부
+        public void Knock_AcceptsOnlyAfterLockCooldownWithinLimit(float now, float taggedAt, float last, int used, bool pending, bool expected) =>
+            Assert.AreEqual(expected, Marco.Network.Round.EchoKnockRules.Accept(now, taggedAt, last, used, pending));
+
+        [Test]
+        public void Knock_OnlyEliminatedEchoMayKnock()
+        {
+            Assert.IsTrue(EchoBodyRules.CanKnock(Tagged));
+            Assert.IsFalse(EchoBodyRules.CanKnock(Escaped));
+            Assert.IsFalse(EchoBodyRules.CanKnock(Joiner));
+            Assert.IsFalse(EchoBodyRules.CanKnock(Alive));
+        }
+
+        [Test]
+        public void KnockLocal_LockThenCountsAndResetsOnLeavingEcho()
+        {
+            var local = typeof(Marco.Network.Round.EchoKnockLocal);
+            Marco.Network.Round.EchoKnockLocal.Observe(false, 0f);
+            Marco.Network.Round.EchoKnockLocal.Observe(true, 100f);
+            Assert.IsFalse(Marco.Network.Round.EchoKnockLocal.TryRequest(110f));   // locked
+            Assert.IsTrue(Marco.Network.Round.EchoKnockLocal.TryRequest(120f));
+            Assert.AreEqual(4, Marco.Network.Round.EchoKnockLocal.Remaining);
+            Assert.IsFalse(Marco.Network.Round.EchoKnockLocal.TryRequest(130f));   // cooldown
+            Marco.Network.Round.EchoKnockLocal.Observe(false, 140f);
+            Assert.AreEqual(5, Marco.Network.Round.EchoKnockLocal.Remaining);
+            Assert.IsFalse(Marco.Network.Round.EchoKnockLocal.TryRequest(200f));   // not an Echo
+            Assert.IsNotNull(local);
+        }
     }
 }

@@ -319,6 +319,10 @@ namespace Marco.Network.Player
         [ServerRpc]
         private void EscapeServer() => NetworkRound.Instance?.TryEscape(OwnerId, transform.position);
 
+        // §3.2 · 14.3 EchoKnock: no payload; the server takes the requester from the connection and re-checks everything.
+        [ServerRpc]
+        private void EchoKnock() => NetworkRound.Instance?.ServerEchoKnock(OwnerId);
+
         [ServerRpc]
         private void PickupBandageServer(int pickupIndex) =>
             NetworkRound.Instance?.TryPickupBandage(OwnerId, pickupIndex, transform.position);

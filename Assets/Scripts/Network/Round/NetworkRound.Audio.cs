@@ -299,6 +299,7 @@ namespace Marco.Network.Round
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
+                if (clip == EchoKnockRules.Clip && listener.PlayerId == sourceId) continue;   // §3.2: the knocker's own screen shows no knock
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
                 if (!CanTarget(listener)) continue;   // a connection that is leaving (not an observer any more)
                 if (IsSelfOnlySound(clip))
@@ -330,6 +331,8 @@ namespace Marco.Network.Round
                     seenA = SourceSnapshotRules.ForListener(snapshotA, listener, blocked);
                     seenB = SourceSnapshotRules.ForListener(snapshotB, listener, blocked);
                 }
+                else if (showPulse && snapshotA == SourceSnapshotRules.FakeRunner)
+                    seenA = SourceSnapshotRules.ForFakeRunner(listener, blocked);   // §5.5-2 메아리 노크
                 SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain, duration * durationScale, loopKey,
                     underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB);
             }

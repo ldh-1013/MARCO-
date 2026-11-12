@@ -48,6 +48,22 @@ namespace Marco.Network.Round
             }
         }
 
+        // §5.5-2 메아리 노크: the Runner stand-in silhouette (FakeRunner) for a living listener who got the knock unoccluded.
+        // The same R2 · R3 as ForListener without a source body (the knocking Echo is never shown). Never throws.
+        public static int ForFakeRunner(NetworkPlayer listener, bool blocked)
+        {
+            try
+            {
+                if (listener == null || blocked) return None;
+                return listener.Status == PlayerStatus.Alive && !listener.HasEchoBody ? FakeRunner : None;
+            }
+            catch (Exception exception)
+            {
+                Report("ForFakeRunner", exception);
+                return None;
+            }
+        }
+
         static readonly HashSet<string> reported = new();
 
         // One log per kind (S1).
