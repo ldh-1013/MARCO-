@@ -65,7 +65,12 @@ namespace Marco.Network.Player
             var round = NetworkRound.Instance;
             if (round == null) { aimingDecoy = false; return; }
 
-            // An Echo knock (3.2, G — sound part) belongs above this line and checks player.IsEcho.
+            // §3.2 노크 (G): only an eliminated Echo asks — escapees and mid-round joiners never send it. The HUD
+            // values are display only; the server re-checks everything (NetworkRound.ServerEchoKnock).
+            EchoKnockLocal.Observe(player.IsEcho && round.Result == RoundResult.InProgress, Time.time);
+            if (player.IsEcho && Cursor.lockState == CursorLockMode.Locked && Input.GetKeyDown(KeyCode.G) &&
+                EchoKnockLocal.TryRequest(Time.time))
+                EchoKnock();
             // Every other Echo body input is ignored: escapees and mid-round joiners have no valve,
             // drain, item, tag, treatment or knock (3.3-3). The server rejects them too (TryGetAliveRunner).
             if (player.HasEchoBody)
