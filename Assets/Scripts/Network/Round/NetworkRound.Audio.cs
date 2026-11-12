@@ -344,7 +344,10 @@ namespace Marco.Network.Round
             int snapshotA, int snapshotB)
         {
             if (fromOther) NotifyOtherSound();
-            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);
+            // §5.1 · 5.5-2: a knock (FakeRunner) is drawn as a Runner's Talk ring, never by where it came from.
+            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds, snapshotA == SourceSnapshotRules.FakeRunner ? false : (bool?)null);
+            if (pulseRadius > 0 && snapshotA == SourceSnapshotRules.FakeRunner)
+                try { Marco.Network.Vision.SourceSnapshots.ShowFakeRunner(point, Random.Range(0f, 360f), pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots.Fake", exception); }
             // §5.5-2: the source snapshot goes with the ring (the server sent -1 for none).
             if (pulseRadius > 0 && (snapshotA >= 0 || snapshotB >= 0))
                 try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
