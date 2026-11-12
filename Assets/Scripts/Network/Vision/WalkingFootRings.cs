@@ -29,6 +29,9 @@ namespace Marco.Network.Vision
         private Material material;
         private NetworkPlayer owner;
         private CharacterController ownerBody;
+        // The owner's PlayerVoice for IsEchoOwnVoice, looked up once per owner (no per-call allocation).
+        private NetworkPlayer ownerVoiceFor;
+        private Marco.Network.Voice.PlayerVoice ownerVoice;
         private bool localMoving;
         // Rings that had to wait for the raycast budget: worst wait in rendered frames, and how many waited > 2.
         internal int MaxQueuedFrames { get; private set; }
@@ -526,12 +529,26 @@ namespace Marco.Network.Vision
 
         // §3.2-1 목소리 시야 (11-10): an Echo body's own voice ring (PlayerVoice, local only) starts straight above its
         // own body (VoiceOrigin); it is drawn as the own ring (same rule as a Runner's own ring), not as sonar.
+        // PlayerVoice passes VoiceOrigin() to ShowSoundPulse in the same frame, so the own ring matches it in 3D (5 cm);
+        // a pulse straight below a flying Echo (another voice, a shout, a scream) stays sonar. No PlayerVoice or any
+        // failure: false (drawn as sonar).
         private bool IsEchoOwnVoice(Vector3 point, bool? voice)
         {
             if (!voice.HasValue || owner == null || !owner.HasEchoBody) return false;
-            Vector3 position = owner.transform.position;
-            float dx = point.x - position.x, dz = point.z - position.z;
-            return dx * dx + dz * dz < .0025f;
+            try
+            {
+                if (ownerVoiceFor != owner || ownerVoice == null)
+                {
+                    ownerVoiceFor = owner;
+                    owner.TryGetComponent(out ownerVoice);
+                }
+                return ownerVoice != null && (point - ownerVoice.VoiceOrigin()).sqrMagnitude < .0025f;
+            }
+            catch (Exception exception)
+            {
+                RippleSafety.Report("WalkingFootRings.IsEchoOwnVoice", exception, this);
+                return false;
+            }
         }
 
         // Server-path rings carry no source role: colour them by the nearest living, non-Echo player within

@@ -49,7 +49,7 @@ namespace Marco.Network.Voice
             _ => (22f, 2.5f)
         };
 
-        private Vector3 VoiceOrigin()
+        internal Vector3 VoiceOrigin()
         {
             Vector3 origin = transform.position + Vector3.up * mouthHeight;
             if (TryGetComponent<PlayerMovement>(out var movement)) origin.y = movement.WaterEyeHeight;
