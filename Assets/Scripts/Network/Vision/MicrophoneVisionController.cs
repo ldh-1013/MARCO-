@@ -39,6 +39,8 @@ namespace Marco.Network.Vision
         public event Action<float[], VoiceGrade> VoiceSamplesReady;
         // Consumed synchronously; this buffer is reused. No callback is raised while muted.
         public event Action<float[]> MicrophoneSamplesReady;
+        // Read only, for the settings window's level meter: the last frame's dBFS and its level (0 silence … 3 shout).
+        public (float dbfs, int level) LastMeter { get; private set; } = (float.NegativeInfinity, 0);
         public bool HasMicrophoneInput => microphoneClip != null && !string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice);
 
         [Header("Brightness implementation")]
@@ -280,6 +282,7 @@ namespace Marco.Network.Vision
             double squares = 0; for (var i = 0; i < sampleBuffer.Length; i++) squares += sampleBuffer[i] * sampleBuffer[i];
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
             var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs >= silenceDb ? 1 : 0;
+            LastMeter = (dbfs, level);
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
             bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
             VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;

@@ -140,12 +140,15 @@ namespace Marco.Network.Player
             if (IsServerInitialized) { TickServerBreath(Time.deltaTime); TickServerSprintStamina(Time.deltaTime); }
             if (!IsOwner) return;
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Development only: free / lock the cursor without the menu (Esc is the settings menu, SettingsMenu).
+            if (Input.GetKeyDown(KeyCode.F6) && !Marco.Network.Settings.SettingsMenu.IsOpen)
                 Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
+#endif
             // Clicking the HUD must not relock: locking recenters the cursor, so the IMGUI button
-            // never sees its mouse-up and the click is lost. An open cheat panel keeps it free too.
+            // never sees its mouse-up and the click is lost. An open cheat panel or settings menu keeps it free too.
             if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0) &&
-                !TestHudSkin.IsPointerOver && !TestHudSkin.HoldsCursor)
+                !TestHudSkin.IsPointerOver && !TestHudSkin.HoldsCursor && !Marco.Network.Settings.SettingsMenu.IsOpen)
                 Cursor.lockState = CursorLockMode.Locked;
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
@@ -155,8 +158,10 @@ namespace Marco.Network.Player
                 player.IsPlacingSoundCan ? Mathf.Max(0f, SoundCanConfig.PlacementLookDown - pitch) : 0f, Time.deltaTime * 120f);
             if (locked && !tagBlackout)
             {
-                transform.Rotate(0, Input.GetAxis("Mouse X") * mouseSensitivity, 0);
-                pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 85);
+                // 12.6 마우스 감도 · Y축 반전 (local settings; scale 1 and no inversion are the old input exactly).
+                float sensitivity = mouseSensitivity * Marco.Network.Settings.SettingsRuntime.MouseScale;
+                transform.Rotate(0, Input.GetAxis("Mouse X") * sensitivity, 0);
+                pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * (Marco.Network.Settings.SettingsRuntime.InvertY ? -sensitivity : sensitivity), -70, 85);
             }
             if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(Mathf.Clamp(pitch + placementLookDown, -70, 85), 0, 0);
 
@@ -196,12 +201,8 @@ namespace Marco.Network.Player
             // Role reveal / Seeker hold at round start (기획서 부록 A [라운드 시작]): looking around stays free.
             bool startLocked = NetworkRound.Instance != null && NetworkRound.Instance.IsStartLocked(player.Role);
             bool canCrouchRole = !IsSwimming && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
-            if (locked && canCrouchRole && !player.IsTreatmentLocked && !startLocked && Input.GetKeyDown(KeyCode.C))
-            {
-                ApplyCrouchPresentation(!crouching);
-                SetCrouchServer(crouching);
-            }
-            else if (crouching && !canCrouchRole)
+            // No player crouch key any more (C removed); only forced crouching (sound can, treatment) remains.
+            if (crouching && !canCrouchRole)
             {
                 ApplyCrouchPresentation(false);
                 SetCrouchServer(false);

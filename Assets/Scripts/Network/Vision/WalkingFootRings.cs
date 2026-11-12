@@ -394,11 +394,11 @@ namespace Marco.Network.Vision
             if (ring.HasWall)
             {
                 float wall = alpha * RippleVisualSettings.WallRevealBrightness * (ring.Self ? RippleVisualSettings.SelfWallRevealBrightness : 1f);
-                RippleMesh.ApplyFrame(ring.WallProperties, ring.Tint, wall, radius, core, trail);
+                RippleMesh.ApplyFrame(ring.WallProperties, ring.Tint, Mathf.Clamp01(wall * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale), radius, core, trail);
                 ring.WallRenderer.SetPropertyBlock(ring.WallProperties);
             }
             if (ring.Self) alpha *= RippleVisualSettings.SelfAlphaClamped;
-            RippleMesh.ApplyFrame(ring.Properties, ring.Tint, alpha, radius, core, trail);
+            RippleMesh.ApplyFrame(ring.Properties, ring.Tint, Mathf.Clamp01(alpha * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale), radius, core, trail);
             ring.Renderer.SetPropertyBlock(ring.Properties);
         }
 
@@ -454,7 +454,7 @@ namespace Marco.Network.Vision
         {
             float alpha = RippleVisualSettings.AfterglowAlpha * Mathf.Clamp01(age / RippleVisualSettings.AfterglowFadeIn) *
                 (1f - age / RippleVisualSettings.AfterglowSeconds);
-            RippleMesh.ApplyFrame(glow.Properties, RippleVisualSettings.EnvironmentColor, alpha, 1e4f,
+            RippleMesh.ApplyFrame(glow.Properties, RippleVisualSettings.EnvironmentColor, Mathf.Clamp01(alpha * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale), 1e4f,
                 RippleVisualSettings.CoreWidth, 0f);
             glow.Renderer.SetPropertyBlock(glow.Properties);
         }

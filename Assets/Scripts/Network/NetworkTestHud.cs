@@ -33,6 +33,7 @@ namespace Marco.Network
 
         private void OnGUI()
         {
+            if (Settings.SettingsMenu.IsOpen) return;   // IMGUI draws over uGUI: stay out of the settings window
             if (connector.Status != LanConnectionStatus.Connected) return;
             var round = NetworkRound.Instance;
             if (round == null || round.Mode == RoundMode.NotStarted) return;
@@ -194,9 +195,13 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
             GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
-            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
+#else
+            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴", help);
+#endif
             GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
-            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
+            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "부상자 근처 E 홀드: 치료 (9초)", help);
             GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
             GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
         }

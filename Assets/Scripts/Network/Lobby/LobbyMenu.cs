@@ -56,7 +56,7 @@ namespace Marco.Network.Lobby
 
             // Tell the server our nickname once our player exists (the prototype's NAME message).
             var local = NetworkPlayer.Local;
-            if (local != null && local != nicknameSentFor)
+            if (local != null && local != nicknameSentFor && local.IsClientInitialized)   // not while leaving (the RPC would be dropped)
             {
                 nicknameSentFor = local;
                 local.SetNicknameServer(playerName);
@@ -114,6 +114,7 @@ namespace Marco.Network.Lobby
 
         private void OnGUI()
         {
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // the settings window (uGUI) is on top
             if (intro != null && intro.IsPlaying) return;
             if (!IsOpen)
             {
@@ -237,6 +238,7 @@ namespace Marco.Network.Lobby
                 showJoinInput = true;
                 relay.RefreshRooms();
             }
+            if (RuinedUi.Button(new Rect(menuX, menuY + 160, 330, 65), "설정", menuFontSize, light: true)) Marco.Network.Settings.SettingsMenu.OpenSettingsFromMenu();
             if (showJoinInput) DrawRoomBrowser(scale, offsetX, canConnect);
             if (connector.Status == LanConnectionStatus.Connecting) status = "방에 연결 중…";
             GUI.enabled = true;

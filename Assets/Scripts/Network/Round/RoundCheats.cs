@@ -52,6 +52,7 @@ namespace Marco.Network.Round
                 return;
             }
 
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // no cheat keys while the settings menu is open
             if (Input.GetKeyDown(KeyCode.Tab)) SetOpen(!open);
             // Esc toggles the lock in PlayerMovement; keep the cursor free while the panel is up.
             if (open && Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
@@ -83,6 +84,7 @@ namespace Marco.Network.Round
         // Bottom center, clear of the HUD's top / left / right panels and the centered result.
         private void OnGUI()
         {
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;
             if (!TryGetHostRound(out var round)) return;
 
             TestHudSkin.Begin();

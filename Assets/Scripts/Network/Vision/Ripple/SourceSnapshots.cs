@@ -261,7 +261,7 @@ namespace Marco.Network.Vision
                 float alpha = RippleVisualSettings.MaxAlpha * Mathf.Clamp01(age / RippleVisualSettings.FadeInSeconds) *
                     Mathf.Pow(1f - Mathf.Clamp01(t), RippleVisualSettings.FadePower);
                 var c = slot.Color;
-                block.SetColor(ColorId, new Color(c.r, c.g, c.b, alpha));
+                block.SetColor(ColorId, new Color(c.r, c.g, c.b, Mathf.Clamp01(alpha * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale)));
                 block.SetFloat(ShapeId, 7f);
                 for (int p = 0; p < slot.Parts.Count; p++)
                 {
