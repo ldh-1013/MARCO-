@@ -158,6 +158,21 @@ namespace Marco.Network.Tests
         }
 
         [Test]
+        public void Flight_StaysInsideTheBuildingUnderTheCeiling()
+        {
+            var inside = new UnityEngine.Vector3(10f, 2f, 20f);
+            Assert.AreEqual(inside, EchoBodyRules.ClampFlight(inside));                                     // 안쪽: 그대로
+            Assert.AreEqual(new UnityEngine.Vector3(0f, 9f, 62f), EchoBodyRules.ClampFlight(new UnityEngine.Vector3(-5f, 20f, 70f)));
+            Assert.AreEqual(new UnityEngine.Vector3(64f, -3.5f, 0f), EchoBodyRules.ClampFlight(new UnityEngine.Vector3(80f, -10f, -1f)));
+            Assert.AreEqual(new UnityEngine.Vector3(64f, 9f, 62f),
+                EchoBodyRules.ClampFlight(new UnityEngine.Vector3(float.PositiveInfinity, float.PositiveInfinity, 1e9f)));
+            var bad = EchoBodyRules.ClampFlight(new UnityEngine.Vector3(float.NaN, 30f, -9f));                // NaN: 원래 위치
+            Assert.IsTrue(float.IsNaN(bad.x));
+            Assert.AreEqual(30f, bad.y);
+            Assert.AreEqual(-9f, bad.z);
+        }
+
+        [Test]
         public void KnockLocal_LockThenCountsAndResetsOnLeavingEcho()
         {
             var local = typeof(Marco.Network.Round.EchoKnockLocal);

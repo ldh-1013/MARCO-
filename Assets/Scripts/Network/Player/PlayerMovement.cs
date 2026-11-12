@@ -181,6 +181,7 @@ namespace Marco.Network.Player
                 if (Input.GetKey(KeyCode.Space)) fly += Vector3.up;
                 if (Input.GetKey(KeyCode.LeftControl)) fly += Vector3.down;
                 transform.position += Vector3.ClampMagnitude(fly, 1) * MovementConfig.EchoMoveSpeed * Time.deltaTime;
+                transform.position = EchoBodyRules.ClampFlight(transform.position);   // inside the building, under 9.0
                 return;
             }
 

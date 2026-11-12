@@ -75,7 +75,7 @@ namespace Marco.Network.Round
                 state.LastAccepted = now;
                 state.Pending = true;
                 state.FireAt = now + EchoKnockRules.DelaySeconds;
-                state.Point = echo.transform.position;
+                state.Point = EchoBodyRules.ClampFlight(echo.transform.position);   // the Echo's flight range
                 KnocksAccepted++;
             }
             catch (Exception exception) { SourceSnapshotRules.Report("ServerEchoKnock", exception); }
