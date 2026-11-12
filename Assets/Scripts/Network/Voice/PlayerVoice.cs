@@ -116,6 +116,8 @@ namespace Marco.Network.Voice
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener == player) continue;
+                // A connection that is leaving gets nothing (no round: unchanged).
+                if (round != null && !round.CanTarget(listener)) continue;
                 if (inGameVoice)
                 {
                     if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;

@@ -285,7 +285,7 @@ namespace Marco.Network.Round
 
         // A TargetRpc only reaches a live connection that still observes this object. A player whose client is
         // leaving stays in NetworkPlayer.All until its despawn; sending to it then makes FishNet warn and drop it.
-        private bool CanTarget(NetworkPlayer listener)
+        internal bool CanTarget(NetworkPlayer listener)
         {
             var connection = listener != null ? listener.Owner : null;
             return connection != null && connection.IsActive && Observers.Contains(connection);
