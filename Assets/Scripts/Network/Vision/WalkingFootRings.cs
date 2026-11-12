@@ -247,6 +247,12 @@ namespace Marco.Network.Vision
 
         private void RequestSound(Vector3 point, float radius, float duration, Color tint, bool doubleEdge, bool self, Label label)
         {
+            // §3.2-1 소나: on an Echo body's screen every other sound is one colour, single edge (source not identifiable).
+            if (!self && owner != null && owner.HasEchoBody)
+            {
+                tint = RippleVisualSettings.EchoSonar(owner.Status);
+                doubleEdge = false;
+            }
             Submit(new Request
             {
                 Kind = Kind.Sound, Label = label, Source = int.MinValue, Point = point, Radius = radius, Lifetime = duration,

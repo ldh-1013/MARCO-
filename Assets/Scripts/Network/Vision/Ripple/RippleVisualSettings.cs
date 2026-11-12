@@ -1,3 +1,4 @@
+using Marco.Network.Player;
 using UnityEngine;
 
 namespace Marco.Network.Vision
@@ -29,6 +30,11 @@ namespace Marco.Network.Vision
         public static readonly Color RunnerColor = Hex(0x35, 0xF0, 0xD0), RunnerColorBlind = Hex(0xF2, 0xE2, 0x05);
         public static readonly Color SeekerColor = Hex(0xFF, 0x3B, 0x4D), SeekerColorBlind = Hex(0x33, 0x57, 0xFF);
         public static readonly Color EnvironmentColor = Hex(0xE8, 0xE8, 0xE8);
+        // §3.2-1 · 3.3-3 sonar on an Echo body's screen: one colour that says nothing about who made the sound. An
+        // eliminated Echo draws the single low-saturation outline in the environment ripple colour (§16.2, reused);
+        // escapees and mid-round joiners draw it in the Runner cyan #7FE7E0 (§16.1 rim colour, reused). No new colour.
+        public static readonly Color EscapeeSonarColor = Hex(0x7F, 0xE7, 0xE0);
+        public static Color EchoSonar(PlayerStatus status) => status == PlayerStatus.Tagged ? EnvironmentColor : EscapeeSonarColor;
         // §16.2 colour-blind mode. No UI yet; off by default.
         public static bool ColorBlindMode;
 
