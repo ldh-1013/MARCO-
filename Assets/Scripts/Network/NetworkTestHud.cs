@@ -48,6 +48,7 @@ namespace Marco.Network
             float statusBottom = DrawRoundStatus(round);
             DrawEchoBodyBanner(round, statusBottom);
             DrawKnockHud(round, statusBottom);
+            DrawEchoCompass(round);
             DrawLureNotice(round, statusBottom);
             DrawValves(round);
             DrawRunnerHealth(round);
