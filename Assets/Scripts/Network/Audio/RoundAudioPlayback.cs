@@ -28,6 +28,9 @@ namespace Marco.Network.Audio
         private double quietSince = double.NaN, fadeStartedAt = -1;
         private float droneFadeStart, droneEnvelope;
         private const float SeekerDroneMaxVolume = .15f;
+        // 기획서 17 · 부록 A [술래 드론]: 40-70 Hz, >= 80 Hz at -24 dB or lower. The original SeekerDrone.mp3 is kept;
+        // SeekerDroneLP.wav is its offline zero-phase low-pass (68 -> 76 Hz, 11-14).
+        private const string SeekerDroneClip = "SeekerDroneLP";
 
         public void NotifyOtherSound()
         {
@@ -96,7 +99,7 @@ namespace Marco.Network.Audio
             }
             if (seekerDrone == null)
             {
-                var clip = Clip("SeekerDrone");
+                var clip = Clip(SeekerDroneClip);
                 if (clip == null) return;
                 seekerDrone = CreateSource("SeekerDrone", true);
                 seekerDrone.clip = clip;
@@ -111,10 +114,10 @@ namespace Marco.Network.Audio
         {
             if (clips.TryGetValue(name, out var result)) return result;
             result = Resources.Load<AudioClip>("MarcoSound/" + name);
-            if (result != null && (name is "SeekerDrone" or "SurfaceSwim" or "DiveAmbience" or "ValveUnderwater"))
+            if (result != null && (name is SeekerDroneClip or "SurfaceSwim" or "DiveAmbience" or "ValveUnderwater"))
             {
                 var original = result;
-                result = name == "SeekerDrone" ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
+                result = name == SeekerDroneClip ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
                 if (result != original) ownedLoops.Add(result);
             }
             if (result != null && (name is "Carpet" or "Mat" or "Metal" or "MetalStairs" or "WoodBench" || IsBreathClip(name)))
