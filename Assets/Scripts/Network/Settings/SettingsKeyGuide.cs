@@ -5,7 +5,7 @@ using UnityEngine.UI;
 namespace Marco.Network.Settings
 {
     // 키 가이드 탭: read-only, no rebinding. Only keys checked in code are listed (PlayerMovement · PlayerInteractor ·
-    // PlayerMovement.Shout · PlayerMovement.Swimming · PoolLadders · MicrophoneVisionController). Development keys
+    // PlayerMovement.Shout · PlayerMovement.Swimming · MicrophoneVisionController). Development keys
     // (F1–F11, Tab) and C are left out on purpose.
     internal sealed class SettingsKeyGuide
     {
@@ -19,7 +19,7 @@ namespace Marco.Network.Settings
         }
 
         private static readonly string[] Common = { "W", "A", "S", "D", "Esc", "Alt", "Mouse" };
-        private static readonly string[] RunnerKeys = { "Shift", "E", "Q", "RMB", "1", "2", "3", "4", "G", "Ctrl", "Space", "F" };
+        private static readonly string[] RunnerKeys = { "Shift", "E", "Q", "RMB", "1", "2", "3", "4", "G", "Ctrl", "Space" };
         private static readonly string[] SeekerKeys = { "LMB", "R", "Ctrl" };
         private static readonly string[] EchoKeys = { "G", "Space", "Ctrl" };
 
@@ -30,7 +30,7 @@ namespace Marco.Network.Settings
             // 도망자
             "Left Shift  -  질주\nE (누르고 있기)  -  밸브 · 배수구 작업 / 부상자 치료\nE  -  아이템 줍기\nQ / 마우스 우클릭  -  찰칵이\n" +
             "1 2 3 4  -  아이템 슬롯 선택\nG (1번 슬롯, 누르고 있기)  -  붕대\nLeft Ctrl  -  잠수(수영 중) / 숨 참기\n" +
-            "Space  -  점프 · 수영장에서 나오기\nF  -  사다리",
+            "Space  -  점프 · 수영장에서 나오기",
             // 술래
             "마우스 좌클릭  -  태그\nR  -  외침\nLeft Ctrl (누르고 있기)  -  잠행",
             // 메아리

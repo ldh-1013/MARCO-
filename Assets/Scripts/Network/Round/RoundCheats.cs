@@ -54,7 +54,7 @@ namespace Marco.Network.Round
 
             if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // no cheat keys while the settings menu is open
             if (Input.GetKeyDown(KeyCode.Tab)) SetOpen(!open);
-            // Esc toggles the lock in PlayerMovement; keep the cursor free while the panel is up.
+            // Esc opens the settings menu (cursor stays free while it is open); keep the cursor free while the panel is up.
             if (open && Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
 
             foreach (var (key, _) in Cheats)

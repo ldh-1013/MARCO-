@@ -345,7 +345,7 @@ namespace Marco.Network
                     SoundCanStage.Empty => "G: 목소리 3초 녹음",
                     SoundCanStage.Recording => $"녹음 {player.SoundCanRecordingProgress * 3f:F1}/3초 · G: 취소",
                     SoundCanStage.Recorded => "G: 앞쪽 바닥에 설치", SoundCanStage.Placed => "G: 설치한 소리통 원격 재생",
-                    SoundCanStage.Placing => $"소리통 설치 {player.SoundCanRecordingProgress:P0} · G/Esc: 취소",
+                    SoundCanStage.Placing => $"소리통 설치 {player.SoundCanRecordingProgress:P0} · G: 취소",
                     SoundCanStage.Playing => "녹음된 목소리 재생 중", _ => "E: 소리통 줍기"
                 }
             };

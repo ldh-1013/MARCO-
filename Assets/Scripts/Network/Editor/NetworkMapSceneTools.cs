@@ -85,16 +85,6 @@ namespace Marco.Network.Editor
             ("Drain_2", new(7, -3.5f, 47)),
         };
 
-        // TEMPORARY until swimming (see PoolLadders): bottom inside the pool, top on the deck.
-        // Deck spots avoid the Layout_v1_2.json obstacles (e.g. lifeguard chair h06).
-        private static readonly (string name, Vector3 bottom, Vector3 top)[] Ladders =
-        {
-            ("PoolLadder_1", new(39.3f, -3.5f, 50), new(41.2f, 0, 50)),  // competition pool, deep end east wall
-            ("PoolLadder_2", new(15.7f, -1.8f, 51), new(13.5f, 0, 51)),  // competition pool, shallow end west wall
-            ("PoolLadder_3", new(3.7f, -1.2f, 49), new(1.8f, 0, 49)),    // teaching pool, west wall
-            ("PoolLadder_4", new(7, -3.5f, 47), new(12.5f, 0, 44)),      // teaching pool sump
-        };
-
         [MenuItem("MARCO/Network/Create Pool Map Scene")]
         public static void CreatePoolMapScene()
         {
@@ -310,15 +300,13 @@ namespace Marco.Network.Editor
 
         private static GameObject CreateGamePointsPrefab()
         {
-            var root = new GameObject("PoolV12_GamePoints", typeof(GamePoints), typeof(PoolLadders));
+            var root = new GameObject("PoolV12_GamePoints", typeof(GamePoints));
             foreach (var (name, position) in Points)
             {
                 var marker = CreateMarker(name, root.transform, position);
                 if (name.StartsWith("Valve_")) marker.rotation = Quaternion.Euler(0, ValveMarkerYaw, 0);
                 if (name == "SpawnPoint_4") marker.rotation = Quaternion.Euler(0, 270, 0);
             }
-            foreach (var (name, bottom, top) in Ladders)
-                CreateMarker("Top", CreateMarker(name, root.transform, bottom), top);
 
             Directory.CreateDirectory(Path.GetDirectoryName(GamePointsPrefabPath));
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, GamePointsPrefabPath);
