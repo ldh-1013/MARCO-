@@ -358,9 +358,54 @@ namespace Marco.Network.Editor
                             $"{flickerFrame} frames: own rings {client:0.0}/s, server pulses {server:0.0}/s per speaker (≤ 7)");
                     }
                     step = 12; return true;
+                case 12: // §3.6 camping distance: horizontal (XZ) only, cumulative since the last reset (11-13)
+                    if (round.IsStartLocked(player.Role)) return true;   // the timer is paused while start-locked
+                    CampingDistanceChecks(round, player);
+                    step = 13; return true;
                 default:
                     return false;
             }
+        }
+
+        // Drives the server's own TickBreath with synthetic 0.25 s samples on a fresh motion record (no waiting).
+        static void CampingDistanceChecks(NetworkRound round, NetworkPlayer player)
+        {
+            var tick = typeof(NetworkRound).GetMethod("TickBreath", Flags);
+            var type = typeof(NetworkRound).GetNestedType("SoundMotion", BindingFlags.NonPublic);
+            if (tick == null || type == null) { results.Add("skip camping distance: TickBreath / SoundMotion not found"); return; }
+            Vector3 origin = player.transform.position;
+            object Fresh() { var m = Activator.CreateInstance(type, true); type.GetField("BreathPosition").SetValue(m, origin); return m; }
+            float Get(object m, string f) => (float)type.GetField(f).GetValue(m);
+            int Breaths(object m) => (int)type.GetField("BreathCount").GetValue(m);
+            void Sample(object m, Vector3 p) => tick.Invoke(round, new object[] { player, m, p, .25f });
+
+            // C1: two jumps in place (up 1.25 m and down, twice — 5 m of vertical path), no horizontal movement.
+            var c1 = Fresh();
+            for (int j = 0; j < 2; j++) foreach (float y in new[] { .6f, 1.25f, .6f, 0f }) Sample(c1, origin + Vector3.up * y);
+            float c1Moved = Get(c1, "BreathResetMoved"), c1Still = Get(c1, "StillSeconds");
+            int c1At = -1;
+            for (int t = 9; t <= 90 && c1At < 0; t++) { Sample(c1, origin); if (Breaths(c1) > 0) c1At = t; }
+            Expect(c1Moved < .001f && Mathf.Approximately(c1Still, 2f) && c1At == 80, "C1 camping: vertical only",
+                $"after 2 jumps moved {c1Moved:0.###}m (3D path 5m), still {c1Still:0.##}s, first breath at {c1At * .25f:0.##}s (expected 20s)");
+
+            // C2: after the first breath, 4 m horizontal keeps the timer; the 5th metre resets it.
+            var c2 = Fresh();
+            for (int t = 0; t < 80; t++) Sample(c2, origin);
+            int c2Before = Breaths(c2);
+            for (int k = 1; k <= 4; k++) Sample(c2, origin + Vector3.right * (k * 1.01f));
+            int c2After4 = Breaths(c2); float c2Still4 = Get(c2, "StillSeconds");
+            Sample(c2, origin + Vector3.right * 5.05f);
+            Expect(c2Before == 1 && c2After4 == 1 && Breaths(c2) == 0 && Get(c2, "StillSeconds") == 0f, "C2 camping: 5 m horizontal resets",
+                $"breaths {c2Before} → after 4m {c2After4} (still {c2Still4:0.##}s) → after 5m {Breaths(c2)} (still {Get(c2, "StillSeconds"):0.##}s)");
+
+            // C3: before the first breath, 3 m horizontal resets (unchanged rule).
+            var c3 = Fresh();
+            for (int t = 0; t < 10; t++) Sample(c3, origin);
+            Sample(c3, origin + Vector3.forward * 1.01f); Sample(c3, origin + Vector3.forward * 2.02f);
+            float c3Still2 = Get(c3, "StillSeconds");
+            Sample(c3, origin + Vector3.forward * 3.03f);
+            Expect(Mathf.Approximately(c3Still2, 3f) && Get(c3, "StillSeconds") == 0f && Breaths(c3) == 0, "C3 camping: 3 m before the first breath resets",
+                $"still {c3Still2:0.##}s after 2m → {Get(c3, "StillSeconds"):0.##}s after 3m");
         }
 
         // An open floor spot at `distance` from target with a clear line to it.

@@ -259,7 +259,7 @@ namespace Marco.Network.Round
 
         private void TickBreath(NetworkPlayer player, SoundMotion motion, Vector3 position, float dt)
         {
-            float distance = Vector3.Distance(position, motion.BreathPosition);
+            float distance = Vector2.Distance(new Vector2(position.x, position.z), new Vector2(motion.BreathPosition.x, motion.BreathPosition.z)); // §3.6: horizontal (XZ) only — jumping in place does not count
             motion.BreathPosition = position;
             if (IsStartLocked(player.Role) || soundWorld.WaterState(player, out _) == 2 ||
                 (player.Role == PlayerRole.Runner && valves != null && valves.IsWorking(player.PlayerId)))
