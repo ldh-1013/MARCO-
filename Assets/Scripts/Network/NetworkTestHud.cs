@@ -42,6 +42,7 @@ namespace Marco.Network
             // The eliminated Echo's 3.0 s tag blackout covers the 3D view first; the HUD below stays on top of it.
             Marco.Network.Vision.TagBlackoutLocal.Draw(NetworkPlayer.Local, TestHudSkin.Width, TestHudSkin.Height);
             DrawRunnerInjury(round);
+            DrawEndEdgePulse(round);
             DrawSeekerReticle(round);
             var local = NetworkPlayer.Local;
             if (local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive &&

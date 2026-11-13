@@ -194,6 +194,14 @@ namespace Marco.Network.Audio
         // for every round sound effect, including the ones played outside this component (11-14). Voice chat is not one.
         public const float DiveCutoff = 650f, MuffledCutoff = 1000f;
 
+        // 연출 10 · 기획서 6.2-1 잔여 30초 "심박 템포 상승": applied to the existing heartbeat only (the Runner's own, a
+        // Seeker within 8 m or a dive running out of breath) — no new heartbeat (스펙 해석, 11-14). Starting value.
+        public const float EndHeartbeatTempo = 1.25f;
+
+        public static bool EndHeartbeatPhase(NetworkRound round) =>
+            round != null && round.Mode == RoundMode.Full && round.Result == RoundResult.InProgress &&
+            round.RemainingSeconds > 0f && round.RemainingSeconds <= round.MovementConfig.SuddenDeathExitPulseRemainingSeconds;
+
         public static bool LocalDiving
         {
             get
@@ -301,7 +309,8 @@ namespace Marco.Network.Audio
             if (breathWarning) heart = Mathf.Max(heart, swim.BreathSeconds <= 1f ? .65f : .4f);
             Bed(ref heartbeat, "Heartbeat", heart, 1f);
             Bed(ref diveAmbience, "DiveAmbience", alive && swim != null && swim.IsDiving ? .16f : 0f, .4f);
-            if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f : 1f;
+            if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f
+                : EndHeartbeatPhase(Round) ? EndHeartbeatTempo : 1f;
             TickSeekerDrone(alive && local.Role == PlayerRole.Seeker && Round.StartPhase == RoundStartPhase.Released);
         }
 

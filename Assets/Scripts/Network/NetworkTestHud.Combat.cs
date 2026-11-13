@@ -117,6 +117,36 @@ namespace Marco.Network
             GUI.depth = oldDepth;
         }
 
+        // 연출 10 · 기획서 6.2-1 잔여 1분: 술래 화면에만 적색 가장자리 미세 맥동. The docs give no period or strength —
+        // starting values, tuned in play tests (11-14). Reuses the injury edge texture; colour §16.2 술래 레드 #FF3B4D.
+        internal const float EndEdgePulsePeriodSeconds = 1.6f, EndEdgePulseMaxAlpha = .18f;
+
+        internal static bool EndEdgePulseActive(NetworkRound round, NetworkPlayer player) =>
+            round != null && player != null && player.Role == PlayerRole.Seeker && player.Status == PlayerStatus.Alive &&
+            round.Mode == RoundMode.Full && round.Result == RoundResult.InProgress && round.RemainingSeconds > 0f &&
+            round.RemainingSeconds <= round.MovementConfig.SuddenDeathSeekerBoostRemainingSeconds;
+
+        internal static float EndEdgePulseAlpha(float time) =>
+            EndEdgePulseMaxAlpha * (.5f - .5f * Mathf.Cos(time * Mathf.PI * 2f / EndEdgePulsePeriodSeconds));
+
+        private void DrawEndEdgePulse(NetworkRound round)
+        {
+            if (Event.current.type != EventType.Repaint || !EndEdgePulseActive(round, NetworkPlayer.Local)) return;
+            if (injuryEdges == null) CreateInjuryEdges();
+            Color tint = RippleVisualSettings.SeekerColor;
+            tint.a = EndEdgePulseAlpha(Time.time);
+            Matrix4x4 oldMatrix = GUI.matrix;
+            Color oldColor = GUI.color;
+            int oldDepth = GUI.depth;
+            GUI.matrix = Matrix4x4.identity;
+            GUI.depth = 50; // same layer as the injury edges: above darkness, behind the normal HUD
+            GUI.color = tint;
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), injuryEdges);
+            GUI.matrix = oldMatrix;
+            GUI.color = oldColor;
+            GUI.depth = oldDepth;
+        }
+
         private void CreateInjuryEdges()
         {
             const int size = 256;
