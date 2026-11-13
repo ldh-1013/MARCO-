@@ -188,12 +188,46 @@ namespace Marco.Network.Audio
             }
         }
 
-        private static void ApplyVoiceFilter(Voice voice)
+        private static void ApplyVoiceFilter(Voice voice) => ApplyMuffle(voice.Filter, voice.Muffled);
+
+        // 기획서 17 "잠수 시 로우패스 먹먹함" (수영_잠수_구현메모: 650 Hz) · 벽 뒤 먹먹함 1,000 Hz — the same two values
+        // for every round sound effect, including the ones played outside this component (11-14). Voice chat is not one.
+        public const float DiveCutoff = 650f, MuffledCutoff = 1000f;
+
+        public static bool LocalDiving
         {
-            var local = NetworkPlayer.Local;
-            bool diving = local != null && local.GetComponent<PlayerMovement>() is { IsDiving: true };
-            voice.Filter.enabled = voice.Muffled || diving;
-            voice.Filter.cutoffFrequency = diving ? 650f : 1000f;
+            get
+            {
+                var local = NetworkPlayer.Local;
+                return local != null && local.GetComponent<PlayerMovement>() is { IsDiving: true };
+            }
+        }
+
+        public static void ApplyMuffle(AudioLowPassFilter filter, bool muffled)
+        {
+            if (filter == null) return;
+            bool diving = LocalDiving;
+            filter.enabled = muffled || diving;
+            filter.cutoffFrequency = diving ? DiveCutoff : MuffledCutoff;
+        }
+
+        // One-shot sources made elsewhere (Seeker shout · forced scream): followed every frame until they are destroyed,
+        // so a dive that starts or ends during the clip changes the filter too.
+        private static readonly List<(AudioLowPassFilter filter, bool muffled)> followed = new();
+
+        public static void Follow(AudioLowPassFilter filter, bool muffled)
+        {
+            ApplyMuffle(filter, muffled);
+            if (filter != null) followed.Add((filter, muffled));
+        }
+
+        private static void UpdateFollowed()
+        {
+            for (int i = followed.Count - 1; i >= 0; i--)
+            {
+                if (followed[i].filter == null) followed.RemoveAt(i);
+                else ApplyMuffle(followed[i].filter, followed[i].muffled);
+            }
         }
 
         public void Stop(int key, bool healing)
@@ -238,6 +272,7 @@ namespace Marco.Network.Audio
 
         private void LateUpdate()
         {
+            UpdateFollowed();
             if (Round == null || !Round.IsClientInitialized || Round.Mode == RoundMode.NotStarted ||
                 Round.Result != RoundResult.InProgress || NetworkPlayer.Local == null)
             {

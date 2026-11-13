@@ -179,7 +179,8 @@ namespace Marco.Network.Player
             source.dopplerLevel = 0; source.maxDistance = 200;
             source.rolloffMode = AudioRolloffMode.Custom;
             source.SetCustomCurve(AudioSourceCurveType.CustomRolloff, AnimationCurve.Constant(0, 1, 1));
-            if (blocked) root.AddComponent<AudioLowPassFilter>().cutoffFrequency = 1000;
+            // Wall muffling (1,000 Hz) and the listener's own dive (650 Hz) — same values as every round sound (11-14).
+            Marco.Network.Audio.RoundAudioPlayback.Follow(root.AddComponent<AudioLowPassFilter>(), blocked);
             // Audio finishes naturally; pulse lifetime is controlled independently above.
             source.Play(); Destroy(root, clip.length + .1f);
         }

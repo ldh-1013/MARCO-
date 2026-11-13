@@ -16,6 +16,7 @@ namespace Marco.Network.Audio
             public AudioSource Source;
             public AudioLowPassFilter Filter;
             public float LastReceived;
+            public bool Muffled;
         }
         private readonly Dictionary<int, Playback> playing = new();
         private readonly List<int> expired = new();
@@ -46,8 +47,8 @@ namespace Marco.Network.Audio
             playback.Clip.SetData(samples, frame * samples.Length);
             playback.Source.transform.position = point;
             playback.Source.volume = Mathf.Clamp01(gain);
-            playback.Filter.enabled = muffled;
-            playback.Filter.cutoffFrequency = 1000;
+            playback.Muffled = muffled;
+            RoundAudioPlayback.ApplyMuffle(playback.Filter, muffled);   // wall 1,000 Hz · own dive 650 Hz (11-14)
             playback.LastReceived = Time.time;
             // §17: a recorder frame reached this listener (it passed the server's hearing check) — ends the Seeker drone.
             // Only Runners own recorders, so this is never the Seeker's own sound.
@@ -78,7 +79,10 @@ namespace Marco.Network.Audio
                 local == null || local.Status != PlayerStatus.Alive) { Stop(-1); return; }
             expired.Clear();
             foreach (var pair in playing)
+            {
+                RoundAudioPlayback.ApplyMuffle(pair.Value.Filter, pair.Value.Muffled);   // a dive can start or end mid-playback
                 if (Time.time - pair.Value.LastReceived > .25f) expired.Add(pair.Key);
+            }
             foreach (int id in expired) Stop(id);
         }
 

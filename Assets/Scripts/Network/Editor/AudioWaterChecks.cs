@@ -47,6 +47,7 @@ namespace Marco.Network.Editor
                     player.GetComponent<PlayerMovement>().enabled = false;
                     player.GetComponent<PlayerInteractor>().enabled = false;
                     CheckSeekerDrone(round);
+                    CheckDiveMuffle(round);
                     var type = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld", true);
                     water = Activator.CreateInstance(type); query = type.GetMethod("WaterState");
                     Teleport(player, new Vector3(4.5f, -.15f, 43));
@@ -185,6 +186,59 @@ namespace Marco.Network.Editor
             Require(Mathf.Abs(Find(round, "SeekerDrone").volume - .15f) < .002f && (double)fadeClock.GetValue(playback) < 0,
                 "D4: the valve-open cue ended the drone");
             Debug.Log("[AudioWaterChecks] D1-D4 drone release PASS.");
+        }
+        // W1-W4 (§17 잠수 로우패스, 11-14): one cutoff rule for the round sounds, the shout/scream one-shots and the recorder.
+        static void CheckDiveMuffle(NetworkRound round)
+        {
+            const BindingFlags any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            var local = NetworkPlayer.Local;
+            var movement = local.GetComponent<PlayerMovement>();
+            var swimming = typeof(PlayerMovement).GetField("swimming", any);
+            var surface = typeof(PlayerMovement).GetField("waterSurface", any);
+            object swimmingBefore = swimming.GetValue(movement), surfaceBefore = surface.GetValue(movement);
+            void Dive(bool on)
+            {
+                swimming.SetValue(movement, on ? true : swimmingBefore);
+                surface.SetValue(movement, on ? movement.transform.position.y + 10f : surfaceBefore);
+            }
+            var followUpdate = typeof(Marco.Network.Audio.RoundAudioPlayback).GetMethod("UpdateFollowed", any);
+            var followed = (System.Collections.IList)typeof(Marco.Network.Audio.RoundAudioPlayback).GetField("followed", any).GetValue(null);
+            MethodInfo vocalLogic = null;
+            foreach (var m in typeof(PlayerMovement).GetMethods(any)) if (m.Name.StartsWith("RpcLogic___AbilitySoundTarget")) vocalLogic = m;
+            Require(vocalLogic != null, "W: no client logic for AbilitySoundTarget");
+            Vector3 near = local.transform.position + Vector3.right * 2f;
+            try
+            {
+                Dive(true);
+                Require(Marco.Network.Audio.RoundAudioPlayback.LocalDiving, "W1: forced dive not seen");
+                // W1: a scream one-shot made while diving gets exactly one filter at 650 Hz.
+                vocalLogic.Invoke(movement, new object[] { local.Owner, near, 9f, 1f, 1f, false, true, false, -1, -1 });
+                GameObject vocal = null;
+                foreach (var go in UnityEngine.Object.FindObjectsByType<AudioSource>()) if (go.name == "Ability vocal") vocal = go.gameObject;
+                Require(vocal != null, "W1: no scream one-shot");
+                var filters = vocal.GetComponents<AudioLowPassFilter>();
+                Require(filters.Length == 1 && filters[0].enabled && Mathf.Approximately(filters[0].cutoffFrequency, 650f), "W1: scream not muffled at 650 Hz while diving");
+                // W2: the recorder playback while diving.
+                var recorder = round.gameObject.GetComponent<Marco.Network.Audio.RecordedSoundPlayback>() ?? round.gameObject.AddComponent<Marco.Network.Audio.RecordedSoundPlayback>();
+                recorder.Receive(4242, 0, new byte[Marco.Network.Voice.VoiceCodec.SamplesPerPacket], near, 1f, false);
+                AudioLowPassFilter RecorderFilter() { var playing = (System.Collections.IDictionary)typeof(Marco.Network.Audio.RecordedSoundPlayback).GetField("playing", any).GetValue(recorder); var entry = playing.Contains(4242) ? playing[4242] : null; return entry?.GetType().GetField("Filter").GetValue(entry) as AudioLowPassFilter; }
+                var recFilter = RecorderFilter();
+                Require(recFilter != null && recFilter.enabled && Mathf.Approximately(recFilter.cutoffFrequency, 650f), "W2: recorder not muffled at 650 Hz while diving");
+                // W3: surfacing clears both, nothing left behind.
+                Dive(false);
+                followUpdate.Invoke(null, null);
+                typeof(Marco.Network.Audio.RecordedSoundPlayback).GetMethod("Update", any).Invoke(recorder, null);
+                Require(!filters[0].enabled, "W3: scream filter stayed on after surfacing");
+                Require(RecorderFilter() is { enabled: false }, "W3: recorder filter stayed on after surfacing");
+                // W4: a destroyed one-shot leaves the follow list.
+                int before = followed.Count;
+                UnityEngine.Object.DestroyImmediate(vocal);
+                followUpdate.Invoke(null, null);
+                Require(followed.Count == before - 1, $"W4: follow list kept a destroyed one-shot ({before} -> {followed.Count})");
+                recorder.Stop(-1);
+                Debug.Log("[AudioWaterChecks] W1-W4 dive low-pass PASS: scream and recorder 650 Hz while diving, off after surfacing, one filter, no leftover.");
+            }
+            finally { Dive(false); }
         }
         static void Teleport(NetworkPlayer player, Vector3 point) { player.GetComponent<PlayerMovement>().Teleport(point); Physics.SyncTransforms(); }
         static int Water(NetworkPlayer player) { object[] args = { player, 0f }; return (int)query.Invoke(water, args); }
