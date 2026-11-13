@@ -214,6 +214,8 @@ namespace Marco.Network.Round
         private void DecoyPulseTarget(NetworkConnection connection, Vector3 point, string clip,
             float gain, bool blocked, float ringRadius)
         {
+            // §17: any hearing result the server sends ends the Seeker drone (a duck is never the Seeker's own sound).
+            NotifyOtherSound();
             if (soundPlayback != null) soundPlayback.Play(clip, point, .7f * gain, .38f, -1, blocked, -1);
             if (!blocked && NetworkPlayer.Local != null)
                 NetworkPlayer.Local.GetComponentInChildren<WalkingFootRings>()?.EmitWaterPulse(point, ringRadius);

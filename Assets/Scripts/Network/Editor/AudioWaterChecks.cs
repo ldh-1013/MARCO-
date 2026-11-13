@@ -144,6 +144,47 @@ namespace Marco.Network.Editor
             tick.Invoke(playback, new object[] { true });
             Require(Find(round, "SeekerDrone").volume == 0f, "Drone did not fade out in .2 seconds");
             Debug.Log("[AudioWaterChecks] Drone silence, gain ramp, and repeated-event fade PASS.");
+
+            // D1-D4 (§17, 11-14): which received sounds end the drone. The client bodies of the RPCs run directly.
+            MethodInfo Logic(string rpc)
+            {
+                foreach (var m in typeof(NetworkRound).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                    if (m.Name.StartsWith("RpcLogic___" + rpc)) return m;
+                throw new Exception("[AudioWaterChecks] no client logic for " + rpc);
+            }
+            var local = NetworkPlayer.Local;
+            Vector3 near = local.transform.position + Vector3.right * 2f;
+            bool Ends(string label, Action deliver)
+            {
+                clock.SetValue(playback, Time.timeAsDouble - 60f);
+                fadeClock.SetValue(playback, -1d);
+                tick.Invoke(playback, new object[] { true });
+                Require(Mathf.Abs(Find(round, "SeekerDrone").volume - .15f) < .002f, label + ": drone not at full before the event");
+                deliver();
+                bool reset = Time.timeAsDouble - (double)clock.GetValue(playback) < .05;
+                fadeClock.SetValue(playback, Time.timeAsDouble - .21);
+                tick.Invoke(playback, new object[] { true });
+                var drone = Find(round, "SeekerDrone");
+                bool off = drone == null || drone.volume == 0f;
+                Debug.Log($"[AudioWaterChecks] {label}: timer reset {reset}, off after .2s {off}");
+                return reset && off;
+            }
+            Require(Ends("D1 duck landing", () => Logic("DecoyPulseTarget").Invoke(round,
+                new object[] { local.Owner, near, "Tile_0", 1f, false, 3f })), "D1: a duck landing did not end the drone");
+            Require(Ends("D2 recorder playback", () => Logic("SoundCanFrameTarget").Invoke(round,
+                new object[] { local.Owner, 9999, 0, new byte[Marco.Network.Voice.VoiceCodec.SamplesPerPacket], near, 1f, false })), "D2: recorder playback did not end the drone");
+            Require(Ends("D3 footstep (existing)", () => Logic("MovementStepTarget").Invoke(round,
+                new object[] { local.Owner, local.PlayerId + 100, "Tile_0", near, .7f, .4f, false, false, near, false })), "D3: a footstep no longer ends the drone");
+            round.GetComponent<Marco.Network.Audio.RecordedSoundPlayback>()?.Stop(-1);
+            // D4: the valve-open cue is map-wide 2D, not a hearing result (10-26) — the drone stays (스펙 해석, 11-14).
+            clock.SetValue(playback, Time.timeAsDouble - 60f);
+            fadeClock.SetValue(playback, -1d);
+            tick.Invoke(playback, new object[] { true });
+            Logic("ValveOpenedObservers").Invoke(round, new object[0]);
+            tick.Invoke(playback, new object[] { true });
+            Require(Mathf.Abs(Find(round, "SeekerDrone").volume - .15f) < .002f && (double)fadeClock.GetValue(playback) < 0,
+                "D4: the valve-open cue ended the drone");
+            Debug.Log("[AudioWaterChecks] D1-D4 drone release PASS.");
         }
         static void Teleport(NetworkPlayer player, Vector3 point) { player.GetComponent<PlayerMovement>().Teleport(point); Physics.SyncTransforms(); }
         static int Water(NetworkPlayer player) { object[] args = { player, 0f }; return (int)query.Invoke(water, args); }

@@ -49,6 +49,9 @@ namespace Marco.Network.Audio
             playback.Filter.enabled = muffled;
             playback.Filter.cutoffFrequency = 1000;
             playback.LastReceived = Time.time;
+            // §17: a recorder frame reached this listener (it passed the server's hearing check) — ends the Seeker drone.
+            // Only Runners own recorders, so this is never the Seeker's own sound.
+            NetworkRound.Instance?.NotifyOtherSound();
         }
 
         public void Stop(int id)
