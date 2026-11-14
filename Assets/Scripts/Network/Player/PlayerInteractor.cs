@@ -91,9 +91,11 @@ namespace Marco.Network.Player
                 else if (Input.GetKeyDown(KeyCode.Alpha4)) selectedItemSlot = 4;
             }
 
+            bool inWater = GetComponent<PlayerMovement>().IsSwimming;
             if (workingBandage)
             {
-                if (!Input.GetKey(KeyCode.G) || !locked)
+                // 7절 · 부록 A [붕대]: 질주하면 취소. 8절 "수중 붕대 불가" → 사용 중 물에 들어가도 취소(스펙 해석, 11-14).
+                if (!Input.GetKey(KeyCode.G) || !locked || Input.GetKey(KeyCode.LeftShift) || inWater)
                 {
                     CancelHealingServer();
                     workingBandage = false;
@@ -101,7 +103,7 @@ namespace Marco.Network.Player
             }
             else if (locked && selectedItemSlot == 1 && Input.GetKeyDown(KeyCode.G) && !workingTreatment &&
                      workingValve == null && workingDrain == null && player.Role == PlayerRole.Runner &&
-                     player.Status == PlayerStatus.Alive)
+                     player.Status == PlayerStatus.Alive && !inWater && !Input.GetKey(KeyCode.LeftShift))
             {
                 BeginBandageServer();
                 workingBandage = true;

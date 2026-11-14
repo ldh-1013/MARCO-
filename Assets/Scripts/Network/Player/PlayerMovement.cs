@@ -16,6 +16,8 @@ namespace Marco.Network.Player
         [SerializeField, Min(0.1f)] private float jumpHeight = 1.25f;
         [SerializeField, Min(0.1f)] private float gravity = 22f;
         [SerializeField] private float mouseSensitivity = 2.2f;
+        // 부록 A [붕대] 이속 −75% → × 0.25 (현재 속도 기준).
+        public const float BandageMoveScale = .25f;
         [SerializeField] private Transform cameraPivot;
         [SerializeField, Min(0.5f)] private float crouchedHeight = 1.1f;
         [SerializeField, Min(0.05f)] private float crouchCameraDrop = 0.35f;
@@ -220,7 +222,10 @@ namespace Marco.Network.Player
                     ref sprintRecoveryDelayRemaining, false, Time.deltaTime);
                 return;
             }
-            bool wantsSprint = moving && !player.IsTreatmentLocked && !startLocked && !crouching &&
+            // 7절 · 부록 A [붕대]: 사용 중 이동 −75%(현재 속도 기준, 곱연산), 질주는 취소 사유라 사용 중에는 질주 속도가 되지 않는다.
+            // Derived every frame from the server-confirmed bandage action (never cached).
+            bool bandaging = player.HasHealingAction && player.HealingActionIsBandage;
+            bool wantsSprint = moving && !bandaging && !player.IsTreatmentLocked && !startLocked && !crouching &&
                 player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
             ReportSprintIntent(wantsSprint);
             IsSprinting = StepSprintStamina(ref sprintStamina, ref sprintExhaustionRemaining,
@@ -262,6 +267,7 @@ namespace Marco.Network.Player
                     : (IsSprinting ? MovementConfig.RunnerSprintSpeed : MovementConfig.RunnerWalkSpeed) * healthMultiplier;
                 if (!swimming && sprintExhaustionRemaining > 0f)
                     speed *= MovementConfig.RunnerSprintExhaustionSpeedMultiplier;
+                if (!swimming && bandaging) speed *= BandageMoveScale;
             }
             if (SwimPenaltyRemaining > 0f) speed *= .8f;
             Vector3 velocity = input * speed + Vector3.up * verticalVelocity;
