@@ -7,7 +7,7 @@ MonoBehaviour:
   m_Name: Demon
   visualPrefab: {fileID: 6334826068141619221, guid: 5bba62d8b65dae44898012275d24ba9e, type: 3}
   modelOffset: {x: 0, y: -1, z: 0}
-  modelScale: {x: 1, y: 1, z: 1}
+  modelScale: {x: 0.798, y: 0.798, z: 0.798}
   idleClip: {fileID: 6782595489454084048, guid: c3d73ba06daaeef40b556c623d33fc02, type: 3}
   walkClip: {fileID: 3486042369983476132, guid: c3d73ba06daaeef40b556c623d33fc02, type: 3}
   runClip: {fileID: 0}

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using FishNet.Managing;
 using FishNet.Managing.Object;
@@ -18,6 +19,7 @@ namespace Marco.Network.Editor
     public static class CombatHudChecks
     {
         private const string Pending = "Marco.CombatHudChecks";
+        private const string NoCaptures = "Marco.CombatHudChecks.NoCaptures";
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
         private static int phase, checks;
         private static double until, deadline;
@@ -31,7 +33,10 @@ namespace Marco.Network.Editor
             EditorApplication.update -= Tick;
             EditorApplication.update += Tick;
         }
-        public static void Run()
+        public static void Run() => Start(false);
+        // The same Play-mode flow without GameView captures (they need a rendering GameView), for the tag table.
+        public static void RunTagTable() => Start(true);
+        private static void Start(bool noCaptures)
         {
             if (!Application.isBatchMode) throw new Exception("Use a separate batch project.");
             if (AssetDatabase.FindAssets("t:DefaultPrefabObjects").Length == 0)
@@ -45,6 +50,7 @@ namespace Marco.Network.Editor
             var gameView = EditorWindow.GetWindow(typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView"));
             gameView.position = new Rect(0, 0, 1280, 720);
             gameView.Repaint();
+            SessionState.SetBool(NoCaptures, noCaptures);
             SessionState.SetBool(Pending, true);
             Subscribe();
             EditorApplication.EnterPlaymode();
@@ -60,7 +66,7 @@ namespace Marco.Network.Editor
             typeof(PlayerInteractor).GetMethod("Swing", Private).Invoke(interactor, new object[] { round });
         private static void Capture(string name)
         {
-            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null || SessionState.GetBool(NoCaptures, false)) return;
             var type = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
             RenderTexture target = null;
             var window = EditorWindow.GetWindow(type);
@@ -168,6 +174,11 @@ namespace Marco.Network.Editor
                 }
                 if (phase == 6)
                 {
+                    // The tag table's server swings send many owner RPCs; let them drain before the real attack below.
+                    TagMatrix(round, player); until = now + 1; phase = 60; return;
+                }
+                if (phase == 60)
+                {
                     Check(round.TryFindTagTarget(player.transform, round.TagRadius, out var found) && found == dummy, "Network attack reaches a body whose pivot is beyond 1.2m");
                     wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     wall.transform.position = new Vector3(0, 1, .6f); wall.transform.localScale = new Vector3(2, 3, .1f);
@@ -230,9 +241,77 @@ namespace Marco.Network.Editor
             }
             catch (Exception error) { Debug.LogException(error); Finish(1); }
         }
+        // Fixed tag table (11-14): the Seeker's model size must not change any tag result. Every cell is judged by the
+        // client call (TryFindTagTarget, as PlayerInteractor.Swing) and by the server re-check (TrySwing re-picks the
+        // target), once with the model at scale 1 (2.9 m) and once at the asset's modelScale. Written to Logs/TagMatrix.
+        private static void TagMatrix(NetworkRound round, NetworkPlayer seeker)
+        {
+            var body = seeker.GetComponent<Marco.Network.Character.CharacterBody>();
+            Check(body != null && body.BodyRoot != null, "Seeker model is built for the tag table");
+            var assetScale = body.BodyRoot.localScale;
+            var a = TagTable(round, seeker, body, Vector3.one);
+            var b = TagTable(round, seeker, body, assetScale);
+            Directory.CreateDirectory("Logs/TagMatrix");
+            File.WriteAllText("Logs/TagMatrix/tag_matrix.txt", $"model scale 1 | asset modelScale {assetScale.x:0.###}\n" +
+                string.Join("\n", a.Select((row, i) => row + " | " + b[i].Substring(b[i].LastIndexOf(':') + 1))));
+            Check(a.All(row => row.EndsWith("client=hit server=hit") || row.EndsWith("client=miss server=miss")), "Tag table: client and server agree in every cell (model scale 1)");
+            Check(b.All(row => row.EndsWith("client=hit server=hit") || row.EndsWith("client=miss server=miss")), "Tag table: client and server agree in every cell (asset model scale)");
+            Check(a.SequenceEqual(b), $"Tag table: {a.Count} cells identical at model scale 1 and {assetScale.x:0.###}");
+            body.BodyRoot.localScale = assetScale;
+        }
+
+        private static System.Collections.Generic.List<string> TagTable(NetworkRound round, NetworkPlayer seeker, Marco.Network.Character.CharacterBody body, Vector3 modelScale)
+        {
+            body.BodyRoot.localScale = modelScale;
+            var rows = new System.Collections.Generic.List<string>();
+            var pivot = seeker.transform.Find("CameraPivot");
+            var controller = dummy.GetComponent<CharacterController>();
+            float height = controller.height; Vector3 center = controller.center; float radius = controller.radius;
+            var halves = (System.Collections.IDictionary)Field(round, "runnerHalves");
+            var nextTag = (System.Collections.IDictionary)Field(round, "nextTagTimes");
+            var blocker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            seeker.transform.SetPositionAndRotation(new Vector3(0, 1, 0), Quaternion.identity);
+            // Heights: same floor, Runner on a step +0.5 / -0.5, swimming at the surface (0.7 m capsule), crouched patient
+            // in treatment (1.1 m capsule, PlayerMovement crouch), directly above on the second floor (+3.5).
+            var heights = new (string name, float dy, float h)[] { ("same", 0, 0), ("up0.5", .5f, 0), ("down0.5", -.5f, 0), ("swim", -1f, .7f), ("crouch", 0, 1.1f), ("2F+3.5", 3.5f, 0) };
+            foreach (float gap in new[] { .5f, 1f, 1.19f, 1.21f })
+                foreach (float angle in new[] { 0f, 44f, 46f })
+                    foreach (var hc in heights)
+                        foreach (bool wall in new[] { false, true })
+                            foreach (float pitch in new[] { 30f, 0f, -30f })
+                            {
+                                controller.height = hc.h > 0 ? hc.h : height;
+                                controller.center = hc.h > 0 ? center + Vector3.down * ((height - hc.h) * .5f) : center;
+                                if (hc.name == "swim") controller.center = Vector3.zero;
+                                var direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+                                dummy.transform.position = new Vector3(0, 1 + hc.dy, 0) + direction * (gap + radius);
+                                if (pivot != null) pivot.localRotation = Quaternion.Euler(pitch, 0, 0);
+                                blocker.SetActive(wall);
+                                blocker.transform.SetPositionAndRotation(new Vector3(0, 1, 0) + direction * (gap * .5f) + Vector3.up * hc.dy * .5f,
+                                    Quaternion.LookRotation(direction));
+                                blocker.transform.localScale = new Vector3(2, 6, .02f);
+                                Physics.SyncTransforms();
+                                bool client = round.TryFindTagTarget(seeker.transform, round.TagRadius, out var found) && found == dummy;
+                                nextTag.Clear();
+                                halves[dummy.PlayerId] = 4;
+                                var result = round.TrySwing(seeker.PlayerId, seeker.transform, true);
+                                bool server = result == SwingResult.Wounded || result == SwingResult.Echoed;
+                                nextTag.Clear();
+                                halves[dummy.PlayerId] = 4; dummy.SendHealth(4); dummy.SetNeedsTreatment(false);
+                                rows.Add($"gap {gap:0.00} angle {angle,2:0} {hc.name,-7} wall {(wall ? "yes" : "no ")} look {(pitch > 0 ? "down30" : pitch < 0 ? "up30" : "front")}: client={(client ? "hit" : "miss")} server={(server ? "hit" : "miss")}");
+                            }
+            UnityEngine.Object.DestroyImmediate(blocker);
+            controller.height = height; controller.center = center;
+            dummy.transform.position = new Vector3(0, 1, 1.5f);
+            if (pivot != null) pivot.localRotation = Quaternion.identity;
+            Physics.SyncTransforms();
+            return rows;
+        }
+
         private static void Finish(int code)
         {
             SessionState.SetBool(Pending, false);
+            SessionState.EraseBool(NoCaptures);
             EditorApplication.update -= Tick;
             EditorApplication.Exit(code);
         }
