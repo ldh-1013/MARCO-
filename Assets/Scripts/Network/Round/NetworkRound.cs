@@ -905,7 +905,8 @@ namespace Marco.Network.Round
         {
             if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress || healingChannels.ContainsKey(healerId) ||
-                !TryGetAliveRunner(healerId, out var healer) || healer.IsTreatmentLocked)
+                !TryGetAliveRunner(healerId, out var healer) || healer.IsTreatmentLocked ||
+                healer.GetComponent<PlayerMovement>().IsSwimming)   // 3.3-2 · 8절: 수중 치료 불가 (11-14)
                 return false;
 
             NetworkPlayer patient = null;
@@ -915,7 +916,7 @@ namespace Marco.Network.Round
                 if (candidate == healer || candidate.Role != PlayerRole.Runner ||
                     candidate.Status != PlayerStatus.Alive || !candidate.NeedsTreatment ||
                     candidate.IsTreatmentLocked || healingChannels.ContainsKey(candidate.PlayerId) ||
-                    !HasMissingLives(candidate.PlayerId)) continue;
+                    !HasMissingLives(candidate.PlayerId) || candidate.GetComponent<PlayerMovement>().IsSwimming) continue;
                 float distance = (candidate.transform.position - healer.transform.position).sqrMagnitude;
                 if (distance > best || !HasClearTreatmentPath(healer, candidate)) continue;
                 best = distance;
