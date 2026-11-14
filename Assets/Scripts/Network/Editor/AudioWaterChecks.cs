@@ -48,6 +48,7 @@ namespace Marco.Network.Editor
                     player.GetComponent<PlayerInteractor>().enabled = false;
                     CheckSeekerDrone(round);
                     CheckDiveMuffle(round);
+                    CheckKnockAsMoan(round);
                     var type = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld", true);
                     water = Activator.CreateInstance(type); query = type.GetMethod("WaterState");
                     Teleport(player, new Vector3(4.5f, -.15f, 43));
@@ -239,6 +240,71 @@ namespace Marco.Network.Editor
                 Debug.Log("[AudioWaterChecks] W1-W4 dive low-pass PASS: scream and recorder 650 Hz while diving, off after surfacing, one filter, no leftover.");
             }
             finally { Dive(false); }
+        }
+        // K1 · K2 · K5 · K6 (§5.1 구분 불가 그룹, 11-14): a knock arriving at a listener plays exactly like a moan.
+        static void CheckKnockAsMoan(NetworkRound round)
+        {
+            const BindingFlags any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            var playback = round.GetComponent<Marco.Network.Audio.RoundAudioPlayback>();
+            var local = NetworkPlayer.Local;
+            MethodInfo target = null;
+            foreach (var m in typeof(NetworkRound).GetMethods(any)) if (m.Name.StartsWith("RpcLogic___SoundTarget")) target = m;
+            Require(target != null, "K: no client logic for SoundTarget");
+            var voices = (System.Collections.IList)playback.GetType().GetField("voices", any).GetValue(playback);
+            var movement = local.GetComponent<PlayerMovement>();
+            var swimming = typeof(PlayerMovement).GetField("swimming", any);
+            var surface = typeof(PlayerMovement).GetField("waterSurface", any);
+            object swimmingBefore = swimming.GetValue(movement), surfaceBefore = surface.GetValue(movement);
+            Vector3 point = local.transform.position + new Vector3(3f, 0f, 2f);
+            string Arrive(string clip, bool muffled)
+            {
+                int before = voices.Count;
+                // Same values the server sends for both (EmitSound: volume 0.65 × gain, 1.2 s × Seeker 1.5, 9 m ring).
+                target.Invoke(round, new object[] { local.Owner, clip, point, .65f * .5f, 1.8f, -1, muffled, -1, false, true,
+                    muffled ? 0f : 9f, 1.8f, -1, -1 });
+                Require(voices.Count == before + 1, $"K: {clip} did not start a sound");
+                var voice = voices[voices.Count - 1];
+                var s = (AudioSource)voice.GetType().GetField("Source").GetValue(voice);
+                var f = (AudioLowPassFilter)voice.GetType().GetField("Filter").GetValue(voice);
+                string name = s.clip != null ? s.clip.name : "null";
+                return $"{(name.StartsWith("Moan_") ? "Moan_x" : name)}|vol {s.volume:0.###}|blend {s.spatialBlend}|min {s.minDistance}|max {s.maxDistance}|rolloff {s.rolloffMode}|" +
+                       $"doppler {s.dopplerLevel}|spread {s.spread}|loop {s.loop}|at {s.transform.position}|filter {f.enabled}/{f.cutoffFrequency}";
+            }
+            try
+            {
+                foreach (bool dive in new[] { false, true })
+                {
+                    swimming.SetValue(movement, dive ? true : swimmingBefore);
+                    surface.SetValue(movement, dive ? movement.transform.position.y + 10f : surfaceBefore);
+                    foreach (bool muffled in new[] { false, true })
+                    {
+                        string knock = Arrive("Knock", muffled), moan = Arrive("Moan_1", muffled);
+                        Debug.Log($"[AudioWaterChecks] K2 dive={dive} muffled={muffled} | knock {knock} | moan {moan}");
+                        Require(knock.StartsWith("Moan_x|"), "K1: a knock did not play a moan clip: " + knock);
+                        Require(knock == moan, $"K2/K6: knock and moan differ (dive={dive}, muffled={muffled})");
+                    }
+                }
+            }
+            finally
+            {
+                swimming.SetValue(movement, swimmingBefore);
+                surface.SetValue(movement, surfaceBefore);
+                playback.Clear();
+            }
+            // K5: a knock arriving ends the Seeker drone like any other hearing result (existing behaviour kept).
+            var clock = playback.GetType().GetField("quietSince", any);
+            var fadeClock = playback.GetType().GetField("fadeStartedAt", any);
+            var tick = playback.GetType().GetMethod("TickSeekerDrone", any);
+            clock.SetValue(playback, Time.timeAsDouble - 60f); fadeClock.SetValue(playback, -1d);
+            tick.Invoke(playback, new object[] { true });
+            target.Invoke(round, new object[] { local.Owner, "Knock", point, .325f, 1.8f, -1, false, -1, false, true, 9f, 1.8f, -1, -1 });
+            bool reset = Time.timeAsDouble - (double)clock.GetValue(playback) < .05;
+            fadeClock.SetValue(playback, Time.timeAsDouble - .21);
+            tick.Invoke(playback, new object[] { true });
+            var drone = Find(round, "SeekerDrone");
+            Require(reset && (drone == null || drone.volume == 0f), "K5: a knock did not end the drone");
+            playback.Clear();
+            Debug.Log("[AudioWaterChecks] K1 K2 K5 K6 knock-as-moan PASS: same clip set, volume, 3D settings, wall and dive filters; drone ends.");
         }
         static void Teleport(NetworkPlayer player, Vector3 point) { player.GetComponent<PlayerMovement>().Teleport(point); Physics.SyncTransforms(); }
         static int Water(NetworkPlayer player) { object[] args = { player, 0f }; return (int)query.Invoke(water, args); }

@@ -78,6 +78,7 @@ namespace Marco.Network.Editor
         static void Kinds()
         {
             Check(DirectionHintRules.RingKind("") == DirectionHintRules.KindForced, "ring-only pulse (NoAudio)");
+            Check(DirectionHintRules.RingKind("Knock") == DirectionHintRules.RingKind("Moan_0"), "knock hint = moan hint (11-14)");
             Check(DirectionHintRules.RingKind("Valve") == DirectionHintRules.KindValve, "Valve");
             Check(DirectionHintRules.RingKind("ValveUnderwater") == DirectionHintRules.KindValveUnderwater, "ValveUnderwater");
             Check(DirectionHintRules.RingKind("Reflow") == DirectionHintRules.KindReflow, "Reflow");

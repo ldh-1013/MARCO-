@@ -34,6 +34,7 @@ namespace Marco.Network.Vision
             if (clip == "Treat") return KindTreat;
             if (clip == "Hurt") return KindDrowning;   // EmitDrowningSound — its ring goes separately and only when unblocked
             if (clip.StartsWith("Moan_", StringComparison.Ordinal)) return KindMoan;
+            if (clip == Marco.Network.Round.EchoKnockRules.Clip) return KindMoan;   // 11-14: a knock sounds as a moan — same hint (§5.1)
             return 0;
         }
 

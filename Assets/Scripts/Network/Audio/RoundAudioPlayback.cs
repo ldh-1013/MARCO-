@@ -153,6 +153,9 @@ namespace Marco.Network.Audio
             bool muffled, int actionId, bool local = false, float startTime = 0)
         {
             if (name == Marco.Network.Round.PulseSpec.NoAudio) return; // ring-only pulse (D9): explicitly silent
+            // §5.1 구분 불가 그룹 · 11-14: a knock plays one of the moan clips, picked here the way the server picks a moan
+            // ("Moan_" + 0..1). Local choice, never synced; everything after this line is the moan's path.
+            if (name == Marco.Network.Round.EchoKnockRules.Clip) name = "Moan_" + Random.Range(0, 2);
             var clip = Clip(name);
             if (clip == null) return;
             // The stair recording is hotter than the other footstep clips.
