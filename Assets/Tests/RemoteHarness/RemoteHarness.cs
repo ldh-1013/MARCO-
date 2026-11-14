@@ -1042,7 +1042,8 @@ namespace Marco.Tests.Remote
         }
 
         // S1 breath: c2 and c3 stand still 2 m apart, the host 4 m from c2; 82 s → breaths at 20/35/50/65/80 s.
-        // S11: c1 is held by the treatment lock for the same time: its breath timer must not run.
+        // S11: c1 is held by the treatment lock for the same time: its breath timer must keep running (§3.6, 11-14 —
+        // BreathPauseWhenLocked off), so lockedStill grows like the others and lockedBreaths counts breaths.
         IEnumerator S1S11()
         {
             if (!OpenLine(new[] { 2f, 4f, 9f }, out var center, out var spots)) { Step("S1", "\"result\":\"no open line\""); yield break; }

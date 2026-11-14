@@ -406,6 +406,17 @@ namespace Marco.Network.Editor
             Sample(c3, origin + Vector3.forward * 3.03f);
             Expect(Mathf.Approximately(c3Still2, 3f) && Get(c3, "StillSeconds") == 0f && Breaths(c3) == 0, "C3 camping: 3 m before the first breath resets",
                 $"still {c3Still2:0.##}s after 2m → {Get(c3, "StillSeconds"):0.##}s after 3m");
+
+            // C5 (§3.6 · 3.3-2, 11-14): the treatment / sound-can lock does not pause the timer — still 15 s, locked, first breath at 20 s.
+            var c5 = Fresh();
+            for (int t = 0; t < 60; t++) Sample(c5, origin);
+            player.SetTreatmentLocked(true);
+            int c5At = -1;
+            try { for (int t = 61; t <= 90 && c5At < 0; t++) { Sample(c5, origin); if (Breaths(c5) > 0) c5At = t; } }
+            finally { player.SetTreatmentLocked(false); }
+            bool pauseOff = !(bool)typeof(RippleServerFeatures).GetField("BreathPauseWhenLocked", Flags).GetValue(null);
+            Expect(pauseOff ? c5At == 80 : c5At < 0, "C5 camping: locked player keeps the timer",
+                $"BreathPauseWhenLocked={!pauseOff}; locked at 15s, first breath at {(c5At < 0 ? "none" : (c5At * .25f).ToString("0.##") + "s")} (expected {(pauseOff ? "20s" : "none")})");
         }
 
         // An open floor spot at `distance` from target with a clear line to it.
