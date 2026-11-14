@@ -31,6 +31,10 @@ namespace Marco.Network.Player
             _ => GhostLook.None,
         };
 
+        // 3.2-2 자기 실루엣 발광: only on the owner's own screen, only while it has an Echo body (eliminated Echo, escapee,
+        // mid-round joiner). Survivors never render Echo bodies (IsBodyVisible), so they never see this either.
+        public static bool HasSelfGlow(PlayerStatus status, bool isOwner) => isOwner && LookOf(status) != GhostLook.None;
+
         // Knock (3.2, G) belongs to the eliminated Echo only. Escapees and mid-round joiners never knock.
         public static bool CanKnock(PlayerStatus status) => status == PlayerStatus.Tagged;
 

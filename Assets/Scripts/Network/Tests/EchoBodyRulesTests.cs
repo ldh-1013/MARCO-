@@ -23,6 +23,20 @@ namespace Marco.Network.Tests
             Assert.AreEqual(!expected, EchoBodyRules.HasCollision(status));
         }
 
+        // 3.2-2 자기 실루엣 발광: on for the owner's own Echo body (eliminated Echo, escapee, joiner), off for living
+        // Runners and the Seeker (Alive), and never on another player's body.
+        [TestCase(Tagged, true, true)]
+        [TestCase(Escaped, true, true)]
+        [TestCase(Joiner, true, true)]
+        [TestCase(Alive, true, false)]
+        [TestCase(Tagged, false, false)]
+        [TestCase(Escaped, false, false)]
+        [TestCase(Alive, false, false)]
+        public void SelfGlow_OwnEchoOrEscapeeBodyOnly(PlayerStatus status, bool isOwner, bool expected)
+        {
+            Assert.AreEqual(expected, EchoBodyRules.HasSelfGlow(status, isOwner));
+        }
+
         [TestCase(Alive, GhostLook.None)]
         [TestCase(Tagged, GhostLook.Echo)]
         [TestCase(Escaped, GhostLook.Escapee)]

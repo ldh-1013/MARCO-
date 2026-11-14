@@ -296,6 +296,7 @@ namespace Marco.Network.Player
             // A registered model replaces the capsule; the capsule stays as the fallback.
             var ghost = EchoBodyRules.LookOf(shown);
             bool modelShown = character != null && character.Show(role.Value, visible, ghost);
+            if (character != null) character.SetSelfGlow(EchoBodyRules.HasSelfGlow(shown, IsOwner));   // 3.2-2, local only
             body.enabled = visible && !modelShown;
             body.material.color = ghost switch
             {
