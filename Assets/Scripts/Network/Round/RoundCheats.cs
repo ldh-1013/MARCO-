@@ -21,7 +21,7 @@ namespace Marco.Network.Round
             (KeyCode.F3, "F3   도망자 1명 탈출"),
             (KeyCode.F4, $"F4   {FastForwardSeconds:0}초 빨리감기"),
             (KeyCode.F5, "F5   최후 생존자 페이즈 시작"),
-            (KeyCode.F9, "F9   내 역할 전환: 생존자 ↔ 헌터"),
+            (KeyCode.F9, "F9   내 역할 전환: 도망자 ↔ 술래"),
         };
 
         private bool open;

@@ -169,7 +169,7 @@ namespace Marco.Network.Lobby
             RuinedUi.LayoutLabel("참가자", 90);
             GUILayout.Label(members + "명", GUILayout.Height(28));
             GUILayout.EndHorizontal();
-            GUILayout.Label("역할 무작위 배정 · 헌터 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 서바이버");
+            GUILayout.Label("역할 무작위 배정 · 술래 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 도망자");
             rosterScroll = GUILayout.BeginScrollView(rosterScroll, GUILayout.Height(210));
             foreach (var player in NetworkPlayer.All)
             {
