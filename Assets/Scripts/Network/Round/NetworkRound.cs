@@ -929,7 +929,15 @@ namespace Marco.Network.Round
         }
 
         [Server]
-        public void CancelHealingAction(int playerId) => EndHealingChannel(playerId, cancelled: true);
+        public void CancelHealingAction(int playerId)
+        {
+            if (healingChannels.ContainsKey(playerId)) { EndHealingChannel(playerId, cancelled: true); return; }
+            // 3.3-2: the patient's movement key also cancels a teammate treatment (11-14) — same cancel as the healer's.
+            int healer = -1;
+            foreach (var pair in healingChannels)
+                if (!pair.Value.IsBandage && pair.Value.PatientId == playerId) { healer = pair.Key; break; }
+            if (healer >= 0) EndHealingChannel(healer, cancelled: true);
+        }
 
         private bool HasMissingLives(int playerId)
         {

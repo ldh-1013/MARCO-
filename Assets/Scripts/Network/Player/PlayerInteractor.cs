@@ -22,6 +22,7 @@ namespace Marco.Network.Player
         private DrainHatchId? workingDrain;
         private bool workingTreatment;
         private bool workingBandage;
+        private bool patientCancelSent;
         private int selectedItemSlot = 1;
         private bool aimingDecoy;
         private DecoyTrajectoryPreview decoyPreview;
@@ -91,6 +92,7 @@ namespace Marco.Network.Player
                 else if (Input.GetKeyDown(KeyCode.Alpha4)) selectedItemSlot = 4;
             }
 
+            if (!player.HasHealingAction) patientCancelSent = false;
             bool inWater = GetComponent<PlayerMovement>().IsSwimming;
             if (workingBandage)
             {
@@ -136,6 +138,17 @@ namespace Marco.Network.Player
                 {
                     CancelHealingServer();
                     workingTreatment = false;
+                }
+            }
+            // 3.3-2 · 부록 A [동료 치료]: 대상(환자)이 이동 키를 누르면 치료가 취소된다. The lock stays — the press cancels,
+            // and movement starts the frame the server releases the lock (11-14). Once per treatment.
+            else if (player.HasHealingAction && !player.HealingActionIsBandage && player.IsTreatmentLocked)
+            {
+                if (!patientCancelSent && locked && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
+                    Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D)))
+                {
+                    CancelHealingServer();
+                    patientCancelSent = true;
                 }
             }
             else if (Input.GetKeyDown(KeyCode.E) && held && player.Status == PlayerStatus.Alive && !player.IsPlacingSoundCan)
