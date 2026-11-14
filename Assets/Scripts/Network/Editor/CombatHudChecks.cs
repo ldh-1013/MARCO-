@@ -179,7 +179,7 @@ namespace Marco.Network.Editor
                 }
                 if (phase == 60)
                 {
-                    Check(round.TryFindTagTarget(player.transform, round.TagRadius, out var found) && found == dummy, "Network attack reaches a body whose pivot is beyond 1.2m");
+                    Check(round.TryFindTagTarget(player.transform, round.TagRadius, out var found) && found == dummy, "Network attack reaches a body whose pivot is beyond 1.2m (surface 1.15 m, inside TagRadius)");
                     wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     wall.transform.position = new Vector3(0, 1, .6f); wall.transform.localScale = new Vector3(2, 3, .1f);
                     Check(!round.TryFindTagTarget(player.transform, round.TagRadius, out _), "Network attack cannot pass through a wall");
@@ -242,8 +242,14 @@ namespace Marco.Network.Editor
             catch (Exception error) { Debug.LogException(error); Finish(1); }
         }
         // Fixed tag table (11-14): the Seeker's model size must not change any tag result. Every cell is judged by the
-        // client call (TryFindTagTarget, as PlayerInteractor.Swing) and by the server re-check (TrySwing re-picks the
-        // target), once with the model at scale 1 (2.9 m) and once at the asset's modelScale. Written to Logs/TagMatrix.
+        // client call (TryFindTagTarget with TagRadius, as PlayerInteractor.Swing) and by the server re-check exactly as
+        // the RPC runs it (TrySwing with the client's prediction), once with the model at scale 1 (2.9 m) and once at the
+        // asset's modelScale. Distances are the judgment distance (11-14 decision A): Seeker capsule centre → the Runner's
+        // CharacterController.ClosestPoint. The Runner is placed so that distance equals the listed gap; the nominal
+        // capsule-surface distance is kept as a reference column (about 0.07 m shorter on the same floor). Expected:
+        // hit = no wall, horizontal angle <= 45 deg and judgment distance <= TagRadius. A second table checks the server
+        // allowance (TagRadius + tagServerTolerance) on its own.
+        // Written to Logs/TagMatrix.
         private static void TagMatrix(NetworkRound round, NetworkPlayer seeker)
         {
             var body = seeker.GetComponent<Marco.Network.Character.CharacterBody>();
@@ -251,13 +257,77 @@ namespace Marco.Network.Editor
             var assetScale = body.BodyRoot.localScale;
             var a = TagTable(round, seeker, body, Vector3.one);
             var b = TagTable(round, seeker, body, assetScale);
+            var cap = ServerCapTable(round, seeker);
             Directory.CreateDirectory("Logs/TagMatrix");
-            File.WriteAllText("Logs/TagMatrix/tag_matrix.txt", $"model scale 1 | asset modelScale {assetScale.x:0.###}\n" +
+            File.WriteAllText("Logs/TagMatrix/tag_matrix.txt", $"TagRadius {round.TagRadius:0.###} | model scale 1 | asset modelScale {assetScale.x:0.###}\n" +
                 string.Join("\n", a.Select((row, i) => row + " | " + b[i].Substring(b[i].LastIndexOf(':') + 1))));
-            Check(a.All(row => row.EndsWith("client=hit server=hit") || row.EndsWith("client=miss server=miss")), "Tag table: client and server agree in every cell (model scale 1)");
-            Check(b.All(row => row.EndsWith("client=hit server=hit") || row.EndsWith("client=miss server=miss")), "Tag table: client and server agree in every cell (asset model scale)");
+            File.WriteAllText("Logs/TagMatrix/server_cap.txt", string.Join("\n", cap));
+            Check(a.All(row => row.Contains("client=hit server=hit") || row.Contains("client=miss server=miss")), "Tag table: client and server agree in every cell (model scale 1)");
+            Check(b.All(row => row.Contains("client=hit server=hit") || row.Contains("client=miss server=miss")), "Tag table: client and server agree in every cell (asset model scale)");
+            Check(a.All(row => row.Contains("expected=" + (row.Contains("client=hit") ? "hit" : "miss"))), $"Tag table: every cell matches the expectation (judgment distance) at TagRadius {round.TagRadius:0.##}");
             Check(a.SequenceEqual(b), $"Tag table: {a.Count} cells identical at model scale 1 and {assetScale.x:0.###}");
+            Check(cap.All(row => row.EndsWith("ok")), $"Server allowance table: {cap.Count} cells as expected");
             body.BodyRoot.localScale = assetScale;
+        }
+
+        // Distance from the Seeker's capsule centre to the Runner's capsule (both vertical), from geometry alone.
+        private static float CapsuleGap(NetworkPlayer seeker, CharacterController runner)
+        {
+            var s = seeker.GetComponent<CharacterController>();
+            Vector3 origin = seeker.transform.position + s.center;
+            Vector3 c = runner.transform.position + runner.center;
+            float half = Mathf.Max(0, runner.height * .5f - runner.radius);
+            float y = Mathf.Clamp(origin.y, c.y - half, c.y + half);
+            return Vector3.Distance(origin, new Vector3(c.x, y, c.z)) - runner.radius;
+        }
+
+        // Judgment distance as TryFindTagTarget measures it (Seeker CC bounds centre → Runner ClosestPoint).
+        private static float JudgeGap(NetworkPlayer seeker, CharacterController runner)
+        {
+            Physics.SyncTransforms();
+            var origin = seeker.GetComponent<CharacterController>().bounds.center;
+            return (runner.ClosestPoint(origin) - origin).magnitude;
+        }
+
+        // A thin wall across the judgment line, halfway between the Seeker's capsule centre and the Runner's closest point.
+        private static void Blocker(GameObject blocker, NetworkPlayer seeker, CharacterController runner, bool wall)
+        {
+            blocker.SetActive(false);
+            Physics.SyncTransforms();
+            var origin = seeker.GetComponent<CharacterController>().bounds.center;
+            var closest = runner.ClosestPoint(origin);
+            blocker.transform.SetPositionAndRotation((origin + closest) * .5f, Quaternion.LookRotation(closest - origin));
+            blocker.transform.localScale = new Vector3(3, 3, .02f);
+            blocker.SetActive(wall);
+            Physics.SyncTransforms();
+        }
+
+        // Moves the Runner along the horizontal direction until the judgment distance equals the gap (or the closest it can).
+        private static float PlaceAt(NetworkPlayer seeker, CharacterController runner, Vector3 direction, float dy, float gap)
+        {
+            float h = gap + runner.radius;
+            for (int i = 0; i < 4; i++)
+            {
+                dummy.transform.position = new Vector3(0, 1 + dy, 0) + direction * h;
+                h = Mathf.Max(.01f, h + gap - JudgeGap(seeker, runner));
+            }
+            dummy.transform.position = new Vector3(0, 1 + dy, 0) + direction * h;
+            return JudgeGap(seeker, runner);
+        }
+
+        private static (bool client, bool server) Judge(NetworkRound round, NetworkPlayer seeker, bool claim, bool useClient)
+        {
+            var halves = (System.Collections.IDictionary)Field(round, "runnerHalves");
+            var nextTag = (System.Collections.IDictionary)Field(round, "nextTagTimes");
+            Physics.SyncTransforms();
+            bool client = round.TryFindTagTarget(seeker.transform, round.TagRadius, out var found) && found == dummy;
+            nextTag.Clear();
+            halves[dummy.PlayerId] = 4;
+            var result = round.TrySwing(seeker.PlayerId, seeker.transform, useClient ? client : claim);
+            bool server = result == SwingResult.Wounded || result == SwingResult.Echoed;
+            nextTag.Clear();
+            halves[dummy.PlayerId] = 4; dummy.SendHealth(4); dummy.SetNeedsTreatment(false);
+            return (client, server);
         }
 
         private static System.Collections.Generic.List<string> TagTable(NetworkRound round, NetworkPlayer seeker, Marco.Network.Character.CharacterBody body, Vector3 modelScale)
@@ -267,14 +337,12 @@ namespace Marco.Network.Editor
             var pivot = seeker.transform.Find("CameraPivot");
             var controller = dummy.GetComponent<CharacterController>();
             float height = controller.height; Vector3 center = controller.center; float radius = controller.radius;
-            var halves = (System.Collections.IDictionary)Field(round, "runnerHalves");
-            var nextTag = (System.Collections.IDictionary)Field(round, "nextTagTimes");
             var blocker = GameObject.CreatePrimitive(PrimitiveType.Cube);
             seeker.transform.SetPositionAndRotation(new Vector3(0, 1, 0), Quaternion.identity);
             // Heights: same floor, Runner on a step +0.5 / -0.5, swimming at the surface (0.7 m capsule), crouched patient
             // in treatment (1.1 m capsule, PlayerMovement crouch), directly above on the second floor (+3.5).
             var heights = new (string name, float dy, float h)[] { ("same", 0, 0), ("up0.5", .5f, 0), ("down0.5", -.5f, 0), ("swim", -1f, .7f), ("crouch", 0, 1.1f), ("2F+3.5", 3.5f, 0) };
-            foreach (float gap in new[] { .5f, 1f, 1.19f, 1.21f })
+            foreach (float gap in new[] { .5f, 1f, 1.19f, 1.21f, 1.55f, 1.59f, 1.61f, 1.65f, 2f, 3.5f })
                 foreach (float angle in new[] { 0f, 44f, 46f })
                     foreach (var hc in heights)
                         foreach (bool wall in new[] { false, true })
@@ -284,26 +352,47 @@ namespace Marco.Network.Editor
                                 controller.center = hc.h > 0 ? center + Vector3.down * ((height - hc.h) * .5f) : center;
                                 if (hc.name == "swim") controller.center = Vector3.zero;
                                 var direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
-                                dummy.transform.position = new Vector3(0, 1 + hc.dy, 0) + direction * (gap + radius);
+                                PlaceAt(seeker, controller, direction, hc.dy, gap);
                                 if (pivot != null) pivot.localRotation = Quaternion.Euler(pitch, 0, 0);
-                                blocker.SetActive(wall);
-                                blocker.transform.SetPositionAndRotation(new Vector3(0, 1, 0) + direction * (gap * .5f) + Vector3.up * hc.dy * .5f,
-                                    Quaternion.LookRotation(direction));
-                                blocker.transform.localScale = new Vector3(2, 6, .02f);
+                                Blocker(blocker, seeker, controller, wall);
                                 Physics.SyncTransforms();
-                                bool client = round.TryFindTagTarget(seeker.transform, round.TagRadius, out var found) && found == dummy;
-                                nextTag.Clear();
-                                halves[dummy.PlayerId] = 4;
-                                var result = round.TrySwing(seeker.PlayerId, seeker.transform, true);
-                                bool server = result == SwingResult.Wounded || result == SwingResult.Echoed;
-                                nextTag.Clear();
-                                halves[dummy.PlayerId] = 4; dummy.SendHealth(4); dummy.SetNeedsTreatment(false);
-                                rows.Add($"gap {gap:0.00} angle {angle,2:0} {hc.name,-7} wall {(wall ? "yes" : "no ")} look {(pitch > 0 ? "down30" : pitch < 0 ? "up30" : "front")}: client={(client ? "hit" : "miss")} server={(server ? "hit" : "miss")}");
+                                float d = CapsuleGap(seeker, controller);
+                                float cp = JudgeGap(seeker, controller);
+                                bool expected = !wall && angle <= 45f && cp <= round.TagRadius;
+                                var (client, server) = Judge(round, seeker, false, true);
+                                rows.Add($"gap {gap:0.00} angle {angle,2:0} {hc.name,-7} wall {(wall ? "yes" : "no ")} look {(pitch > 0 ? "down30" : pitch < 0 ? "up30" : "front")} judged {cp:0.000} (nominal surface {d:0.000}) expected={(expected ? "hit" : "miss")}: client={(client ? "hit" : "miss")} server={(server ? "hit" : "miss")}");
                             }
             UnityEngine.Object.DestroyImmediate(blocker);
             controller.height = height; controller.center = center;
             dummy.transform.position = new Vector3(0, 1, 1.5f);
             if (pivot != null) pivot.localRotation = Quaternion.identity;
+            Physics.SyncTransforms();
+            return rows;
+        }
+
+        // Server allowance: the server accepts a claimed hit up to TagRadius + tagServerTolerance (the Runner moved on
+        // during the round trip), never without a claim, and never at 46 deg or through a wall.
+        private static System.Collections.Generic.List<string> ServerCapTable(NetworkRound round, NetworkPlayer seeker)
+        {
+            var rows = new System.Collections.Generic.List<string>();
+            var controller = dummy.GetComponent<CharacterController>();
+            float limit = round.TagRadius + (float)Field(round, "tagServerTolerance");
+            var blocker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            seeker.transform.SetPositionAndRotation(new Vector3(0, 1, 0), Quaternion.identity);
+            foreach (float gap in new[] { 1f, 1.6f, 2f, 2.39f, 2.41f, 3f })
+                foreach (var (angle, wall, claim) in new[] { (0f, false, true), (46f, false, true), (0f, true, true), (0f, false, false) })
+                {
+                    var direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+                    PlaceAt(seeker, controller, direction, 0, gap);
+                    Blocker(blocker, seeker, controller, wall);
+                    Physics.SyncTransforms();
+                    float d = JudgeGap(seeker, controller);
+                    bool expected = claim && !wall && angle <= 45f && d <= limit;
+                    var (_, server) = Judge(round, seeker, claim, false);
+                    rows.Add($"server limit {limit:0.00} gap {gap:0.00} angle {angle,2:0} wall {(wall ? "yes" : "no ")} claim {(claim ? "hit " : "miss")} judged {d:0.000}: expected={(expected ? "accept" : "reject")} server={(server ? "accept" : "reject")} {(expected == server ? "ok" : "MISMATCH")}");
+                }
+            UnityEngine.Object.DestroyImmediate(blocker);
+            dummy.transform.position = new Vector3(0, 1, 1.5f);
             Physics.SyncTransforms();
             return rows;
         }

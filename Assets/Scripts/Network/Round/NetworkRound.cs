@@ -92,9 +92,13 @@ namespace Marco.Network.Round
         [SerializeField] private float interactRange = 2f;
         [Header("Tag (기획서 3.1-2 · 부록 A [태그 판정])")]
         // [수정] Client attack range is derived from the base range and multiplier.
-        [SerializeField] private float tagBaseRadius = 1.2f;
+        [SerializeField] private float tagBaseRadius = 1.6f;
         // [추가] Keep the hunter attack range adjustable without changing the character scale.
-        [SerializeField] private float tagRangeMultiplier = 3f;
+        [SerializeField] private float tagRangeMultiplier = 1f;
+        // Server re-check allowance on top of TagRadius (기획서 3.1-2 · 부록 A [태그 판정]): movement is owner-authoritative,
+        // so a sprinting Runner (7.5 m/s × 100 ms round trip ≈ 0.75 m) has moved on by the time the swing arrives.
+        // Kept as "radius + allowance" so changing the radius keeps the same latency margin.
+        [SerializeField] private float tagServerTolerance = .8f;
         // Half of the horizontal cone in front of the Seeker.
         [SerializeField] private float tagHalfAngle = 45f;
         [SerializeField] private float tagHitCooldown = 2.5f;
@@ -1131,7 +1135,8 @@ namespace Marco.Network.Round
                 patientMotion.StopTreatment();
         }
 
-        // [수정] Client and server both use TagRadius; server still re-picks the target from its own state.
+        // The client predicts with TagRadius (targetInReach); the server re-picks the target from its own state,
+        // allowing up to TagRadius + tagServerTolerance for latency (기획서 3.1-2).
         [Server]
         public SwingResult TrySwing(int seekerId, Transform seeker, bool targetInReach)
         {
@@ -1140,7 +1145,7 @@ namespace Marco.Network.Round
             if (nextTagTimes.TryGetValue(seekerId, out float next) && Time.time < next) return SwingResult.Rejected;
 
             NetworkPlayer target = null;
-            var result = targetInReach && TryFindTagTarget(seeker, TagRadius, out target)
+            var result = targetInReach && TryFindTagTarget(seeker, TagRadius + tagServerTolerance, out target)
                 ? Hit(target) : SwingResult.Missed;
             nextTagTimes[seekerId] = Time.time + (result == SwingResult.Missed ? tagMissCooldown : tagHitCooldown);
             if (result != SwingResult.Missed) Debug.Log($"[MARCO] P{seekerId} hit P{target.PlayerId}: {result}");
@@ -1199,7 +1204,7 @@ namespace Marco.Network.Round
         }
 
         // Nearest alive Runner body surface within range (3D) and the horizontal ±tagHalfAngle cone, with
-        // no wall in between. Both client and server call it with TagRadius.
+        // no wall in between. The client calls it with TagRadius, the server with TagRadius + tagServerTolerance.
         public bool TryFindTagTarget(Transform seeker, float range, out NetworkPlayer target)
         {
             Physics.SyncTransforms();
