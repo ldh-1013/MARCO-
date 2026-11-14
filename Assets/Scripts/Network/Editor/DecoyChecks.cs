@@ -23,6 +23,11 @@ namespace Marco.Network.Editor
         private static double deadline, until;
         private static bool heard, sawRing, checkedLanding;
         private static Vector3 expectedLanding;
+        private static int materialIndex;
+        private static Vector3 lastAt;
+        private static Type WorldType => typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld");
+        private static float stepDistance, expectedRadius;
+        private static readonly string[] Materials = { "Tile", "Concrete", "Metal", "Carpet", "Mat" };
         private static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly Vector3 TestPosition = new(2000, .05f, 2000);
         private static GameObject wall;
@@ -287,11 +292,66 @@ namespace Marco.Network.Editor
                 {
                     if (Count(round, "decoyFlights") == 0 || player.DecoyCount != 0)
                     { Check(now < until, "Release did not send real throw RPC"); return; }
-                    typeof(NetworkRound).GetMethod("ResetRound", Flags).Invoke(round, null);
-                    Check(Count(round, "decoyFlights") == 0 && Count(round, "decoyTrails") == 0, "Reset left devices");
-                    Check(!round.TryThrowDecoy(player.PlayerId, Vector3.forward), "Lobby throw accepted");
-                    Debug.Log("[DecoyChecks] PASS: two real shelf spawns visible in darkness, accessible pickup; hold/release/cancel, landing, fake steps, wall stop, expiry/reset.");
-                    Finish(0);
+                    materialIndex = -1; until = now + 10; phase = 7; return;
+                }
+                // 5.9 · 5.1-1 (11-14): on each floor material a fake step has the real footstep's radius multiplier and clip family.
+                // The listener stands right above the step, so gain = 1 - distance / radius gives the radius the server used.
+                if (phase == 7)
+                {
+                    var playback = round.GetComponent<Marco.Network.Audio.RoundAudioPlayback>();
+                    if (materialIndex < 0)
+                    {
+                        // Let the thrown device land and its trail finish so its steps cannot mix into the measurement.
+                        if (Count(round, "decoyFlights") + Count(round, "decoyTrails") > 0) { Check(now < until, "Thrown device never settled"); return; }
+                        materialIndex = 0;
+                    }
+                    if (materialIndex > 0 && now < until) return;
+                    if (materialIndex > 0)
+                    {
+                        string mat = Materials[materialIndex - 1];
+                        AudioSource heardStep = null;
+                        foreach (var source in round.GetComponentsInChildren<AudioSource>())
+                            if (source.name.StartsWith("SFX ") && source.clip != null) heardStep = source;
+                        Check(heardStep != null, $"[{mat}] fake step not heard (step at {lastAt}, ear {stepDistance:0.00} m above)");
+                        float radius = stepDistance / (1f - heardStep.volume / .7f);
+                        string clip = heardStep.clip.name;
+                        bool clipOk = (int)WorldType.GetMethod("FootstepVariants").Invoke(null, new object[] { mat }) == 1 ? (clip == mat || clip == mat + " Cue") : clip.StartsWith(mat + "_");   // single clips are trimmed into "<name> Cue" (LoopClip.TrimCue)
+                        Debug.Log($"[DecoyChecks] material {mat}: fake step radius {radius:0.00} m (real footstep {expectedRadius:0.00} m), clip {clip}");
+                        Check(Mathf.Abs(radius - expectedRadius) < .05f && clipOk, $"[{mat}] fake step differs from a real footstep: {radius:0.00} vs {expectedRadius:0.00}, clip {clip}");
+                        playback.Clear();
+                    }
+                    if (materialIndex >= Materials.Length)
+                    {
+                        Check(DecoyConfig.StepInterval == .4f && DecoyConfig.MovingSteps == 5, "Interval / count changed");
+                        Debug.Log("[DecoyChecks] PASS: fake steps use the real footstep material multiplier and clip on Tile, Concrete, Metal, Carpet, Mat; interval 0.4 s and 5 steps unchanged.");
+                        typeof(NetworkRound).GetMethod("ResetRound", Flags).Invoke(round, null);
+                        Check(Count(round, "decoyFlights") == 0 && Count(round, "decoyTrails") == 0, "Reset left devices");
+                        Check(!round.TryThrowDecoy(player.PlayerId, Vector3.forward), "Lobby throw accepted");
+                        Debug.Log("[DecoyChecks] PASS: two real shelf spawns visible in darkness, accessible pickup; hold/release/cancel, landing, fake steps, wall stop, expiry/reset.");
+                        Finish(0); return;
+                    }
+                    string material = Materials[materialIndex];
+                    var world = Activator.CreateInstance(WorldType, true);
+                    string Surface(Collider c, Vector3 p) => (string)WorldType.GetMethod("Surface").Invoke(world, new object[] { c, p });
+                    Collider floorHit = null; Vector3 at = default;
+                    foreach (var c in UnityEngine.Object.FindObjectsByType<Collider>())
+                    {
+                        if (c.isTrigger || c.bounds.size.x < 1.5f || c.bounds.size.z < 1.5f) continue;
+                        Vector3 top = new Vector3(c.bounds.center.x, c.bounds.max.y, c.bounds.center.z);
+                        if (!Physics.Raycast(top + Vector3.up * .5f, Vector3.down, out var hit, 1f) || hit.collider != c) continue;
+                        if (Surface(c, hit.point) != material) continue;
+                        if (Physics.Raycast(hit.point + Vector3.up * .1f, Vector3.up, 2.6f)) continue;   // open above: nothing between the step and the ear
+                        floorHit = c; at = hit.point; break;
+                    }
+                    Check(floorHit != null, "No floor of material " + material);
+                    playback.Clear();
+                    player.GetComponent<PlayerMovement>().Teleport(at + Vector3.up * Marco.Network.Map.GamePoints.PlayerStandHeight);
+                    Physics.SyncTransforms();
+                    float eye = player.GetComponent<PlayerMovement>().WaterEyeHeight;
+                    stepDistance = eye - (at.y + .025f); lastAt = at;
+                    expectedRadius = DecoyConfig.FootstepRadius * (float)WorldType.GetMethod("SurfaceMultiplier").Invoke(world, new object[] { floorHit, at });   // the 6 m grade, as a real footstep
+                    typeof(NetworkRound).GetMethod("EmitDecoyStep", Flags).Invoke(round, new object[] { at, floorHit, false, 1 });
+                    materialIndex++; until = now + .12; return;   // read before the shortest step clip (0.34 s) fades
                 }
             }
             catch (Exception exception) { Debug.LogException(exception); Finish(1); }

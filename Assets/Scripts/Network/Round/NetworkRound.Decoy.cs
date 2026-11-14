@@ -194,11 +194,23 @@ namespace Marco.Network.Round
         private void EmitDecoyStep(Vector3 origin, Collider floor, bool impact, int step)
         {
             soundWorld ??= new SoundWorld();
-            string surface = soundWorld.Surface(floor, origin);
-            if (surface != "Tile") surface = "Concrete";
-            float radius = (impact ? DecoyConfig.ImpactRadius : DecoyConfig.FootstepRadius) *
-                (surface == "Tile" ? 1.3f : 1f);
-            string clip = surface + "_" + step % (surface == "Tile" ? 3 : 4);
+            string material = soundWorld.Surface(floor, origin);
+            float radius; string clip;
+            if (impact)
+            {
+                // Landing is not a footstep (5.9 covers footsteps only — 스펙 해석, 11-14): unchanged.
+                string surface = material == "Tile" ? "Tile" : "Concrete";
+                radius = DecoyConfig.ImpactRadius * (surface == "Tile" ? 1.3f : 1f);
+                clip = surface + "_0";
+            }
+            else
+            {
+                // 5.9 · 5.1-1 (11-14): a fake step uses the real footstep's material multiplier and clip choice on this floor.
+                int variants = SoundWorld.FootstepVariants(material);
+                if (variants == 0) { material = "Concrete"; variants = SoundWorld.FootstepVariants(material); }   // unmapped floor: as before
+                radius = DecoyConfig.FootstepRadius * soundWorld.SurfaceMultiplier(floor, origin);
+                clip = variants == 1 ? material : material + "_" + Random.Range(0, variants);
+            }
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive || listener.IsEcho ||
