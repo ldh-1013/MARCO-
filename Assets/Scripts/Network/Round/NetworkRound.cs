@@ -497,13 +497,12 @@ namespace Marco.Network.Round
             SyncStartPhase();
         }
 
-        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
-        // pulses go through the pulse delivery path (14.2), which the sound/ripple part (남경) has not
-        // built yet — like LogValveSoundSink, only log here and connect it when that path exists.
+        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). With ExitPulseJudged the pulses go
+        // through the judged EmitSound path (EmitExitPulsesJudged); otherwise the temporary ring RPC below draws them.
         private void EmitExitPulses()
         {
             foreach (var exit in ExitView.All)
-                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
+                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m)");
             if (RippleServerFeatures.ExitPulseJudged) EmitExitPulsesJudged();
             else ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
         }
