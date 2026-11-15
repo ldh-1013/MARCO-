@@ -577,7 +577,8 @@ namespace Marco.Tests.Remote
             var voice = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponent<PlayerVoice>() : null;
             if (voice == null) return false;
             float db = Db(frame);
-            int level = db >= -15f ? 3 : db >= -30f ? 2 : db > -50f ? 1 : 0;
+            // The same rule as MicrophoneVisionController (MicCalibration.Grade, offset 0 — PulseSpec.TalkDbfs / ShoutDbfs).
+            int level = Marco.Network.Voice.MicCalibration.Grade(db, 0f, Marco.Network.Voice.VoiceActivityGate.SilenceDb);
             consecutive = level == 0 ? 0 : consecutive + 1;
             if (level == 0 || consecutive < 3) return false;
             var grade = forced ?? (level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper);
