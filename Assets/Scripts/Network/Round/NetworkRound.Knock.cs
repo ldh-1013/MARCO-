@@ -101,7 +101,7 @@ namespace Marco.Network.Round
             if (result.Value != RoundResult.InProgress) return;
             // The knocker must still be an eliminated Echo in the room; the point is the stored one.
             if (!NetworkPlayer.TryGet(echoId, out var echo) || echo == null || !EchoBodyRules.CanKnock(echo.Status)) return;
-            EmitSound(EchoKnockRules.Clip, point, EchoKnockRules.Radius, 0.65f, EchoKnockRules.Seconds, sourceId: echoId,
+            EmitSound(EchoKnockRules.Clip, point, EchoKnockRules.Radius, PulseSpec.GroupVolume, EchoKnockRules.Seconds, sourceId: echoId,
                 playAudio: true, forcePulse: true, snapshotA: SourceSnapshotRules.FakeRunner);   // 11-14: sounds as a moan — same volume as the moan call (NetworkRound.Audio.cs TickAudioServer)
             KnocksSounded++;
             ServerReportKnock(echoId, point);   // 8.3 — when the knock actually sounds

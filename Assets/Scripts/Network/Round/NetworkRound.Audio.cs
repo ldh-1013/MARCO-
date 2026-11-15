@@ -102,7 +102,7 @@ namespace Marco.Network.Round
                 if (wounded && Time.time >= motion.NextMoan)
                 {
                     motion.NextMoan = Time.time + 6f;
-                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId, snapshotA: player.PlayerId);
+                    EmitSound("Moan_" + Random.Range(0, 2), position, PulseSpec.Moan, PulseSpec.GroupVolume, PulseSpec.MoanSeconds, sourceId: player.PlayerId, snapshotA: player.PlayerId);
                 }
                 motion.Wounded = wounded;
             }
@@ -125,11 +125,11 @@ namespace Marco.Network.Round
                 var channel = pair.Value;
                 if (!NetworkPlayer.TryGet(channel.ActorId, out var actor)) continue;
                 if (healingSoundTimes.TryGetValue(pair.Key, out double next) && Time.realtimeSinceStartupAsDouble < next) continue;
-                healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? 2.0 : 2.25);
+                healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? PulseSpec.BandagePeriod : PulseSpec.TreatPeriod);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
-                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId,
+                    channel.IsBandage ? PulseSpec.Bandage : PulseSpec.Treat, 0.65f, channel.IsBandage ? PulseSpec.BandageSeconds : PulseSpec.TreatSeconds, -1, false, channel.ActorId, channel.ActorId,
                     snapshotA: channel.ActorId, snapshotB: channel.IsBandage ? SourceSnapshotRules.None : channel.PatientId);
-                RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? 6f : 9f, 1.2f); // 기획서 8.2 — 치료자만
+                RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? PulseSpec.Bandage : PulseSpec.Treat, channel.IsBandage ? PulseSpec.BandageSeconds : PulseSpec.TreatSeconds); // 기획서 8.2 — 치료자만
             }
             TickDrainWorkPulse();
         }
@@ -168,8 +168,8 @@ namespace Marco.Network.Round
                 if (swimming) origin.y = surface;
                 Vector3 ringPoint = position;
                 ringPoint.y = swimming ? surface + .025f : source.GetComponent<CharacterController>().bounds.min.y + .025f;
-                float radius = (fast ? 6f : 2f) * (swimming ? 1f : soundWorld.SurfaceMultiplier(floor, position));
-                RecordAwardNoise(id, AwardNoise.Footstep, radius, fast ? .8f : .4f); // 기획서 8.2 — 발소리 · 헤엄 1회
+                float radius = (fast ? PulseSpec.Sprint : PulseSpec.Walk) * (swimming ? 1f : soundWorld.SurfaceMultiplier(floor, position));
+                RecordAwardNoise(id, AwardNoise.Footstep, radius, fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds); // 기획서 8.2 — 발소리 · 헤엄 1회
                 foreach (var listener in NetworkPlayer.All)
                 {
                     if (listener == source || listener.Status != PlayerStatus.Alive || listener.IsEcho) continue;
@@ -180,7 +180,7 @@ namespace Marco.Network.Round
                         visiblePoint = perceived;
                         visiblePoint.y = listener.GetComponent<CharacterController>().bounds.min.y + .025f;
                     }
-                    float duration = (fast ? .8f : .4f) * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    float duration = (fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds) * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
                     MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),
                         duration, blocked, ring && fast, visiblePoint, source.Role == PlayerRole.Seeker);
                 }
@@ -279,8 +279,8 @@ namespace Marco.Network.Round
             motion.NextBreath = motion.StillSeconds + 15f;
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
             float breathRadius = RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f;
-            EmitSound(clip, position, breathRadius, .65f, .6f, sourceId: player.PlayerId);
-            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, breathRadius, .6f); // 기획서 8.2 · §3.6 — the radius actually emitted (3m→9m), 0.6s
+            EmitSound(clip, position, breathRadius, PulseSpec.GroupVolume, PulseSpec.BreathSeconds, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, breathRadius, PulseSpec.BreathSeconds); // 기획서 8.2 · §3.6 — the radius actually emitted (3m→9m), 0.6s
         }
 
         // A TargetRpc only reaches a live connection that still observes this object. A player whose client is

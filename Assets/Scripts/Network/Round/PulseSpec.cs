@@ -12,6 +12,19 @@ namespace Marco.Network.Round
         public const float Shout = 22f, ShoutSeconds = 2.5f;
         /// <summary>부록 A [소리 등급] Scream 비명 9m · 1.0s — the Seeker's shout failed to be suppressed (§3.5).</summary>
         public const float Scream = 9f, ScreamSeconds = 1f;
+        /// <summary>부록 A [소리 등급] Walk 걷기 2m · 0.4s / Sprint 질주 6m · 0.8s — before the floor multiplier (§5.1-1 · §5.9).</summary>
+        public const float Walk = 2f, WalkSeconds = .4f, Sprint = 6f, SprintSeconds = .8f;
+        /// <summary>부록 A [소리 등급] · [신음 Moan] 신음 9m · 1.2s (§5.1-2).</summary>
+        public const float Moan = 9f, MoanSeconds = 1.2f;
+        /// <summary>부록 A [소리 등급] · [붕대] Bandage 6m · 1.2s, every 2s (§7).</summary>
+        public const float Bandage = 6f, BandageSeconds = 1.2f, BandagePeriod = 2f;
+        /// <summary>부록 A [소리 등급] · [동료 치료] Treat 9m · 1.2s, every 2.25s (§3.3-2).</summary>
+        public const float Treat = 9f, TreatSeconds = 1.2f, TreatPeriod = 2.25f;
+        /// <summary>
+        /// Playback volume of the indistinguishable group (moan · knock · breath). 구현 시작값 — [GAP]: 기획서에 재생 볼륨 수치가 없다
+        /// (부록 A 미등록, 플레이 테스트로 조정).
+        /// </summary>
+        public const float GroupVolume = .65f;
         /// <summary>부록 A [외침] 공포 반경 22m — ability judgement, no occlusion (§3.5).</summary>
         public const float FearRadius = 22f;
         /// <summary>부록 A [소리 등급] 술래 청취 반경 ×1.2 (§5.7).</summary>
