@@ -180,7 +180,7 @@ namespace Marco.Network.Round
                         visiblePoint = perceived;
                         visiblePoint.y = listener.GetComponent<CharacterController>().bounds.min.y + .025f;
                     }
-                    float duration = (fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds) * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                    float duration = (fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds) * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1f);
                     MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),
                         duration, blocked, ring && fast, visiblePoint, source.Role == PlayerRole.Seeker);
                 }
@@ -312,7 +312,7 @@ namespace Marco.Network.Round
                 if (!soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
                     out bool blocked, out float perceivedRadius) && !own) continue;
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
-                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? 1.5f : 1f;
+                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? PulseSpec.SeekerDuration : 1f;
                 float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
                 bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));

@@ -29,6 +29,8 @@ namespace Marco.Network.Round
         public const float FearRadius = 22f;
         /// <summary>부록 A [소리 등급] 술래 청취 반경 ×1.2 (§5.7).</summary>
         public const float SeekerHearing = 1.2f;
+        /// <summary>부록 A [역할별 인지 배율] 술래 "반경 ×1.2, 지속 ×1.5 (서버 판정 단계에 적용되는 기능적 수치)" — 지속 쪽 (§5.7).</summary>
+        public const float SeekerDuration = 1.5f;
         /// <summary>부록 A [숨 게이지] 질식 페널티 "고함급(22m) 파문 1회" — 지속은 고함 등급 정의를 따른다 (11-15).</summary>
         public const float Drowning = Shout, DrowningSeconds = ShoutSeconds;
         // 부록 A [소리 등급] Valve 12m; valve A sits in machine ambience × 0.5 → 6m (§6.1-0).
