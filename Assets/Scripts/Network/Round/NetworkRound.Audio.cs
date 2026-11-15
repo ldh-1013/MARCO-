@@ -127,7 +127,7 @@ namespace Marco.Network.Round
                 if (healingSoundTimes.TryGetValue(pair.Key, out double next) && Time.realtimeSinceStartupAsDouble < next) continue;
                 healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? PulseSpec.BandagePeriod : PulseSpec.TreatPeriod);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
-                    channel.IsBandage ? PulseSpec.Bandage : PulseSpec.Treat, 0.65f, channel.IsBandage ? PulseSpec.BandageSeconds : PulseSpec.TreatSeconds, -1, false, channel.ActorId, channel.ActorId,
+                    channel.IsBandage ? PulseSpec.Bandage : PulseSpec.Treat, PulseSpec.GroupVolume, channel.IsBandage ? PulseSpec.BandageSeconds : PulseSpec.TreatSeconds, -1, false, channel.ActorId, channel.ActorId,
                     snapshotA: channel.ActorId, snapshotB: channel.IsBandage ? SourceSnapshotRules.None : channel.PatientId);
                 RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? PulseSpec.Bandage : PulseSpec.Treat, channel.IsBandage ? PulseSpec.BandageSeconds : PulseSpec.TreatSeconds); // 기획서 8.2 — 치료자만
             }
@@ -275,8 +275,8 @@ namespace Marco.Network.Round
                 return;
             }
             motion.StillSeconds += dt;
-            if (motion.StillSeconds < Mathf.Max(20f, motion.NextBreath)) return;
-            motion.NextBreath = motion.StillSeconds + 15f;
+            if (motion.StillSeconds < Mathf.Max(AwardRules.BreathStartSeconds, motion.NextBreath)) return;
+            motion.NextBreath = motion.StillSeconds + AwardRules.BreathStepSeconds;   // 부록 A [정지 감지] 20초 정지 후 · 15초마다
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
             float breathRadius = RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f;
             EmitSound(clip, position, breathRadius, PulseSpec.GroupVolume, PulseSpec.BreathSeconds, sourceId: player.PlayerId);
