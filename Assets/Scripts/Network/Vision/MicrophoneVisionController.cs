@@ -43,6 +43,40 @@ namespace Marco.Network.Vision
         public (float dbfs, int level) LastMeter { get; private set; } = (float.NegativeInfinity, 0);
         public bool HasMicrophoneInput => microphoneClip != null && !string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice);
 
+        // 5.2 ③ · 부록 A [마이크 캘리브레이션]: personal offset on the −30 / −15 grade boundaries only (0 = the fixed
+        // thresholds). Not applied to the −50 voice floor or to the vision radius below. Saving it is the lobby's job.
+        private float calibrationOffsetDb;
+        private MicCalibrationSession calibration;
+        private Action<MicCalibration.Result> calibrationDone;
+        public float CalibrationOffsetDb => calibrationOffsetDb;
+        public bool IsCalibrating => calibration != null;
+        public void SetCalibrationOffset(float offsetDb) => calibrationOffsetDb = float.IsNaN(offsetDb) ? 0f : MicCalibration.ClampOffset(offsetDb);
+        // The level this controller gives a frame of this loudness (0 silence … 3 shout).
+        public int GradeLevel(float dbfs) => MicCalibration.Grade(dbfs, calibrationOffsetDb, silenceDb);
+
+        // One 3 s prompt: every processed frame is also recorded until 150 frames or 3 s, then onComplete gets the
+        // result once. The frame keeps its normal outputs (voice, rings, meter) — measuring only watches them.
+        public void BeginCalibration(Action<MicCalibration.Result> onComplete)
+        {
+            calibration = new MicCalibrationSession(Time.unscaledTime);
+            calibrationDone = onComplete;
+        }
+
+        public void CancelCalibration()
+        {
+            calibration = null;
+            calibrationDone = null;
+        }
+
+        private void FinishCalibration(bool force)
+        {
+            if (calibration == null || (!force && !calibration.IsDue(Time.unscaledTime))) return;
+            var result = calibration.Complete();
+            var done = calibrationDone;
+            CancelCalibration();
+            done?.Invoke(result);
+        }
+
         [Header("Brightness implementation")]
         [SerializeField] private BrightnessMode brightnessMode = BrightnessMode.MarcoMinus;
 
@@ -235,6 +269,7 @@ namespace Marco.Network.Vision
                 if (brightnessMode == BrightnessMode.MarcoPlus && Time.unscaledTime > revealUntil)
                     targetRadius = 0;
             }
+            FinishCalibration(false);
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
@@ -256,6 +291,7 @@ namespace Marco.Network.Vision
 
         private void OnDisable()
         {
+            FinishCalibration(true);   // a prompt cut short still reports (as measured so far — usually invalid)
             clickerFlashActive = false;
             clickerFlashStartedAt = float.NegativeInfinity;
             clickerFlashUntil = 0f;
@@ -281,7 +317,8 @@ namespace Marco.Network.Vision
             MicrophoneSamplesReady?.Invoke(sampleBuffer);
             double squares = 0; for (var i = 0; i < sampleBuffer.Length; i++) squares += sampleBuffer[i] * sampleBuffer[i];
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
-            var level = MicCalibration.Grade(dbfs, 0f, silenceDb);   // 5.2 ⑥ — calibration offset not wired yet (0)
+            calibration?.Add(dbfs, MicCalibration.IsClippedFrame(microphoneReadBuffer, FrameSamples * channels));
+            var level = GradeLevel(dbfs);   // 5.2 ⑥ — boundaries moved by the calibration offset (0 until the lobby sets one)
             LastMeter = (dbfs, level);
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
             bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
