@@ -12,7 +12,7 @@ namespace Marco.Network.Round
         public const float CooldownSeconds = 25f;
         public const float DelaySeconds = 1.5f;
         public const int Limit = 5;
-        public const float Radius = 9f;
+        public const float Radius = Marco.Core.WinCondition.AwardRules.KnockRadius;   // 정본: AwardRules.KnockRadius (부록 A [소리 등급] Knock 9m)
         public const float Seconds = 1.2f;
         // No knock clip exists (Resources/MarcoSound): the knock goes out as a ring-only pulse (PulseSpec.NoAudio on
         // the wire), like the other forced pulses. This name never reaches a client.

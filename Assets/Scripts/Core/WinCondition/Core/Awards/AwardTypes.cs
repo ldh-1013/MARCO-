@@ -53,6 +53,10 @@ namespace Marco.Core.WinCondition
         public const float BreathStartSeconds = 20f, BreathStepSeconds = 15f;
         public const float BreathBaseRadius = 3f, BreathRadiusStep = 2f, BreathMaxRadius = 9f;
 
+        // 부록 A [소리 등급] "Knock 노크 9m / 1.2s" · [메아리] "노크: 발생 9m·1.2초" (§3.2).
+        // 어워드 규칙 클래스에 두지만 노크 반경의 정본이다 — EchoKnockRules(Network)와 LureJudge(최고의 낚시상 진입 반경)가 이 값을 읽는다.
+        public const float KnockRadius = 9f;
+
         public static float BreathRadiusAt(float stillSeconds)
         {
             if (stillSeconds < BreathStartSeconds) return BreathBaseRadius;

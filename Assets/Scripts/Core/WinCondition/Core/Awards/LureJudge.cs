@@ -25,7 +25,7 @@ namespace Marco.Core.WinCondition
     // 1.5 s delay, 3.2). Succeeded fires with the knocking Echo's id.
     public sealed class LureJudge
     {
-        public const float EntryRadius = 9f;        // = knock radius (3.2)
+        public const float EntryRadius = AwardRules.KnockRadius;        // = knock radius (3.2)
         public const float WatchSeconds = 30f;
         public const float PreWindowSeconds = 2f;   // ② look-back
         public const float SampleSeconds = .5f;

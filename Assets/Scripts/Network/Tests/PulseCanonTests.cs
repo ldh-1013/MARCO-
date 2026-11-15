@@ -32,7 +32,7 @@ namespace Marco.Network.Tests
         [TestCase("Sprint 질주 6m / 0.8s", PulseSpec.Sprint, 6f, PulseSpec.SprintSeconds, .8f)]
         [TestCase("Scream 비명 9m / 1.0s", PulseSpec.Scream, 9f, PulseSpec.ScreamSeconds, 1f)]
         [TestCase("Moan 신음 9m / 1.2s", PulseSpec.Moan, 9f, PulseSpec.MoanSeconds, 1.2f)]
-        [TestCase("Knock 노크 9m / 1.2s", EchoKnockRules.Radius, 9f, EchoKnockRules.Seconds, 1.2f)]
+        [TestCase("Knock 노크 9m / 1.2s", AwardRules.KnockRadius, 9f, EchoKnockRules.Seconds, 1.2f)]
         [TestCase("Bandage 붕대 6m / 1.2s", PulseSpec.Bandage, 6f, PulseSpec.BandageSeconds, 1.2f)]
         [TestCase("Treat 치료 9m / 1.2s", PulseSpec.Treat, 9f, PulseSpec.TreatSeconds, 1.2f)]
         [TestCase("Breath 호흡음 9m(최대) / 0.6s", PulseSpec.BreathMax, 9f, PulseSpec.BreathSeconds, .6f)]
@@ -56,6 +56,8 @@ namespace Marco.Network.Tests
             Assert.AreEqual(1.5f, PulseSpec.SeekerDuration, Tolerance, "술래 지속 ×1.5");
             Assert.AreEqual(22f, PulseSpec.FearRadius, Tolerance, "공포 반경 22m");
             Assert.AreEqual(6f, PulseSpec.MoanPeriod, Tolerance, "신음 주기 6초");
+            Assert.AreEqual(AwardRules.KnockRadius, EchoKnockRules.Radius, Tolerance, "노크 반경 — EchoKnockRules가 정본을 읽는다");
+            Assert.AreEqual(AwardRules.KnockRadius, LureJudge.EntryRadius, Tolerance, "낚시상 진입 반경 = 노크 반경");
             Assert.AreEqual(.5f, PulseSpec.WallOcclusion, Tolerance, "벽 통과당 ×0.5");
             Assert.AreEqual(.5f, PulseSpec.WaterOcclusion, Tolerance, "수면 ×0.5");
             Assert.AreEqual(.5f, PulseSpec.OccludedVolume, Tolerance, "차폐 시 볼륨 ×0.5");
