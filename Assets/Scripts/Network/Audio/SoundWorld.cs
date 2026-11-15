@@ -277,7 +277,7 @@ namespace Marco.Network.Audio
                 wallCount += category == "Floor" || category == "Ceiling" ? 2 : 1;
             }
             int waterCrossings = WaterSurfaceCrossings(origin, end);
-            radius *= Mathf.Pow(0.5f, wallCount + waterCrossings);
+            radius *= Mathf.Pow(PulseSpec.WallOcclusion, wallCount) * Mathf.Pow(PulseSpec.WaterOcclusion, waterCrossings);
             if (distance >= radius) return false;
             perceivedRadius = radius;
             muffled = walls.Count + waterCrossings > 0;
@@ -287,7 +287,7 @@ namespace Marco.Network.Audio
                 Vector3 direction = origin - end;
                 float angle = Mathf.Round(Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg / 45f) * 45f;
                 playbackPoint = end + Quaternion.Euler(0, angle, 0) * Vector3.forward * 2f;
-                gain = 0.5f;
+                gain = PulseSpec.OccludedVolume;
             }
             else gain = Mathf.Clamp01(1f - distance / Mathf.Max(radius, 0.01f));
             return true;

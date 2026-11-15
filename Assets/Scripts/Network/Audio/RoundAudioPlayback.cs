@@ -452,7 +452,7 @@ namespace Marco.Network.Audio
                 string surface = footWorld.Surface(contactFloor, position);
                 var clip = FootstepClip(surface, state);
                 if (clip != null)
-                    Play(clip, position, .7f, fastGrade ? .8f : .4f, -1, false, -1);
+                    Play(clip, position, .7f, fastGrade ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds, -1, false, -1);
             }
         }
 

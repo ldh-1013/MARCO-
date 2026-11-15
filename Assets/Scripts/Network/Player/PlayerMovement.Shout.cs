@@ -79,7 +79,7 @@ namespace Marco.Network.Player
                 if (target.Status == PlayerStatus.Alive && target.Role == PlayerRole.Runner &&
                     Vector3.Distance(transform.position, target.transform.position) <= PulseSpec.FearRadius &&
                     target.TryGetComponent<PlayerMovement>(out var movement))
-                    movement.FearTarget(target.Owner, 1f);
+                    movement.FearTarget(target.Owner, ShoutWindupSeconds);   // 부록 A [술래 외침] 억제는 선딜 1초 안 — 공포도 그 1초
         }
 
         [ServerRpc]

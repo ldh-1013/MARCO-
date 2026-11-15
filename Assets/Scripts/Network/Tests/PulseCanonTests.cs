@@ -55,6 +55,10 @@ namespace Marco.Network.Tests
             Assert.AreEqual(1.2f, PulseSpec.SeekerHearing, Tolerance, "술래 청취 ×1.2");
             Assert.AreEqual(1.5f, PulseSpec.SeekerDuration, Tolerance, "술래 지속 ×1.5");
             Assert.AreEqual(22f, PulseSpec.FearRadius, Tolerance, "공포 반경 22m");
+            Assert.AreEqual(6f, PulseSpec.MoanPeriod, Tolerance, "신음 주기 6초");
+            Assert.AreEqual(.5f, PulseSpec.WallOcclusion, Tolerance, "벽 통과당 ×0.5");
+            Assert.AreEqual(.5f, PulseSpec.WaterOcclusion, Tolerance, "수면 ×0.5");
+            Assert.AreEqual(.5f, PulseSpec.OccludedVolume, Tolerance, "차폐 시 볼륨 ×0.5");
         }
 
         // 부록 A [아이템] 찰칵이 반경 6m — ClickerSpec.Radius 하나. 서버(섬광을 받는 거리)와 클라이언트(밝히는 반경) 두 곳이 그 값을 쓴다.

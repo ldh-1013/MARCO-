@@ -16,6 +16,8 @@ namespace Marco.Network.Round
         public const float Walk = 2f, WalkSeconds = .4f, Sprint = 6f, SprintSeconds = .8f;
         /// <summary>부록 A [소리 등급] · [신음 Moan] 신음 9m · 1.2s (§5.1-2).</summary>
         public const float Moan = 9f, MoanSeconds = 1.2f;
+        /// <summary>부록 A [신음 Moan] "주기 6초 / 첫 신음 피격 6초 후" (§5.1-2).</summary>
+        public const float MoanPeriod = 6f;
         /// <summary>부록 A [소리 등급] · [붕대] Bandage 6m · 1.2s, every 2s (§7).</summary>
         public const float Bandage = 6f, BandageSeconds = 1.2f, BandagePeriod = 2f;
         /// <summary>부록 A [소리 등급] · [동료 치료] Treat 9m · 1.2s, every 2.25s (§3.3-2).</summary>
@@ -31,6 +33,10 @@ namespace Marco.Network.Round
         public const float SeekerHearing = 1.2f;
         /// <summary>부록 A [역할별 인지 배율] 술래 "반경 ×1.2, 지속 ×1.5 (서버 판정 단계에 적용되는 기능적 수치)" — 지속 쪽 (§5.7).</summary>
         public const float SeekerDuration = 1.5f;
+        /// <summary>부록 A [사운드 차폐] "일반 벽 통과당 반경 배율 ×0.5 (중첩 가능)" · "수면(물 표면) ×0.5" (§5.6). 층간 바닥 ×0.25는 벽 2장으로 센다.</summary>
+        public const float WallOcclusion = .5f, WaterOcclusion = .5f;
+        /// <summary>부록 A [사운드 차폐] "차폐 시 볼륨 ×0.5 고정(벽 수와 무관)" (§5.6).</summary>
+        public const float OccludedVolume = .5f;
         /// <summary>부록 A [숨 게이지] 질식 페널티 "고함급(22m) 파문 1회" — 지속은 고함 등급 정의를 따른다 (11-15).</summary>
         public const float Drowning = Shout, DrowningSeconds = ShoutSeconds;
         // 부록 A [소리 등급] Valve 12m; valve A sits in machine ambience × 0.5 → 6m (§6.1-0).

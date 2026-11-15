@@ -98,10 +98,10 @@ namespace Marco.Network.Round
                 TickBreath(player, motion, position, soundDelta);
                 int health = runnerHalves.TryGetValue(player.PlayerId, out int h) ? h : FullHalves;
                 bool wounded = player.Role == PlayerRole.Runner && health == WoundedHalves;
-                if (wounded && !motion.Wounded) motion.NextMoan = Time.time + 6f;
+                if (wounded && !motion.Wounded) motion.NextMoan = Time.time + PulseSpec.MoanPeriod;
                 if (wounded && Time.time >= motion.NextMoan)
                 {
-                    motion.NextMoan = Time.time + 6f;
+                    motion.NextMoan = Time.time + PulseSpec.MoanPeriod;
                     EmitSound("Moan_" + Random.Range(0, 2), position, PulseSpec.Moan, PulseSpec.GroupVolume, PulseSpec.MoanSeconds, sourceId: player.PlayerId, snapshotA: player.PlayerId);
                 }
                 motion.Wounded = wounded;

@@ -20,8 +20,7 @@ namespace Marco.Network.Voice
     public sealed class VoiceRouting
     {
         // Grade radii and the Seeker's ×1.2 (부록 A [소리 등급] · 기획서 5.7) come from PulseSpec — one place.
-        // 기획서 5.6: each wall between them halves the radius.
-        [SerializeField, Range(0, 1)] private float wallAttenuation = 0.5f;
+        // 기획서 5.6: each wall between them halves the radius (PulseSpec.WallOcclusion).
         // What counts as a wall. Everything until the map gets a SoundBlocking layer
         // (walls and locker rows only); until then furniture blocks voice too.
         [SerializeField] private LayerMask occluders = ~0;
@@ -61,8 +60,8 @@ namespace Marco.Network.Voice
             if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) to.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(from, to);
             if (distance > radius) return false;
-            radius *= Mathf.Pow(wallAttenuation, CountWalls(from, to, distance));
-            radius *= Mathf.Pow(.5f, waterWorld.WaterSurfaceCrossings(from, to));
+            radius *= Mathf.Pow(Round.PulseSpec.WallOcclusion, CountWalls(from, to, distance));
+            radius *= Mathf.Pow(Round.PulseSpec.WaterOcclusion, waterWorld.WaterSurfaceCrossings(from, to));
             return distance <= radius;
         }
 
