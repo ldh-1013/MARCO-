@@ -17,8 +17,8 @@ namespace Marco.Network.Voice
         public const float TargetDbfs = -40f;
         // 부록 A "오프셋 = 기준값 − baseline, ±6dB 클램프" (12.6 — 11-13 "보정 오프셋 상한 ±6dB").
         public const float OffsetLimitDb = 6f;
-        // 부록 A "유성 프레임 = 소음 바닥 + 8dB 이상" — [GAP] 구현 시작값(음성 게이트 마진 재사용).
-        public const float ActiveMarginDb = VoiceActivityGate.MarginDb;
+        // 부록 A "유성 프레임 = 소음 바닥 + 8dB 이상" — 게이트 마진(VoiceActivityGate.MarginDb)과 값은 같지만 독립 조정 — [GAP] 구현 시작값.
+        public const float ActiveMarginDb = 8f;
         // 부록 A "소음 바닥 = 측정 프레임 dBFS의 하위 10% 값" — [GAP] 구현 시작값.
         public const int FloorPercentile = 10;
         // 부록 A "유성 프레임 25개(0.5초) 미만 → 무효" — [GAP] 구현 시작값.

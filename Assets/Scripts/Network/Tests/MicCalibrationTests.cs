@@ -29,6 +29,7 @@ namespace Marco.Network.Tests
             Assert.AreEqual(-30f, PulseSpec.TalkDbfs, Tolerance, "Talk −30 dBFS");
             Assert.AreEqual(-15f, PulseSpec.ShoutDbfs, Tolerance, "Shout −15 dBFS");
             Assert.AreEqual(150, MicCalibration.FrameCount, "3 s / 20 ms");
+            Assert.AreEqual(8f, MicCalibration.ActiveMarginDb, Tolerance, "유성 프레임 마진 8dB — 게이트 마진과 독립");
             Assert.AreEqual(MicCalibration.FrameCount, (int)(MicCalibration.DurationSeconds * 1000 / MicCalibration.FrameMilliseconds));
         }
 
