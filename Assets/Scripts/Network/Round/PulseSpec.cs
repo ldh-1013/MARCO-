@@ -21,7 +21,7 @@ namespace Marco.Network.Round
         /// <summary>부록 A [소리 등급] · [동료 치료] Treat 9m · 1.2s, every 2.25s (§3.3-2).</summary>
         public const float Treat = 9f, TreatSeconds = 1.2f, TreatPeriod = 2.25f;
         /// <summary>
-        /// Playback volume of the indistinguishable group (moan · knock · breath). 구현 시작값 — [GAP]: 기획서에 재생 볼륨 수치가 없다
+        /// Playback volume of the 신음 · 노크 · 호흡 · 붕대 · 치료 그룹 (moan · knock · breath · bandage · treat). 구현 시작값 — [GAP]: 기획서에 재생 볼륨 수치가 없다
         /// (부록 A 미등록, 플레이 테스트로 조정).
         /// </summary>
         public const float GroupVolume = .65f;
