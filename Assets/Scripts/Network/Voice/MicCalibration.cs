@@ -25,6 +25,9 @@ namespace Marco.Network.Voice
         public const int MinActiveFrames = 25;
         // 부록 A "클리핑 프레임 5개 이상 → 무효" — [GAP] 구현 시작값. 클리핑 판정 기준은 연동 단계에서 정한다.
         public const int ClipFrameLimit = 5;
+        // 부록 A "클리핑 프레임 = 한 프레임(20ms)에서 |샘플| ≥ 0.99인 샘플이 3개 이상" — [GAP] 구현 시작값.
+        public const float ClipSampleLevel = .99f;
+        public const int ClipSamplesPerFrame = 3;
         // 부록 A "실패: 최대 3회 재시도, 계속 실패하면 오프셋 0" — [GAP] 구현 시작값.
         public const int MaxAttempts = 3;
 
@@ -65,6 +68,16 @@ namespace Marco.Network.Voice
 
             float baseline = Median(active);
             return new Result(true, baseline, ClampOffset(TargetDbfs - baseline), floor, active.Count, FailReason.None);
+        }
+
+        // One frame of raw samples (any channel layout): at least ClipSamplesPerFrame samples at |x| ≥ ClipSampleLevel.
+        public static bool IsClippedFrame(float[] samples, int count)
+        {
+            if (samples == null) return false;
+            int clipped = 0, end = Math.Min(count, samples.Length);
+            for (int i = 0; i < end; i++)
+                if (Math.Abs(samples[i]) >= ClipSampleLevel && ++clipped >= ClipSamplesPerFrame) return true;
+            return false;
         }
 
         public static float ClampOffset(float offset) => Math.Max(-OffsetLimitDb, Math.Min(OffsetLimitDb, offset));
