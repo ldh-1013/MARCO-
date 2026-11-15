@@ -235,7 +235,7 @@ namespace Marco.Network.Round
             RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, PulseSpec.Drowning, PulseSpec.DrowningSeconds); // 기획서 8.2
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
-                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
+                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, PulseSpec.Drowning, out var point, out _, out bool blocked) &&
                     !(RippleServerFeatures.DrowningOcclusion && blocked) && CanTarget(listener))
                     DrowningPulseTarget(listener.Owner, point, player.PlayerId,
                         SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
@@ -247,7 +247,7 @@ namespace Marco.Network.Round
             var local = NetworkPlayer.Local;
             if (local == null) return;
             if (source != local.PlayerId) NotifyOtherSound();
-            local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
+            local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, PulseSpec.Drowning);
             // §5.5-2: the drowning ring lasts ShoutSeconds (WalkingFootRings.EmitWaterPulse).
             if (snapshotA >= 0 || snapshotB >= 0)
                 try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, Marco.Network.Vision.RippleVisualSettings.ShoutSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
