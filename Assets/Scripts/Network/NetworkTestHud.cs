@@ -195,7 +195,7 @@ namespace Marco.Network
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
-            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
+            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), $"좌클릭: 앞쪽 {round.TagRadius:0.0#}m 도망자 태그 (술래)", help);   // §3.1-2 판정 반경 — NetworkRound.TagRadius에서 읽는다
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
 #else
