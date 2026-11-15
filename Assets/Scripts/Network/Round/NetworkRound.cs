@@ -517,7 +517,7 @@ namespace Marco.Network.Round
         {
             bool shouldPlay = IsEndDronePhase;
             if (suddenDeathDroneSource != null && shouldPlay)
-                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
             if (shouldPlay == suddenDeathDronePlaying) return;
             suddenDeathDronePlaying = shouldPlay;
 
@@ -533,11 +533,11 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.loop = true;
                 suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
-                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
+                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
             }
             if (shouldPlay)
             {
-                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
                 suddenDeathDroneSource.Play();
             }
             else suddenDeathDroneSource.Stop();

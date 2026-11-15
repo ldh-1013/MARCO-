@@ -181,7 +181,7 @@ namespace Marco.Network.Round
                         visiblePoint.y = listener.GetComponent<CharacterController>().bounds.min.y + .025f;
                     }
                     float duration = (fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds) * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1f);
-                    MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),
+                    MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
                         duration, blocked, ring && fast, visiblePoint, source.Role == PlayerRole.Seeker);
                 }
             }
@@ -371,10 +371,10 @@ namespace Marco.Network.Round
         }
 
         internal void PlaySeekerSwingAudio() =>
-            soundPlayback?.Play("SeekerSwing", Vector3.zero, .85f, 0f, -1, false, -1, true);
+            soundPlayback?.Play("SeekerSwing", Vector3.zero, .85f, 0f, -1, false, -1, true);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
 
         internal void PlaySeekerAttackAudio() =>
-            soundPlayback?.Play("SeekerAttack", Vector3.zero, .7f, 0f, -1, false, -1, true);
+            soundPlayback?.Play("SeekerAttack", Vector3.zero, .7f, 0f, -1, false, -1, true);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
 
         internal void NotifyOtherSound() => soundPlayback?.NotifyOtherSound();
 

@@ -430,7 +430,7 @@ namespace Marco.Network.Audio
                     }
                 }
                 if (water == 1 && step)
-                    Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);
+                    Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨 — 지속 .8은 질주 등급 0.8초와 같은 값)
                 bool groundedStep = water == 0 && alive && !teleported && onGround &&
                     Time.time >= state.SuppressStepsUntil;
                 bool footContact;
@@ -452,7 +452,7 @@ namespace Marco.Network.Audio
                 string surface = footWorld.Surface(contactFloor, position);
                 var clip = FootstepClip(surface, state);
                 if (clip != null)
-                    Play(clip, position, .7f, fastGrade ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds, -1, false, -1);
+                    Play(clip, position, .7f, fastGrade ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
             }
         }
 
