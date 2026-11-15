@@ -6,6 +6,8 @@ namespace Marco.Network.Round
     {
         // 부록 A [소리 등급] Shout 22m · 2.5s — reused by tag, gate, last survivor, exit pulses (§3.1-1 · §10.5 · §6.5-1 · §6.2-1).
         public const float Shout = 22f, ShoutSeconds = 2.5f;
+        /// <summary>부록 A [숨 게이지] 질식 페널티 "고함급(22m) 파문 1회" — 지속은 고함 등급 정의를 따른다 (11-15).</summary>
+        public const float Drowning = Shout, DrowningSeconds = ShoutSeconds;
         // 부록 A [소리 등급] Valve 12m; valve A sits in machine ambience × 0.5 → 6m (§6.1-0).
         public const float Valve = 12f, ValveAMachine = 6f;
         // §6.5-3 drain hatch work: forced pulse like an underwater valve, 12m every 2.5s.

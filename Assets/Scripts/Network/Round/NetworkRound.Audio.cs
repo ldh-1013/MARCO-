@@ -231,8 +231,8 @@ namespace Marco.Network.Round
         {
             var origin = player.transform.position;
             origin.y = surface + .1f;
-            EmitSound("Hurt", origin, 22f, 1f, 1.5f, sourceId: player.PlayerId);
-            RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, 22f, 1.5f); // 기획서 8.2
+            EmitSound("Hurt", origin, PulseSpec.Drowning, 1f, PulseSpec.DrowningSeconds, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, PulseSpec.Drowning, PulseSpec.DrowningSeconds); // 기획서 8.2
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
                 if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
