@@ -42,11 +42,13 @@ namespace Marco.Network.Tests
             Assert.AreEqual(expectedSeconds, seconds, Tolerance, row);
         }
 
-        // 부록 A [소리 등급] Valve 12m · [정지 감지] 호흡 3m 시작 · +2m · 최대 9m · [역할별 인지 배율] 술래 반경 ×1.2 · 지속 ×1.5 · [외침] 공포 반경 22m.
+        // 부록 A [소리 등급] Valve 12m · [수중 강제 파문] 2.5초 · [정지 감지] 호흡 3m 시작 · +2m · 최대 9m · [역할별 인지 배율] 술래 반경 ×1.2 · 지속 ×1.5 · [외침] 공포 반경 22m.
         [Test]
         public void OtherPulseNumbers_MatchAppendixA()
         {
             Assert.AreEqual(12f, PulseSpec.Valve, Tolerance, "Valve 밸브 12m");
+            Assert.AreEqual(2.5f, PulseSpec.UnderwaterForcedSeconds, Tolerance, "수중 · 배수구 강제 파문 2.5초 주기 = 지속");
+            Assert.AreEqual(PulseSpec.UnderwaterForcedSeconds, PulseSpec.DrainWorkPeriod, Tolerance, "배수구 주기 = 수중 강제 파문 주기");
             Assert.AreEqual(3f, PulseSpec.BreathStart, Tolerance, "호흡 시작 3m");
             Assert.AreEqual(2f, PulseSpec.BreathStep, Tolerance, "호흡 +2m");
             Assert.AreEqual(PulseSpec.BreathMax, AwardRules.BreathMaxRadius, Tolerance, "호흡 최대 — 어워드와 같은 값");

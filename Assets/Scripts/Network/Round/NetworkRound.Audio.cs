@@ -313,14 +313,14 @@ namespace Marco.Network.Round
                     out bool blocked, out float perceivedRadius) && !own) continue;
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
                 float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? PulseSpec.SeekerDuration : 1f;
-                float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
+                float pulseSeconds = clip == "ValveUnderwater" ? PulseSpec.UnderwaterForcedSeconds : duration;
                 bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));
                 if (showPulse && loopKey >= 0)
                 {
                     var key = (loopKey, listener.PlayerId);
                     showPulse = !nextValvePulse.TryGetValue(key, out float next) || Time.time >= next;
-                    if (showPulse) nextValvePulse[key] = underwater ? Time.time + 2.5f : float.PositiveInfinity;
+                    if (showPulse) nextValvePulse[key] = underwater ? Time.time + PulseSpec.UnderwaterForcedSeconds : float.PositiveInfinity;
                 }
                 if (listener.HasEchoBody) { if (showPulse) pulseSeconds = 3f; }
                 else pulseSeconds *= durationScale;

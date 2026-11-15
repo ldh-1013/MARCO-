@@ -35,8 +35,13 @@ namespace Marco.Network.Round
         public const float Drowning = Shout, DrowningSeconds = ShoutSeconds;
         // 부록 A [소리 등급] Valve 12m; valve A sits in machine ambience × 0.5 → 6m (§6.1-0).
         public const float Valve = 12f, ValveAMachine = 6f;
-        // §6.5-3 drain hatch work: forced pulse like an underwater valve, 12m every 2.5s.
-        public const float DrainWork = 12f, DrainWorkPeriod = 2.5f;
+        /// <summary>
+        /// §5.1 밸브 행 "수중 · 배수구 강제 파문은 2.5초(주기와 같다)" · 부록 A [수중 강제 파문] "수중 밸브·배수구 작업 중 2.5초 주기, 12m 등급".
+        /// One number for both: the period between forced pulses and each pulse's duration.
+        /// </summary>
+        public const float UnderwaterForcedSeconds = 2.5f;
+        // §6.5-3 drain hatch work: forced pulse like an underwater valve, 12m every 2.5s — the same rule, so the same constant.
+        public const float DrainWork = 12f, DrainWorkPeriod = UnderwaterForcedSeconds;
         // 부록 A [정지 감지]: breath 3m after 20s still, +2m every 15s, at most 9m, 0.6s. The radii are defined once in
         // Core (AwardRules — the awards count the same breaths) and read here.
         public const float BreathStart = Marco.Core.WinCondition.AwardRules.BreathBaseRadius,
