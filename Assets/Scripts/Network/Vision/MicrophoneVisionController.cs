@@ -47,34 +47,55 @@ namespace Marco.Network.Vision
         // thresholds). Not applied to the −50 voice floor or to the vision radius below. Saving it is the lobby's job.
         private float calibrationOffsetDb;
         private MicCalibrationSession calibration;
-        private Action<MicCalibration.Result> calibrationDone;
+        private Action<MicCalibration.Result, bool> calibrationDone;
+        private Action calibrationCancelled;
+        private bool calibrationMuted;
         public float CalibrationOffsetDb => calibrationOffsetDb;
         public bool IsCalibrating => calibration != null;
+        public string MicrophoneDevice => microphoneDevice;
+        // 0 … 1 through the current prompt (150 frames or 3 s, whichever is further along); 0 when not measuring.
+        public float CalibrationProgress => calibration != null ? calibration.Progress(Time.unscaledTime) : 0f;
         public void SetCalibrationOffset(float offsetDb) => calibrationOffsetDb = float.IsNaN(offsetDb) ? 0f : MicCalibration.ClampOffset(offsetDb);
         // The level this controller gives a frame of this loudness (0 silence … 3 shout).
         public int GradeLevel(float dbfs) => MicCalibration.Grade(dbfs, calibrationOffsetDb, silenceDb);
 
         // One 3 s prompt: every processed frame is also recorded until 150 frames or 3 s, then onComplete gets the
-        // result once. The frame keeps its normal outputs (voice, rings, meter) — measuring only watches them.
-        public void BeginCalibration(Action<MicCalibration.Result> onComplete)
+        // result once, with whether Left Alt (mute) was held during it. The frame keeps its normal outputs (voice,
+        // rings, meter) — measuring only watches them. Cut short (this controller disabled): onCancelled instead.
+        public void BeginCalibration(Action<MicCalibration.Result, bool> onComplete, Action onCancelled = null)
         {
             calibration = new MicCalibrationSession(Time.unscaledTime);
             calibrationDone = onComplete;
+            calibrationCancelled = onCancelled;
+            calibrationMuted = false;
         }
 
+        // Stops the prompt without reporting anything (the caller cancelled it).
         public void CancelCalibration()
         {
             calibration = null;
             calibrationDone = null;
+            calibrationCancelled = null;
         }
 
-        private void FinishCalibration(bool force)
+        private void FinishCalibrationIfDue()
         {
-            if (calibration == null || (!force && !calibration.IsDue(Time.unscaledTime))) return;
+            if (calibration == null) return;
+            if (Input.GetKey(KeyCode.LeftAlt)) calibrationMuted = true;
+            if (!calibration.IsDue(Time.unscaledTime)) return;
             var result = calibration.Complete();
             var done = calibrationDone;
+            bool muted = calibrationMuted;
             CancelCalibration();
-            done?.Invoke(result);
+            done?.Invoke(result, muted);
+        }
+
+        private void AbortCalibration()
+        {
+            if (calibration == null) return;
+            var cancelled = calibrationCancelled;
+            CancelCalibration();
+            cancelled?.Invoke();
         }
 
         [Header("Brightness implementation")]
@@ -224,6 +245,8 @@ namespace Marco.Network.Vision
             microphoneDevice = Microphone.devices[0]; microphoneClip = Microphone.Start(microphoneDevice, true, 1, SampleRate);
             if (microphoneClip != null)
                 microphoneReadBuffer = new float[FrameSamples * Mathf.Max(1, microphoneClip.channels)];
+            // 부록 A [마이크 캘리브레이션] 저장: this device's saved offset (none: 0 — the lobby asks for a prompt).
+            SetCalibrationOffset(MicCalibrationStore.ForPlayerPrefs().Load(microphoneDevice) ?? 0f);
         }
 
         private void Update()
@@ -269,7 +292,7 @@ namespace Marco.Network.Vision
                 if (brightnessMode == BrightnessMode.MarcoPlus && Time.unscaledTime > revealUntil)
                     targetRadius = 0;
             }
-            FinishCalibration(false);
+            FinishCalibrationIfDue();
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
@@ -291,7 +314,7 @@ namespace Marco.Network.Vision
 
         private void OnDisable()
         {
-            FinishCalibration(true);   // a prompt cut short still reports (as measured so far — usually invalid)
+            AbortCalibration();   // a prompt cut short reports a cancel, not a result (it does not use an attempt)
             clickerFlashActive = false;
             clickerFlashStartedAt = float.NegativeInfinity;
             clickerFlashUntil = 0f;

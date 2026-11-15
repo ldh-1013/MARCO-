@@ -63,11 +63,25 @@ namespace Marco.Network.Tests
         {
             Assert.IsFalse(mic.IsCalibrating);
             bool called = false;
-            mic.BeginCalibration(_ => called = true);
+            mic.BeginCalibration((_, _) => called = true);
             Assert.IsTrue(mic.IsCalibrating);
             mic.CancelCalibration();
             Assert.IsFalse(mic.IsCalibrating);
             Assert.IsFalse(called, "cancel does not report");
+        }
+
+        [Test]
+        public void DisablingDuringCalibration_ReportsCancelNotResult()
+        {
+            bool completed = false, cancelled = false;
+            mic.BeginCalibration((_, _) => completed = true, () => cancelled = true);
+            // OnDisable (scene change, respawn): a prompt cut short must not use an attempt. EditMode does not send
+            // OnDisable to a plain MonoBehaviour, so the message is called directly.
+            typeof(MicrophoneVisionController).GetMethod("OnDisable",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(mic, null);
+            Assert.IsTrue(cancelled);
+            Assert.IsFalse(completed);
+            Assert.IsFalse(mic.IsCalibrating);
         }
     }
 }

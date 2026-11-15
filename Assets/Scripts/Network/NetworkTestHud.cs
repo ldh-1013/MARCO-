@@ -198,6 +198,9 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), $"좌클릭: 앞쪽 {round.TagRadius:0.0#}m 도망자 태그 (술래)", help);   // §3.1-2 판정 반경 — NetworkRound.TagRadius에서 읽는다
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
+            var calibratedMic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponentInChildren<Marco.Network.Vision.MicrophoneVisionController>(true) : null;
+            if (calibratedMic != null)   // 부록 A [마이크 캘리브레이션]: the offset is shown on the test HUD only
+                GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), $"마이크 보정 {calibratedMic.CalibrationOffsetDb:+0.0;-0.0;0} dB (개발)", help);
 #else
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴", help);
 #endif

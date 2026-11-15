@@ -25,6 +25,10 @@ namespace Marco.Network.Voice
 
         public bool IsDue(float now) => IsFull || now - startedAt >= MicCalibration.DurationSeconds;
 
+        // 0 … 1: frames or time, whichever is further along.
+        public float Progress(float now) => System.Math.Min(1f, System.Math.Max((float)frames.Count / MicCalibration.FrameCount,
+            (now - startedAt) / MicCalibration.DurationSeconds));
+
         public MicCalibration.Result Complete() => MicCalibration.Measure(frames, ClippedFrames);
 
         public void Reset(float now)

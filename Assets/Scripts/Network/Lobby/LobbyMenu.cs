@@ -29,12 +29,16 @@ namespace Marco.Network.Lobby
         private string relayJoinInput = "";
         private LobbyIntro intro;
         private LobbyCctvBackdrop backdrop;
+        private LobbyMicCalibration micCalibration;
         public bool ShowsBackdrop => IsOpen && (intro == null || !intro.IsPlaying);
 
         private bool Joined => connector.Status == LanConnectionStatus.Connected;
         private static bool GameStarted => NetworkRound.Instance != null && NetworkRound.Instance.Mode != RoundMode.NotStarted;
         // Lobby screens are up whenever the round has not started for this player.
         public bool IsOpen => !Joined || !GameStarted;
+        // In a room, before the round (the room panel is up); visible = and not hidden by the intro.
+        public bool InRoomLobby => Joined && !GameStarted;
+        public bool RoomLobbyVisible => InRoomLobby && (intro == null || !intro.IsPlaying);
 
         private void Awake()
         {
@@ -44,6 +48,8 @@ namespace Marco.Network.Lobby
             if (intro == null) intro = gameObject.AddComponent<LobbyIntro>();
             backdrop = GetComponent<LobbyCctvBackdrop>();
             if (backdrop == null) backdrop = gameObject.AddComponent<LobbyCctvBackdrop>();
+            micCalibration = GetComponent<LobbyMicCalibration>();
+            if (micCalibration == null) micCalibration = gameObject.AddComponent<LobbyMicCalibration>();
         }
 
         private void Update()
@@ -205,6 +211,7 @@ namespace Marco.Network.Lobby
             if (RuinedUi.LayoutButton("방 나가기", 32, GUILayout.Height(32))) Leave("방에서 나왔습니다.");
             GUILayout.Space(15); GUILayout.Label(connector.UsingRelay ? relay.Status : status);
             GUILayout.EndArea();
+            micCalibration.Draw(new Rect(200, 580, 600, 110));   // 5.2 ③ 마이크 보정 — under the room panel
         }
 
         private void DrawEntryMenu(float scale, float offsetX)

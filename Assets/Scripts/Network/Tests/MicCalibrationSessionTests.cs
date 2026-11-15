@@ -82,6 +82,17 @@ namespace Marco.Network.Tests
         }
 
         [Test]
+        public void Session_Progress()
+        {
+            var session = new MicCalibrationSession(0f);
+            Assert.AreEqual(0f, session.Progress(0f), 0.0001f);
+            Assert.AreEqual(.5f, session.Progress(1.5f), 0.0001f, "time");
+            for (int i = 0; i < 120; i++) session.Add(-40f, false);
+            Assert.AreEqual(.8f, session.Progress(1.5f), 0.0001f, "frames ahead of time");
+            Assert.AreEqual(1f, session.Progress(9f), 0.0001f, "capped");
+        }
+
+        [Test]
         public void Session_Reset()
         {
             var session = new MicCalibrationSession(0f);
