@@ -10,6 +10,11 @@ namespace Marco.Network.Round
         public const float Talk = 9f, TalkSeconds = 1.2f;
         // 부록 A [소리 등급] Shout 22m · 2.5s — reused by tag, gate, last survivor, exit pulses (§3.1-1 · §10.5 · §6.5-1 · §6.2-1).
         public const float Shout = 22f, ShoutSeconds = 2.5f;
+        /// <summary>
+        /// 부록 A [소리 등급] RMS 구간 — Whisper "−50~−30 dBFS", Talk "−30~−15 dBFS", Shout "−15 dBFS↑" (§5.2 ⑥).
+        /// The −50 floor is MicrophoneVisionController.silenceDb (serialized); the calibration offset moves only these two.
+        /// </summary>
+        public const float TalkDbfs = -30f, ShoutDbfs = -15f;
         /// <summary>부록 A [소리 등급] Scream 비명 9m · 1.0s — the Seeker's shout failed to be suppressed (§3.5).</summary>
         public const float Scream = 9f, ScreamSeconds = 1f;
         /// <summary>부록 A [소리 등급] Walk 걷기 2m · 0.4s / Sprint 질주 6m · 0.8s — before the floor multiplier (§5.1-1 · §5.9).</summary>
