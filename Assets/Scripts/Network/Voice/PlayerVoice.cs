@@ -44,9 +44,9 @@ namespace Marco.Network.Voice
 
         private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
         {
-            VoiceGrade.Whisper => (4f, .6f),
-            VoiceGrade.Talk => (9f, 1.2f),
-            _ => (22f, 2.5f)
+            VoiceGrade.Whisper => (Round.PulseSpec.Whisper, Round.PulseSpec.WhisperSeconds),
+            VoiceGrade.Talk => (Round.PulseSpec.Talk, Round.PulseSpec.TalkSeconds),
+            _ => (Round.PulseSpec.Shout, Round.PulseSpec.ShoutSeconds)
         };
 
         internal Vector3 VoiceOrigin()

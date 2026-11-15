@@ -77,7 +77,7 @@ namespace Marco.Network.Player
             ShoutStateTarget(Owner, ShoutWindupSeconds, 0);
             foreach (var target in NetworkPlayer.All)
                 if (target.Status == PlayerStatus.Alive && target.Role == PlayerRole.Runner &&
-                    Vector3.Distance(transform.position, target.transform.position) <= 22f &&
+                    Vector3.Distance(transform.position, target.transform.position) <= PulseSpec.FearRadius &&
                     target.TryGetComponent<PlayerMovement>(out var movement))
                     movement.FearTarget(target.Owner, 1f);
         }
@@ -97,7 +97,7 @@ namespace Marco.Network.Player
             {
                 if (!seeker.TryGetComponent<PlayerMovement>(out var skill) || !skill.shoutPending ||
                     !skill.CanShout || Time.time >= skill.shoutEnds ||
-                    Vector3.Distance(transform.position, seeker.transform.position) > 22f ||
+                    Vector3.Distance(transform.position, seeker.transform.position) > PulseSpec.FearRadius ||
                     skill.suppressedRunners.Contains(player.PlayerId)) continue;
                 if (!IsDiving && !TrySpendSuppressionBreath()) return;
                 skill.suppressedRunners.Add(player.PlayerId);
@@ -119,12 +119,12 @@ namespace Marco.Network.Player
             foreach (var target in NetworkPlayer.All)
             {
                 if (target.Status != PlayerStatus.Alive || target.Role != PlayerRole.Runner ||
-                    Vector3.Distance(transform.position, target.transform.position) > 22f ||
+                    Vector3.Distance(transform.position, target.transform.position) > PulseSpec.FearRadius ||
                     !target.TryGetComponent<PlayerMovement>(out var movement)) continue;
                 movement.FearTarget(target.Owner, 0);
                 if (movement.IsDiving || suppressedRunners.Contains(target.PlayerId)) continue;
                 movement.ScreamCount++;
-                NetworkRound.Instance?.RecordAwardNoise(target.PlayerId, AwardNoise.Scream, 9f, 1f); // 기획서 8.1 · 8.2
+                NetworkRound.Instance?.RecordAwardNoise(target.PlayerId, AwardNoise.Scream, PulseSpec.Scream, PulseSpec.ScreamSeconds); // 기획서 8.1 · 8.2
                 movement.EmitAbilitySound(true);
             }
         }
@@ -133,7 +133,7 @@ namespace Marco.Network.Player
         {
             var round = NetworkRound.Instance;
             Vector3 origin = transform.position; origin.y = WaterEyeHeight;
-            float radius = scream ? 9f : 22f, duration = scream ? 1f : 2.5f;
+            float radius = scream ? PulseSpec.Scream : PulseSpec.Shout, duration = scream ? PulseSpec.ScreamSeconds : PulseSpec.ShoutSeconds;
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;

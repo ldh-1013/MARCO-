@@ -247,7 +247,7 @@ namespace Marco.Network.Audio
             Vector3 end = listener.transform.position;
             if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) end.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(origin, end);
-            if (listener.Role == PlayerRole.Seeker) radius *= 1.2f;
+            if (listener.Role == PlayerRole.Seeker) radius *= Marco.Network.Round.PulseSpec.SeekerHearing;
             if (distance >= radius) return false;
             walls.Clear();
             if (distance > 0.05f)

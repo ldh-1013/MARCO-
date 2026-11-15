@@ -19,11 +19,7 @@ namespace Marco.Network.Voice
     [Serializable]
     public sealed class VoiceRouting
     {
-        [SerializeField] private float whisperRadius = 4f;
-        [SerializeField] private float talkRadius = 9f;
-        [SerializeField] private float shoutRadius = 22f;
-        // 기획서 5.7: the Seeker hears 1.2× farther.
-        [SerializeField] private float seekerHearingMultiplier = 1.2f;
+        // Grade radii and the Seeker's ×1.2 (부록 A [소리 등급] · 기획서 5.7) come from PulseSpec — one place.
         // 기획서 5.6: each wall between them halves the radius.
         [SerializeField, Range(0, 1)] private float wallAttenuation = 0.5f;
         // What counts as a wall. Everything until the map gets a SoundBlocking layer
@@ -55,11 +51,11 @@ namespace Marco.Network.Voice
 
             radius = grade switch
             {
-                VoiceGrade.Whisper => whisperRadius,
-                VoiceGrade.Talk => talkRadius,
-                _ => shoutRadius,
+                VoiceGrade.Whisper => Round.PulseSpec.Whisper,
+                VoiceGrade.Talk => Round.PulseSpec.Talk,
+                _ => Round.PulseSpec.Shout,
             };
-            if (listener.Role == PlayerRole.Seeker) radius *= seekerHearingMultiplier;
+            if (listener.Role == PlayerRole.Seeker) radius *= Round.PulseSpec.SeekerHearing;
             Vector3 from = speaker.transform.position, to = listener.transform.position;
             if (speaker.TryGetComponent<PlayerMovement>(out var speakerMovement)) from.y = speakerMovement.WaterEyeHeight;
             if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) to.y = listenerMovement.WaterEyeHeight;

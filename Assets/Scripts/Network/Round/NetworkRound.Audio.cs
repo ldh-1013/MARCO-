@@ -211,7 +211,7 @@ namespace Marco.Network.Round
                 StopAudioObservers(key, false);
             }
             else if (evt == ValveSoundEvent.ReflowRipple && ValveView.TryGet(id, out var valve))
-                EmitSound("Reflow", valve.transform.position, 12f,
+                EmitSound("Reflow", valve.transform.position, PulseSpec.Valve,
                     0.55f, DefaultConfig.GetValveRotationSeconds(id, reopen: false), -1, id == ValveId.B || id == ValveId.E);
         }
 
