@@ -19,7 +19,7 @@ namespace Marco.Network.Vision
         private const int VoiceHangoverFrames = 8; // Bridge brief level dips without transmitting indefinitely.
         private const int VoicePreRollFrames = 2; // Keep the first 40 ms of speech before VAD confirms it.
         private const float ClickerCameraFlashSeconds = 0.6f;
-        private const float ClickerCameraFlashRadius = 6f;
+        private const float ClickerCameraFlashRadius = ClickerSpec.Radius;   // 부록 A [아이템]
         private const float ClickerAfterglowSeconds = 12f;
         private const float ClickerAfterglowPeakOpacity = 0.15f;
         private static readonly int ClickerTerrainId = Shader.PropertyToID("_MarcoClickerTerrain");

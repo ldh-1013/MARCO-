@@ -57,12 +57,13 @@ namespace Marco.Network.Tests
             Assert.AreEqual(22f, PulseSpec.FearRadius, Tolerance, "공포 반경 22m");
         }
 
-        // 부록 A [아이템] 찰칵이 반경 6m — 서버(섬광을 받는 거리)와 클라이언트(밝히는 반경) 두 곳이 같아야 한다.
+        // 부록 A [아이템] 찰칵이 반경 6m — ClickerSpec.Radius 하나. 서버(섬광을 받는 거리)와 클라이언트(밝히는 반경) 두 곳이 그 값을 쓴다.
         [Test]
         public void ClickerRadius_Is6m_InBothPlaces()
         {
-            Assert.AreEqual(6f, Const(typeof(NetworkRound), "ClickerVisibilityRadius"), Tolerance, "서버 ClickerVisibilityRadius");
-            Assert.AreEqual(6f, Const(typeof(MicrophoneVisionController), "ClickerCameraFlashRadius"), Tolerance, "클라이언트 ClickerCameraFlashRadius");
+            Assert.AreEqual(6f, ClickerSpec.Radius, Tolerance, "ClickerSpec.Radius 찰칵이 6m");
+            Assert.AreEqual(ClickerSpec.Radius, Const(typeof(NetworkRound), "ClickerVisibilityRadius"), Tolerance, "서버 ClickerVisibilityRadius");
+            Assert.AreEqual(ClickerSpec.Radius, Const(typeof(MicrophoneVisionController), "ClickerCameraFlashRadius"), Tolerance, "클라이언트 ClickerCameraFlashRadius");
         }
 
         // 부록 A [태그 판정] 판정 반경 1.6m · 서버 재검증 상한 = 판정 반경 + 0.8 (11-14) — 코드 기본값과 게임 씬 저장값 둘 다.

@@ -47,7 +47,7 @@ namespace Marco.Network.Round
         private const float TeammateTreatmentSeconds = 9f;
         private const float HealingProgressSyncSeconds = 0.1f;
         private const float ClickerRespawnSeconds = 120f;
-        private const float ClickerVisibilityRadius = 6f;
+        private const float ClickerVisibilityRadius = ClickerSpec.Radius;   // 부록 A [아이템]
         private const float ClickerPickupRange = 1.5f;
         // One each in the four diagram regions: lobby, 2F lobby, dock, main pool hall.
         private static readonly Vector3[] ClickerSpawnPoints =
