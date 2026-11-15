@@ -366,7 +366,7 @@ namespace Marco.Network.Audio
                 if (enteredWater)
                 {
                     var impact = new Vector3(position.x, waterLevel, position.z);
-                    if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))
+                    if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))   // [GAP] 기획서에 없는 구현 시작값(점프 · 착지 SoundType 미정 — 기획서 708행)
                     {
                         float strength = Mathf.Clamp(.5f + Mathf.Max(0, -offset.y) / Mathf.Max(Time.deltaTime, .001f) * .08f, .5f, 1f);
                         if (player != listener && splashGain > 0) NotifyOtherSound();
@@ -463,7 +463,7 @@ namespace Marco.Network.Audio
             bool wet = water == 1;
             string name = wet ? "SurfaceSwim" : FootstepClip(surface, state);
             if (name == null) return;
-            float radius = landing ? 6f : 3f;
+            float radius = landing ? 6f : 3f;   // [GAP] 기획서에 없는 구현 시작값(점프 · 착지 SoundType 미정 — 기획서 708행)
             if (!footWorld.Hear(position, listener, radius, out var point, out float gain, out bool blocked)) return;
             if (player != listener && gain > 0) NotifyOtherSound();
             var rings = listener.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>();
@@ -476,7 +476,7 @@ namespace Marco.Network.Audio
             }
 
             int previousVoices = voices.Count;
-            Play(name, point, (landing ? .9f : .7f) * gain, wet ? .4f : .38f, -1, blocked, -1, false, wet ? .08f : 0f);
+            Play(name, point, (landing ? .9f : .7f) * gain, wet ? .4f : .38f, -1, blocked, -1, false, wet ? .08f : 0f);   // [GAP] 기획서에 없는 구현 시작값(클립 길이 — 의미 불분명)
             // Useful distinction in the hierarchy without changing the clip or adding an asset.
             if (voices.Count > previousVoices) voices[voices.Count-1].Source.name = (landing ? "Landing " : "Jump ") + player.PlayerId;
         }

@@ -228,7 +228,7 @@ namespace Marco.Network.Round
         {
             // §17: any hearing result the server sends ends the Seeker drone (a duck is never the Seeker's own sound).
             NotifyOtherSound();
-            if (soundPlayback != null) soundPlayback.Play(clip, point, .7f * gain, .38f, -1, blocked, -1);
+            if (soundPlayback != null) soundPlayback.Play(clip, point, .7f * gain, .38f, -1, blocked, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
             if (!blocked && NetworkPlayer.Local != null)
                 NetworkPlayer.Local.GetComponentInChildren<WalkingFootRings>()?.EmitWaterPulse(point, ringRadius);
         }

@@ -116,7 +116,7 @@ namespace Marco.Network.Round
                     EmitSound(underwaterValve ? "ValveUnderwater" : "Valve",
                         valve.transform.position,
                         ValveSoundRadius(id),
-                        0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),
+                        0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
                         100000 + (int)id, underwaterValve, snapshotA: workerA, snapshotB: workerB);
                 }
 
@@ -212,7 +212,7 @@ namespace Marco.Network.Round
             }
             else if (evt == ValveSoundEvent.ReflowRipple && ValveView.TryGet(id, out var valve))
                 EmitSound("Reflow", valve.transform.position, PulseSpec.Valve,
-                    0.55f, DefaultConfig.GetValveRotationSeconds(id, reopen: false), -1, id == ValveId.B || id == ValveId.E);
+                    0.55f, DefaultConfig.GetValveRotationSeconds(id, reopen: false), -1, id == ValveId.B || id == ValveId.E);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
         }
 
         private void StopHealingAudio(int actorId)
@@ -231,7 +231,7 @@ namespace Marco.Network.Round
         {
             var origin = player.transform.position;
             origin.y = surface + .1f;
-            EmitSound("Hurt", origin, PulseSpec.Drowning, 1f, PulseSpec.DrowningSeconds, sourceId: player.PlayerId);
+            EmitSound("Hurt", origin, PulseSpec.Drowning, 1f, PulseSpec.DrowningSeconds, sourceId: player.PlayerId);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
             RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, PulseSpec.Drowning, PulseSpec.DrowningSeconds); // 기획서 8.2
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
@@ -381,7 +381,7 @@ namespace Marco.Network.Round
         [TargetRpc]
         private void HurtAudioTarget(NetworkConnection connection)
         {
-            if (soundPlayback != null) soundPlayback.Play("Hurt", Vector3.zero, 0.7f, 1.2f, -1, false, -1, true);
+            if (soundPlayback != null) soundPlayback.Play("Hurt", Vector3.zero, 0.7f, 1.2f, -1, false, -1, true);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
         }
 
         [ObserversRpc]
