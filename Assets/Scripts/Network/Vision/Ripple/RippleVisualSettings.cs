@@ -16,7 +16,7 @@ namespace Marco.Network.Vision
         public const float SprintRingRadius = 5f, SprintRingSeconds = .4f;
         // 부록 A [소리 등급]: Talk 1.2s (rubber-duck landing ring, D8), Shout 22m · 2.5s (drowning, exits).
         public const float TalkSeconds = 1.2f;
-        public const float ShoutRadius = 22f, ShoutSeconds = 2.5f;
+        public const float ShoutRadius = Marco.Network.Round.PulseSpec.Shout, ShoutSeconds = Marco.Network.Round.PulseSpec.ShoutSeconds;
         // 부록 A [본인 링 표시]: own ring on the own screen keeps its radius; alpha 35% (floor 30%), width 50%.
         public static float SelfAlpha = .35f;
         public const float SelfAlphaFloor = .30f;
