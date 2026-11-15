@@ -203,5 +203,84 @@ namespace Marco.Core.WinCondition.Tests
             Assert.AreEqual(ValveStatus.Open, valve.Status);
             Assert.AreEqual(1f, valve.Progress, Tolerance);
         }
+
+        // [11-15] 역류 중 재작업 규칙(6.1-2 · 부록 A [밸브 역류]): 재작업 진행도는 재개방 속도(A 1인 1/4 per s)로 오르고,
+        // 멈추면 6.1 일반 규칙(3초 유예 후 −0.10/s). 역류 타이머는 재작업과 무관하게 흐르고, 진행도 1에서만 Open + 리셋,
+        // 진행도 0이 돼도 상태는 그대로(Closed는 역류 타이머 종료로만). 경계값은 한 틱(0.1초) 여유로 쓴다.
+        private static Valve ReworkedHalf(out float reflowElapsed)
+        {
+            var valve = OpenValve(new WinConditionConfig());
+            valve.Tick(240.5f);      // 역류 0.5초
+            valve.BeginWork(1);
+            valve.Tick(2f);          // 재작업 0.5
+            valve.EndWork(1);
+            reflowElapsed = 2.5f;
+            return valve;
+        }
+
+        [Test]
+        public void ReworkStopped_NoDecayRightAfterStopping()
+        {
+            var valve = ReworkedHalf(out _);
+            valve.Tick(0.02f);
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            Assert.AreEqual(0.5f, valve.ReworkProgress, Tolerance);
+        }
+
+        [Test]
+        public void ReworkStopped_NoDecayWithinThreeSecondGrace()
+        {
+            var valve = ReworkedHalf(out _);
+            valve.Tick(2.9f);
+            Assert.AreEqual(0.5f, valve.ReworkProgress, Tolerance);
+        }
+
+        [Test]
+        public void ReworkStopped_DecaysAtTenthPerSecondAfterGrace()
+        {
+            var valve = ReworkedHalf(out _);
+            valve.Tick(3.1f);
+            Assert.AreEqual(0.5f - 0.1f * 0.10f, valve.ReworkProgress, Tolerance);
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+        }
+
+        [Test]
+        public void ReworkResumedDuringDecay_RisesAgainAtReopenRate_ReflowTimerUnaffected()
+        {
+            var valve = ReworkedHalf(out float elapsed);
+            valve.Tick(4f);                                   // 유예 3 + 감쇠 1초 → 0.4
+            Assert.AreEqual(0.4f, valve.ReworkProgress, Tolerance);
+            valve.BeginWork(1);
+            valve.Tick(1f);                                   // +0.25
+            Assert.AreEqual(0.65f, valve.ReworkProgress, Tolerance);
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            Assert.AreEqual(1f - (elapsed + 5f) / 30f, valve.Progress, Tolerance); // 역류는 그동안에도 계속 닫혔다
+        }
+
+        [Test]
+        public void ReworkDecayedToZero_StatusStaysReflowing_UntilReflowTimerEnds()
+        {
+            var valve = ReworkedHalf(out float elapsed);
+            valve.Tick(8.1f);                                 // 유예 3 + 감쇠 5초 → 0, 여유 0.1
+            Assert.AreEqual(0f, valve.ReworkProgress, Tolerance);
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            valve.Tick(30f - elapsed - 8.1f - 0.1f);         // 역류 종료 한 틱 전
+            Assert.AreEqual(ValveStatus.Reflowing, valve.Status);
+            valve.Tick(0.2f);
+            Assert.AreEqual(ValveStatus.Closed, valve.Status);
+            Assert.AreEqual(0f, valve.ReworkProgress, Tolerance);
+        }
+
+        [Test]
+        public void NewRoundValve_StartsClosedWithoutRework()
+        {
+            var reflowed = ReworkedHalf(out _);
+            Assert.AreEqual(ValveStatus.Reflowing, reflowed.Status);
+            var next = new Valve(new WinConditionConfig(), ValveId.A); // 라운드마다 Valve를 새로 만든다
+            Assert.AreEqual(ValveStatus.Closed, next.Status);
+            Assert.AreEqual(0f, next.Progress, Tolerance);
+            Assert.AreEqual(0f, next.ReworkProgress, Tolerance);
+            Assert.IsFalse(next.HasReachedOpen);
+        }
     }
 }

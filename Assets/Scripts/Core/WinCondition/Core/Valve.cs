@@ -123,8 +123,8 @@ namespace Marco.Core.WinCondition
         // Reflowing 상태: 30초에 걸쳐 진행도를 1 -> 0으로 줄이고, 균등 간격으로 물소리 알림을 보낸다.
         // 역류 중 재작업(기획서 6.1-2): ReworkProgress를 0부터 따로 채운다(회전 시간은 재개방 기준 — A · C · D 4.0초, 10-26).
         // 재작업이 먼저 끝나면 Open 복귀 + 240초 유예 리셋, 역류가 먼저 끝나면 Closed.
-        // TODO(기획 확인): "재작업 중에도 역류는 멈추지 않고 계속 닫힌다"와
-        // "역류가 먼저 끝나면 재작업 진행도를 버린다"는 임시 해석.
+        // [11-15 확정, 6.1-2 · 부록 A [밸브 역류]] 역류 타이머는 재작업과 무관하게 계속 흐르고, 역류가 먼저 끝나면
+        // Closed가 되며 재작업 진행도는 버린다(진행도 0이 돼도 상태는 그대로 — Closed는 역류 타이머 종료로만).
         // 완료 전까지는 Status를 Reflowing으로 유지한다(Rotating으로 바꾸면 다음 Tick이 TickWorking 경로로 새서 역류 타이머가 깨짐).
         private void TickReflowing(float dt)
         {
@@ -177,7 +177,7 @@ namespace Marco.Core.WinCondition
         }
 
         // 재작업 진행도: 재개방 회전 시간(A · C · D 1인 4초), 다인 배율 동일. 손을 떼면 일반 작업과 같은 규칙(3초 유예 후 감쇠).
-        // TODO(기획 확인): 역류 중 재작업을 멈췄을 때도 일반 작업처럼 유예 후 감쇠하는지 미정(지금은 같은 규칙으로 처리).
+        // [11-15 확정, 6.1-2] 역류 중 재작업을 멈추면 6.1 일반 규칙 그대로 — 3초 유예 후 −0.10/s 감쇠.
         private void TickReworkProgress(float seconds)
         {
             if (seconds <= 0f) return;
