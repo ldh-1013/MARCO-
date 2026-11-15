@@ -143,7 +143,7 @@ namespace Marco.Network.Player
                 else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
                     out bool blocked, out float perceivedRadius))
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
-                        listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1), gain, blocked, scream, false,
+                        listener.HasEchoBody ? PulseSpec.EchoSonarSeconds : duration * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1), gain, blocked, scream, false,
                         SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
             }
         }

@@ -322,7 +322,7 @@ namespace Marco.Network.Round
                     showPulse = !nextValvePulse.TryGetValue(key, out float next) || Time.time >= next;
                     if (showPulse) nextValvePulse[key] = underwater ? Time.time + PulseSpec.UnderwaterForcedSeconds : float.PositiveInfinity;
                 }
-                if (listener.HasEchoBody) { if (showPulse) pulseSeconds = 3f; }
+                if (listener.HasEchoBody) { if (showPulse) pulseSeconds = PulseSpec.EchoSonarSeconds; }
                 else pulseSeconds *= durationScale;
                 // §5.5-2: the snapshot goes with the ring only (fail-closed: None on any doubt).
                 int seenA = SourceSnapshotRules.None, seenB = SourceSnapshotRules.None;

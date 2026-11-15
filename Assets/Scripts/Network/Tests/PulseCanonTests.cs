@@ -54,6 +54,7 @@ namespace Marco.Network.Tests
             Assert.AreEqual(PulseSpec.BreathMax, AwardRules.BreathMaxRadius, Tolerance, "호흡 최대 — 어워드와 같은 값");
             Assert.AreEqual(1.2f, PulseSpec.SeekerHearing, Tolerance, "술래 청취 ×1.2");
             Assert.AreEqual(1.5f, PulseSpec.SeekerDuration, Tolerance, "술래 지속 ×1.5");
+            Assert.AreEqual(3f, PulseSpec.EchoSonarSeconds, Tolerance, "메아리 소나 잔류 3초");
             Assert.AreEqual(22f, PulseSpec.FearRadius, Tolerance, "공포 반경 22m");
             Assert.AreEqual(6f, PulseSpec.MoanPeriod, Tolerance, "신음 주기 6초");
             Assert.AreEqual(AwardRules.KnockRadius, EchoKnockRules.Radius, Tolerance, "노크 반경 — EchoKnockRules가 정본을 읽는다");

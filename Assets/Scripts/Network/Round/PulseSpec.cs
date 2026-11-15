@@ -33,6 +33,8 @@ namespace Marco.Network.Round
         public const float SeekerHearing = 1.2f;
         /// <summary>부록 A [역할별 인지 배율] 술래 "반경 ×1.2, 지속 ×1.5 (서버 판정 단계에 적용되는 기능적 수치)" — 지속 쪽 (§5.7).</summary>
         public const float SeekerDuration = 1.5f;
+        /// <summary>부록 A [메아리] "소나: 맵 전체 파문 관측, 잔류 3초 감쇠" (§3.2-1) — 메아리 몸 청취자의 링 지속(역할 배율 대신).</summary>
+        public const float EchoSonarSeconds = 3f;
         /// <summary>부록 A [사운드 차폐] "일반 벽 통과당 반경 배율 ×0.5 (중첩 가능)" · "수면(물 표면) ×0.5" (§5.6). 층간 바닥 ×0.25는 벽 2장으로 센다.</summary>
         public const float WallOcclusion = .5f, WaterOcclusion = .5f;
         /// <summary>부록 A [사운드 차폐] "차폐 시 볼륨 ×0.5 고정(벽 수와 무관)" (§5.6).</summary>
