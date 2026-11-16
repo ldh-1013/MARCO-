@@ -23,11 +23,20 @@ namespace Marco.Network.Tests
         public void Overlap_IsOneWall() => Assert.AreEqual(1, Count(new OccluderSpan(1f, 2f, false), new OccluderSpan(1.5f, 3f, false)));
 
         [Test]
-        public void BlockWithASlab_IsTwoWalls()
+        public void Slabs_AndWalls()
         {
-            Assert.AreEqual(2, Count(new OccluderSpan(3f, 3.2f, true), new OccluderSpan(3.2f, 3.4f, false)), "slab + wall touching");
+            // [11-16 V20] only the same family merges: a slab touching a wall is 2 + 1 (was 2 in V19).
+            Assert.AreEqual(3, Count(new OccluderSpan(3f, 3.2f, true), new OccluderSpan(3.2f, 3.4f, false)), "slab + wall touching (gap 0)");
             Assert.AreEqual(2, Count(new OccluderSpan(3f, 3.2f, true), new OccluderSpan(3.3f, 3.5f, true)), "two touching slabs");
+            Assert.AreEqual(1, Count(new OccluderSpan(3f, 3.2f, false), new OccluderSpan(3.2f, 3.4f, false)), "two touching walls");
             Assert.AreEqual(3, Count(new OccluderSpan(1f, 1.2f, false), new OccluderSpan(5f, 5.2f, true)), "a wall and a separate slab");
+        }
+
+        [Test]
+        public void OverlappingFamilies_MergeSeparately()
+        {
+            // slab A, a wall inside it, slab C touching A: the slabs are one block (2), the wall one block (1).
+            Assert.AreEqual(3, Count(new OccluderSpan(1f, 2f, true), new OccluderSpan(1.5f, 1.6f, false), new OccluderSpan(2.1f, 2.5f, true)));
         }
 
         [Test]

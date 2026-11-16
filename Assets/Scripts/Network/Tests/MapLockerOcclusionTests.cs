@@ -172,6 +172,14 @@ namespace Marco.Network.Tests
         }
 
         [Test]
+        public void StoreyFloorAndTheWallUnderIt_AreThreeWalls()
+        {
+            // From the CL lobby (2nd floor) down through Floor_CL_18_32 and into Wall_ML_Z25_16 under it, ending in the sealed
+            // PS1 space behind the wall: the slab (2) and the wall block (1) are different families — 3 [11-16 V20].
+            Assert.AreEqual(3, Walls(new Vector3(24f, 5f, 20f), new Vector3(26f, 1.5f, 20f)));
+        }
+
+        [Test]
         public void DurationScale_OpenOneWallTwoWalls()
         {
             Assert.AreEqual(1f, DurationScale(new Vector3(12f, 1f, 11.5f), new Vector3(12f, 1f, 10.5f)), 1e-4f, "nothing in the way");
