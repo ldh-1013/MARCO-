@@ -38,6 +38,8 @@ namespace Marco.Network.Player
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
         public float SwingCooldownFraction => Mathf.Clamp01(SwingCooldownRemaining / Mathf.Max(0.01f, swingCooldownDuration));
         public bool SwingPending => swingPending;
+        // 연출 15.3 · 4.2: the server confirmed this owner's swing (Missed / Wounded / Echoed). Presentation only.
+        public event System.Action<SwingResult> LocalSwingConfirmed;
         // Owner only: the server just turned down an underwater valve (B · E) because we were not diving.
         public bool ShowsValveDiveHint => Time.time < valveDiveHintUntil;
         public int SelectedItemSlot => selectedItemSlot;
@@ -402,6 +404,7 @@ namespace Marco.Network.Player
             nextSwingTime = Time.time + swingCooldownDuration;
             if (result == SwingResult.Missed) round.PlaySeekerSwingAudio();
             else round.PlaySeekerAttackAudio();
+            LocalSwingConfirmed?.Invoke(result);
         }
     }
 }
