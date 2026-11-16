@@ -24,7 +24,7 @@ namespace Marco.Network.Tests
 
         private Scene scene;
         private object soundWorld;
-        private MethodInfo metadata, hearResolved;
+        private MethodInfo metadata, hearResolved, hearResolvedWithDuration;
         private GameObject listener;
 
         [OneTimeSetUp]
@@ -35,7 +35,8 @@ namespace Marco.Network.Tests
             var type = typeof(NetworkPlayer).Assembly.GetType("Marco.Network.Audio.SoundWorld", true);
             soundWorld = Activator.CreateInstance(type, true);
             metadata = type.GetMethod("Metadata", Any);
-            hearResolved = type.GetMethod("HearResolved", Any);
+            hearResolved = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 7);
+            hearResolvedWithDuration = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 8);
             listener = new GameObject("occlusion listener");
             listener.AddComponent(typeof(NetworkPlayer));
         }
@@ -61,6 +62,16 @@ namespace Marco.Network.Tests
             var args = new object[] { from, listener.GetComponent(typeof(NetworkPlayer)), ProbeRadius, null, null, null, null };
             bool heard = (bool)hearResolved.Invoke(soundWorld, args);
             return heard ? (float)args[6] : 0f;
+        }
+
+        // §5.6 perceivedDuration factor SoundWorld gives this line (1 when unoccluded).
+        private float DurationScale(Vector3 from, Vector3 to)
+        {
+            listener.transform.position = to;
+            Physics.SyncTransforms();
+            var args = new object[] { from, listener.GetComponent(typeof(NetworkPlayer)), ProbeRadius, null, null, null, null, null };
+            Assert.IsTrue((bool)hearResolvedWithDuration.Invoke(soundWorld, args), "heard");
+            return (float)args[7];
         }
 
         // Walls between two points: log2 of (unblocked radius / perceived radius) — the same ray length, so the
@@ -125,10 +136,49 @@ namespace Marco.Network.Tests
         }
 
         [Test]
-        public void CrossingTwoNeighbouringRows_IsTwoWalls()
+        public void BackToBackRows_AreOneWall()
         {
-            // Back-to-back rows z13.19 (pivot z 12.89) and z13.97 (pivot z 14.26), x 9.2–14.9: straight across both.
-            Assert.AreEqual(2, Walls(new Vector3(12f, 1f, 12.2f), new Vector3(12f, 1f, 14.9f)));
+            // Back-to-back rows z13.19 (pivot z 12.89) and z13.97 (pivot z 14.26), x 9.2–14.9, touching (gap −0.016 m):
+            // straight across both. [11-16 V19 E] touching parts count once — was 2 before the merge rule.
+            Assert.AreEqual(1, Walls(new Vector3(12f, 1f, 12.2f), new Vector3(12f, 1f, 14.9f)));
+        }
+
+        [Test]
+        public void TwoRowsAcrossAnAisle_AreTwoWalls()
+        {
+            // z9.56 (9.17–9.94) and z13.19 (12.79–13.59) with the 2.85 m aisle between them: two separate blocks.
+            Assert.AreEqual(2, Walls(new Vector3(12f, 1f, 9.5f), new Vector3(12f, 1f, 13.4f)));
+        }
+
+        [Test]
+        public void RoomWallWithItsLockerRow_IsOneWall()
+        {
+            // The ML south wall (z 9) and the row against it (z 9.17–9.94, gap 0.066 m): from the room out into the lobby.
+            Assert.AreEqual(1, Walls(new Vector3(12f, 1f, 11f), new Vector3(12f, 1f, 8f)));
+        }
+
+        [Test]
+        public void DoubleWallAtX25_IsOneWall()
+        {
+            // Wall_ML_Z25_9 (x 24.90–25.10) and SideWall_25.35 (x 25.25–25.45), 0.15 m apart: was 2, now 1.
+            Assert.AreEqual(1, Walls(new Vector3(24f, 1f, 11f), new Vector3(26f, 1f, 11f)));
+        }
+
+        [Test]
+        public void StoreyFloor_IsStillTwoWalls()
+        {
+            // ML (1st floor) straight up into the CL lobby above (2nd floor y 3.5): a storey slab block counts 2.
+            Assert.AreEqual(2, Walls(new Vector3(20f, 1.5f, 20.5f), new Vector3(20f, 5f, 20.5f)));
+        }
+
+        [Test]
+        public void DurationScale_OpenOneWallTwoWalls()
+        {
+            Assert.AreEqual(1f, DurationScale(new Vector3(12f, 1f, 11.5f), new Vector3(12f, 1f, 10.5f)), 1e-4f, "nothing in the way");
+            Assert.AreEqual(.5f, DurationScale(new Vector3(24f, 1f, 11f), new Vector3(26f, 1f, 11f)), 1e-4f, "one wall (the merged double wall)");
+            // ML west wall (x 9) and the x 25 double wall: two separate walls, 0.25 -> floor 0.5.
+            Assert.AreEqual(2, Walls(new Vector3(8f, 1f, 11f), new Vector3(26f, 1f, 11f)), "two separate walls");
+            Assert.AreEqual(.5f, DurationScale(new Vector3(8f, 1f, 11f), new Vector3(26f, 1f, 11f)), 1e-4f, "floor ×0.5");
         }
 
         [Test]
