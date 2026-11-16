@@ -847,8 +847,10 @@ namespace Marco.Network.Round
                 flashOrigin = sourceController.bounds.center;
             foreach (NetworkPlayer listener in NetworkPlayer.All)
             {
-                if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
-                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius)
+                if (listener == null) continue;
+                bool within = (listener.transform.position - source.transform.position).sqrMagnitude <= ClickerVisibilityRadius * ClickerVisibilityRadius;
+                // 7절 [11-16]: structures (walls, storey slabs, locker rows) block the flash; furniture and props do not.
+                if (!ClickerSightRules.Receives(listener == source, listener.Status, within, within && HasClearClickerPath(source, listener)))
                     continue;
                 // Nearby players all receive the terrain flash; entity concealment is applied only
                 // on the Seeker's client and only to this source Runner plus nearby props.
@@ -856,23 +858,12 @@ namespace Marco.Network.Round
             }
         }
 
-        private static bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
+        // 7절 · 부록 A [아이템] [11-16]: the same structure test as sound occlusion (SoundWorld.HasClearSight), at +0.6 m.
+        private bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
         {
             if (source == listener) return true;
-            Vector3 from = source.transform.position + Vector3.up * 0.6f;
-            Vector3 to = listener.transform.position + Vector3.up * 0.6f;
-            Vector3 delta = to - from;
-            float distance = delta.magnitude;
-            if (distance <= 0.05f) return true;
-
-            RaycastHit[] hits = Physics.RaycastAll(from, delta / distance, distance,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (RaycastHit hit in hits)
-            {
-                if (hit.collider == null || hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
-                return false;
-            }
-            return true;
+            soundWorld ??= new Marco.Network.Audio.SoundWorld();
+            return soundWorld.HasClearSight(source.transform.position + Vector3.up * 0.6f, listener.transform.position + Vector3.up * 0.6f);
         }
 
         [TargetRpc]

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Marco.Core.WinCondition;
+using Marco.Network.Map;
 using Marco.Network.Player;
 using Marco.Network.Valves;
 using Marco.Network.Round;
@@ -10,38 +11,18 @@ namespace Marco.Network.Audio
     // Read existing map metadata without a reference from Marco.Network to Assembly-CSharp.
     internal sealed class SoundWorld
     {
-        private readonly Dictionary<Collider, Part> parts = new();
+        private readonly Dictionary<Collider, MapPart> parts = new();
         private readonly HashSet<MonoBehaviour> walls = new();
         private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> spanParts = new();
         private readonly List<OccluderSpan> spans = new();
         private readonly RaycastHit[] backHits = new RaycastHit[64];
-        private sealed class Part
-        {
-            public string Category, Zone, DesignId;
-            public MonoBehaviour Component;
-            public bool Occluder;
-        }
-
-        private Part Metadata(Collider collider)
+        // The map part on a collider (Marco.Network.Map.MapParts — shared with clicker sight), cached per collider.
+        private MapPart Metadata(Collider collider)
         {
             if (parts.TryGetValue(collider, out var cached)) return cached;
-            foreach (var component in collider.GetComponentsInParent<MonoBehaviour>(true))
-            {
-                if (component == null || component.GetType().Name != "PoolV12Part") continue;
-                var type = component.GetType();
-                var part = new Part
-                {
-                    Category = type.GetField("category")?.GetValue(component) as string,
-                    Zone = type.GetField("zone")?.GetValue(component) as string,
-                    DesignId = type.GetField("designId")?.GetValue(component) as string,
-                    Occluder = type.GetField("soundOccluder")?.GetValue(component) is bool flag && flag,
-                    Component = component
-                };
-                parts[collider] = part;
-                return part;
-            }
-            parts[collider] = null;
-            return null;
+            var part = MapParts.Read(collider);
+            parts[collider] = part;
+            return part;
         }
 
         private readonly List<Bounds> pools = new();
@@ -210,7 +191,7 @@ namespace Marco.Network.Audio
                 var hit = hits[i];
                 if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
                 var part = Metadata(hit.collider);
-                if (part != null && (part.Occluder || part.Category == "Wall" || part.Category == "Floor" || part.Category == "Ceiling"))
+                if (part != null && part.IsSoundStructure)
                     reach = Mathf.Min(reach, hit.distance);
             }
             return reach;
@@ -277,6 +258,10 @@ namespace Marco.Network.Audio
             return true;
         }
 
+        // 7절 · 부록 A [아이템] 섬광 대상 [11-16]: no sound-occlusion structure between the two points — the same count as
+        // sound (touching parts merged, an end on a surface not counted); furniture and props never block.
+        public bool HasClearSight(Vector3 from, Vector3 to) => CountOccluders(from, to, Vector3.Distance(from, to)) == 0;
+
         // 부록 A [사운드 차폐] 차폐 셈 단위 [11-16]: each occluder part (차폐 파트 or Wall / Floor / Ceiling) gets one span on the
         // line — enter = nearest forward hit, exit = length - nearest backward hit (an end inside the part: 0 or the length) —
         // and OccluderSpans merges touching / overlapping ones (gap <= PulseSpec.OccluderMergeGap).
@@ -319,9 +304,9 @@ namespace Marco.Network.Audio
                 var hit = buffer[i];
                 if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
                 var part = Metadata(hit.collider);
-                if (part == null || !(part.Occluder || part.Category == "Wall" || part.Category == "Floor" || part.Category == "Ceiling")) continue;
+                if (part == null || !part.IsSoundStructure) continue;
                 if (!spanParts.TryGetValue(part.Component, out var span))
-                    span = (float.PositiveInfinity, float.NegativeInfinity, part.Category == "Floor" || part.Category == "Ceiling");
+                    span = (float.PositiveInfinity, float.NegativeInfinity, part.IsSlab);
                 if (forward) span.enter = Mathf.Min(span.enter, hit.distance);
                 else span.exit = Mathf.Max(span.exit, distance - hit.distance);
                 spanParts[part.Component] = span;
