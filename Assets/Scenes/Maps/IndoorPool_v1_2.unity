@@ -18472,8 +18472,8 @@ MonoBehaviour:
   openingWidth: 0
   openingHeight: 0
   radius: 0
-  soundOccluder: 0
-  tagBlocker: 0
+  soundOccluder: 1
+  tagBlocker: 1
   note: "Source \xA75: water Y=0, shallow Y=-1.2, circular sump R1.2 centered at
     (7,47), bottom Y=-3.5."
 --- !u!1001 &310393447
