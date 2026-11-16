@@ -53,9 +53,16 @@ namespace Marco.Network.Tests
             Assert.AreEqual(1.25f, p.Seconds, T, "2.5 s × 0.5 (부록 A 지속시간 최소 유지 배율)");
         }
 
+        // [11-16 V21] Spectating (난입자) has an Echo body and gets the ring like the other Echo bodies — the general path
+        // (EmitSound) already sends it every pulse. V20 excluded it by mistake (V20 지시 오류 정정); was "not sent".
         [Test]
-        public void Spectator_NotSent() =>
-            Assert.IsFalse(DrowningPulseRules.For(PlayerStatus.Spectating, false, true, true, false, 22f, 1f, true).Send);
+        public void Spectating_EchoBody_Sent()
+        {
+            var p = DrowningPulseRules.For(PlayerStatus.Spectating, false, true, false, true, 0f, 1f, true);
+            Assert.IsTrue(p.Send);
+            Assert.AreEqual(22f, p.Radius, T);
+            Assert.AreEqual(PulseSpec.EchoSonarSeconds, p.Seconds, T);
+        }
 
         [Test]
         public void Runner_OutOfRange_NotSent() =>
