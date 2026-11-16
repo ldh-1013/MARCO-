@@ -174,7 +174,20 @@ namespace Marco.Network.Vision
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.ShowContact", exception, this); }
         }
 
-        // Shared by the drowning warning and the decoy device; the radius tells the callers apart (D8).
+        // The drowning ring (부록 A [숨 게이지] 질식 페널티): the radius and duration come from the server for this listener
+        // (§5.7 — Seeker ×1.2 / ×1.5, Echo body); drawn as they are. Its own entry so no radius comparison can misroute it.
+        public void EmitDrowningPulse(Vector3 origin, float radius, float duration)
+        {
+            try
+            {
+                if (!CanUse() || radius <= 0 || duration <= 0) return;
+                Classify(origin, out var tint, out bool doubleEdge);
+                RequestSound(origin, radius, duration, tint, doubleEdge, IsSelf(origin), Label.Water);
+            }
+            catch (Exception exception) { RippleSafety.Report("WalkingFootRings.EmitDrowningPulse", exception, this); }
+        }
+
+        // The decoy device's rings; the radius tells the callers apart (D8). (The drowning ring has its own entry above.)
         // Surface swimming is already emitted by the movement clock/server path; no second emitter here.
         public void EmitWaterPulse(Vector3 origin, float radius)
         {
