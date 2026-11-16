@@ -44,6 +44,34 @@ namespace Marco.Network.Round
         public const float WallOcclusion = .5f, WaterOcclusion = .5f;
         /// <summary>부록 A [사운드 차폐] "차폐 시 볼륨 ×0.5 고정(벽 수와 무관)" (§5.6).</summary>
         public const float OccludedVolume = .5f;
+        /// <summary>부록 A [사운드 차폐] "지속시간 최소 유지 배율 ×0.5 (그 이하로는 안 깎임)" — §5.6 perceivedDuration = baseDuration × max(attenuation, 0.5).</summary>
+        public const float OccludedDurationFloor = .5f;
+        /// <summary>
+        /// 부록 A [사운드 차폐] 차폐 셈 단위 [11-16]: occluder parts whose spans along the line are at most this far apart count as one.
+        /// [GAP] 기획서에 없는 구현값 — 캡슐 지름에서 유도, 부록 A [사운드 차폐] 11-16: character collider radius 0.35 m × 2
+        /// (부록 A [캐릭터/카메라] "캐릭터 콜라이더 반경 0.35m", NetworkPlayer.prefab CharacterController m_Radius — no code constant exists).
+        /// </summary>
+        public const float OccluderMergeGap = .7f;
+
+        /// <summary>§5.6 perceivedDuration factor for one listener: max(0.5^walls × 0.5^water, 0.5); 1 when nothing is in the way or
+        /// for an Echo body (it ignores occlusion — 5.7).</summary>
+        public static float OccludedDurationScale(int wallCount, int waterCrossings, bool echoBody)
+        {
+            if (echoBody || wallCount + waterCrossings <= 0) return 1f;
+            float attenuation = (float)(System.Math.Pow(WallOcclusion, wallCount) * System.Math.Pow(WaterOcclusion, waterCrossings));
+            return System.Math.Max(attenuation, OccludedDurationFloor);
+        }
+
+        /// <summary>
+        /// How long one listener perceives a pulse (§5.6 · §5.7), shared by EmitSound, footsteps, shout / scream and voice.
+        /// Seeker ×1.5 and the occlusion factor multiply the base duration. An Echo body keeps the current behaviour: a ring lasts
+        /// EchoSonarSeconds, a sound without a ring keeps its base duration (3.2-1 / 5.7 mismatch — 개정이력 11-16, to be fixed next).
+        /// </summary>
+        public static float ListenerSeconds(float baseSeconds, bool seeker, bool echoBody, bool ring, float occludedScale)
+        {
+            if (echoBody) return ring ? EchoSonarSeconds : baseSeconds;
+            return baseSeconds * (seeker ? SeekerDuration : 1f) * occludedScale;
+        }
         /// <summary>부록 A [숨 게이지] 질식 페널티 "고함급(22m) 파문 1회" — 지속은 고함 등급 정의를 따른다 (11-15).</summary>
         public const float Drowning = Shout, DrowningSeconds = ShoutSeconds;
         // 부록 A [소리 등급] Valve 12m; valve A sits in machine ambience × 0.5 → 6m (§6.1-0).

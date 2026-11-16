@@ -12,6 +12,9 @@ namespace Marco.Network.Audio
     {
         private readonly Dictionary<Collider, Part> parts = new();
         private readonly HashSet<MonoBehaviour> walls = new();
+        private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> spanParts = new();
+        private readonly List<OccluderSpan> spans = new();
+        private readonly RaycastHit[] backHits = new RaycastHit[64];
         private sealed class Part
         {
             public string Category, Zone, DesignId;
@@ -232,10 +235,16 @@ namespace Marco.Network.Audio
             HearResolved(origin, listener, radius, out playbackPoint, out gain, out muffled, out _);
 
         public bool HearResolved(Vector3 origin, NetworkPlayer listener, float radius,
-            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius)
+            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius) =>
+            HearResolved(origin, listener, radius, out playbackPoint, out gain, out muffled, out perceivedRadius, out _);
+
+        // durationScale: §5.6 perceivedDuration factor for this listener (PulseSpec.OccludedDurationScale) — 1 when unoccluded.
+        public bool HearResolved(Vector3 origin, NetworkPlayer listener, float radius,
+            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius, out float durationScale)
         {
             perceivedRadius = radius;
             playbackPoint = origin;
+            durationScale = 1f;
             if (listener.HasEchoBody)
             {
                 gain = 1;
@@ -249,38 +258,13 @@ namespace Marco.Network.Audio
             float distance = Vector3.Distance(origin, end);
             if (listener.Role == PlayerRole.Seeker) radius *= Marco.Network.Round.PulseSpec.SeekerHearing;
             if (distance >= radius) return false;
-            walls.Clear();
-            if (distance > 0.05f)
-            {
-                var hits = Physics.RaycastNonAlloc(origin, (end - origin) / distance, visualHits,
-                    distance, ~0, QueryTriggerInteraction.Ignore);
-                var buffer = visualHits;
-                if (hits == buffer.Length)
-                {
-                    buffer = Physics.RaycastAll(origin, (end - origin) / distance, distance,
-                        ~0, QueryTriggerInteraction.Ignore);
-                    hits = buffer.Length;
-                }
-                for (int i = 0; i < hits; i++)
-                {
-                    var hit = buffer[i];
-                    if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
-                    var part = Metadata(hit.collider);
-                    if (part != null && (part.Occluder || part.Category == "Wall" ||
-                        part.Category == "Floor" || part.Category == "Ceiling")) walls.Add(part.Component);
-                }
-            }
-            int wallCount = 0;
-            foreach (var wall in walls)
-            {
-                string category = wall.GetType().GetField("category")?.GetValue(wall) as string;
-                wallCount += category == "Floor" || category == "Ceiling" ? 2 : 1;
-            }
+            int wallCount = CountOccluders(origin, end, distance);
             int waterCrossings = WaterSurfaceCrossings(origin, end);
             radius *= Mathf.Pow(PulseSpec.WallOcclusion, wallCount) * Mathf.Pow(PulseSpec.WaterOcclusion, waterCrossings);
             if (distance >= radius) return false;
             perceivedRadius = radius;
-            muffled = walls.Count + waterCrossings > 0;
+            durationScale = PulseSpec.OccludedDurationScale(wallCount, waterCrossings, false);
+            muffled = wallCount + waterCrossings > 0;
             if (muffled)
             {
                 // Do not send exact position/distance through an occluding wall.
@@ -291,6 +275,57 @@ namespace Marco.Network.Audio
             }
             else gain = Mathf.Clamp01(1f - distance / Mathf.Max(radius, 0.01f));
             return true;
+        }
+
+        // 부록 A [사운드 차폐] 차폐 셈 단위 [11-16]: each occluder part (차폐 파트 or Wall / Floor / Ceiling) gets one span on the
+        // line — enter = nearest forward hit, exit = length - nearest backward hit (an end inside the part: 0 or the length) —
+        // and OccluderSpans merges touching / overlapping ones (gap <= PulseSpec.OccluderMergeGap).
+        private int CountOccluders(Vector3 origin, Vector3 end, float distance)
+        {
+            walls.Clear();
+            spanParts.Clear();
+            spans.Clear();
+            if (distance <= 0.05f) return 0;
+            Vector3 direction = (end - origin) / distance;
+            CollectSpanHits(origin, direction, distance, visualHits, true);
+            CollectSpanHits(end, -direction, distance, backHits, false);
+            foreach (var pair in spanParts)
+            {
+                bool fromInside = float.IsPositiveInfinity(pair.Value.enter), toInside = float.IsNegativeInfinity(pair.Value.exit);
+                float enter = fromInside ? 0f : pair.Value.enter;
+                float exit = toInside ? distance : pair.Value.exit;
+                // An end lying on the part's surface (e.g. a drain hatch on the pool floor) is hit from one side only, over a
+                // few centimetres: that is not "inside the part" and the part is not between the two ends.
+                if (fromInside && exit <= EndOnSurface || toInside && enter >= distance - EndOnSurface) continue;
+                walls.Add(pair.Key);
+                spans.Add(new OccluderSpan(enter, Mathf.Max(enter, exit), pair.Value.slab));
+            }
+            return OccluderSpans.Count(spans, PulseSpec.OccluderMergeGap);
+        }
+
+        // An end within this distance of a part's surface counts as on the surface (the same 5 cm as the minimum line length).
+        private const float EndOnSurface = .05f;
+
+        private void CollectSpanHits(Vector3 from, Vector3 direction, float distance, RaycastHit[] buffer, bool forward)
+        {
+            int hits = Physics.RaycastNonAlloc(from, direction, buffer, distance, ~0, QueryTriggerInteraction.Ignore);
+            if (hits == buffer.Length)
+            {
+                buffer = Physics.RaycastAll(from, direction, distance, ~0, QueryTriggerInteraction.Ignore);
+                hits = buffer.Length;
+            }
+            for (int i = 0; i < hits; i++)
+            {
+                var hit = buffer[i];
+                if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                var part = Metadata(hit.collider);
+                if (part == null || !(part.Occluder || part.Category == "Wall" || part.Category == "Floor" || part.Category == "Ceiling")) continue;
+                if (!spanParts.TryGetValue(part.Component, out var span))
+                    span = (float.PositiveInfinity, float.NegativeInfinity, part.Category == "Floor" || part.Category == "Ceiling");
+                if (forward) span.enter = Mathf.Min(span.enter, hit.distance);
+                else span.exit = Mathf.Max(span.exit, distance - hit.distance);
+                spanParts[part.Component] = span;
+            }
         }
     }
 }

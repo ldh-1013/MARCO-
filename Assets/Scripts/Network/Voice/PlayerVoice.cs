@@ -122,8 +122,8 @@ namespace Marco.Network.Voice
                 {
                     if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
-                        out bool blocked, out float radius)) continue;
-                    float life = listener.HasEchoBody ? Round.PulseSpec.EchoSonarSeconds : duration * (listener.Role == PlayerRole.Seeker ? Round.PulseSpec.SeekerDuration : 1f);
+                        out bool blocked, out float radius, out float occludedScale)) continue;
+                    float life = Round.PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, listener.HasEchoBody, true, occludedScale);   // §5.6 · §5.7
                     if (pulse && !blocked)
                         VoicePulseTarget(listener.Owner, point, radius, life,
                             SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2

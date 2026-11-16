@@ -141,9 +141,9 @@ namespace Marco.Network.Player
                 if (listener == player)
                     AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
                 else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
-                    out bool blocked, out float perceivedRadius))
+                    out bool blocked, out float perceivedRadius, out float occludedScale))
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
-                        listener.HasEchoBody ? PulseSpec.EchoSonarSeconds : duration * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1), gain, blocked, scream, false,
+                        PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, listener.HasEchoBody, true, occludedScale), gain, blocked, scream, false,
                         SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
             }
         }

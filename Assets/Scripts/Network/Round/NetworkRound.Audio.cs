@@ -173,14 +173,16 @@ namespace Marco.Network.Round
                 foreach (var listener in NetworkPlayer.All)
                 {
                     if (listener == source || listener.Status != PlayerStatus.Alive || listener.IsEcho) continue;
-                    if (!soundWorld.Hear(origin, listener, radius, out var perceived, out float gain, out bool blocked)) continue;
+                    if (!soundWorld.HearResolved(origin, listener, radius, out var perceived, out float gain, out bool blocked,
+                        out _, out float occludedScale)) continue;
                     Vector3 visiblePoint = ringPoint;
                     if (blocked)
                     {
                         visiblePoint = perceived;
                         visiblePoint.y = listener.GetComponent<CharacterController>().bounds.min.y + .025f;
                     }
-                    float duration = (fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds) * (listener.Role == PlayerRole.Seeker ? PulseSpec.SeekerDuration : 1f);
+                    float duration = PulseSpec.ListenerSeconds(fast ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds,
+                        listener.Role == PlayerRole.Seeker, false, false, occludedScale);   // §5.6 · §5.7
                     MovementStepTarget(listener.Owner, id, clip, perceived, gain * (swimming ? .55f : .7f),   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
                         duration, blocked, ring && fast, visiblePoint, source.Role == PlayerRole.Seeker);
                 }
@@ -310,9 +312,9 @@ namespace Marco.Network.Round
                 }
                 bool own = sourceId == listener.PlayerId;
                 if (!soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
-                    out bool blocked, out float perceivedRadius) && !own) continue;
-                if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
-                float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? PulseSpec.SeekerDuration : 1f;
+                    out bool blocked, out float perceivedRadius, out float occludedScale) && !own) continue;
+                if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; occludedScale = 1f; }
+                bool seekerScale = !own && listener.Role == PlayerRole.Seeker;
                 float pulseSeconds = clip == "ValveUnderwater" ? PulseSpec.UnderwaterForcedSeconds : duration;
                 bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));
@@ -322,8 +324,7 @@ namespace Marco.Network.Round
                     showPulse = !nextValvePulse.TryGetValue(key, out float next) || Time.time >= next;
                     if (showPulse) nextValvePulse[key] = underwater ? Time.time + PulseSpec.UnderwaterForcedSeconds : float.PositiveInfinity;
                 }
-                if (listener.HasEchoBody) { if (showPulse) pulseSeconds = PulseSpec.EchoSonarSeconds; }
-                else pulseSeconds *= durationScale;
+                pulseSeconds = PulseSpec.ListenerSeconds(pulseSeconds, seekerScale, listener.HasEchoBody, showPulse, occludedScale);   // §5.6 · §5.7
                 // §5.5-2: the snapshot goes with the ring only (fail-closed: None on any doubt).
                 int seenA = SourceSnapshotRules.None, seenB = SourceSnapshotRules.None;
                 if (showPulse && SourceSnapshotRules.IsCharacterSound(clip))
@@ -333,7 +334,8 @@ namespace Marco.Network.Round
                 }
                 else if (showPulse && snapshotA == SourceSnapshotRules.FakeRunner)
                     seenA = SourceSnapshotRules.ForFakeRunner(listener, blocked);   // §5.5-2 메아리 노크
-                SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain, duration * durationScale, loopKey,
+                SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain,
+                    PulseSpec.ListenerSeconds(duration, seekerScale, listener.HasEchoBody, false, occludedScale), loopKey,
                     underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB);
             }
         }
@@ -358,10 +360,15 @@ namespace Marco.Network.Round
         internal bool UsesPoolAudio => SoundMap;
 
         internal bool TryHearPoolVoice(Vector3 origin, NetworkPlayer listener, float radius,
-            out Vector3 point, out float gain, out bool blocked, out float perceivedRadius)
+            out Vector3 point, out float gain, out bool blocked, out float perceivedRadius) =>
+            TryHearPoolVoice(origin, listener, radius, out point, out gain, out blocked, out perceivedRadius, out _);
+
+        // occludedScale: §5.6 perceivedDuration factor (PulseSpec.OccludedDurationScale).
+        internal bool TryHearPoolVoice(Vector3 origin, NetworkPlayer listener, float radius,
+            out Vector3 point, out float gain, out bool blocked, out float perceivedRadius, out float occludedScale)
         {
             soundWorld ??= new SoundWorld();
-            return soundWorld.HearResolved(origin, listener, radius, out point, out gain, out blocked, out perceivedRadius);
+            return soundWorld.HearResolved(origin, listener, radius, out point, out gain, out blocked, out perceivedRadius, out occludedScale);
         }
 
         internal void ShowSoundPulse(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
