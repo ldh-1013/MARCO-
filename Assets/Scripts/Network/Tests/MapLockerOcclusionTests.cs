@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Marco.Network.Player;
+using Marco.Network.Round;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -24,7 +25,7 @@ namespace Marco.Network.Tests
 
         private Scene scene;
         private object soundWorld;
-        private MethodInfo metadata, hearResolved, hearResolvedWithDuration, hasClearSight;
+        private MethodInfo metadata, hearResolved, hearResolvedWithDuration, hasClearSight, waterCrossings;
         private GameObject listener;
 
         [OneTimeSetUp]
@@ -38,6 +39,7 @@ namespace Marco.Network.Tests
             hearResolved = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 7);
             hearResolvedWithDuration = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 8);
             hasClearSight = type.GetMethod("HasClearSight", Any);
+            waterCrossings = type.GetMethod("WaterSurfaceCrossings", Any);
             listener = new GameObject("occlusion listener");
             listener.AddComponent(typeof(NetworkPlayer));
         }
@@ -224,6 +226,70 @@ namespace Marco.Network.Tests
                 return;
             }
             Assert.Fail("no bench with a clear 4 m line across it");
+        }
+
+        // 2026-11-16 결정: the water surface is a sound attenuation rule, not a sight structure.
+        [Test]
+        public void ClickerSight_WaterSurfaceDoesNotBlock()
+        {
+            Vector3 from = new Vector3(4f, .5f, 44f), to = new Vector3(4.5f, -.6f, 44.5f);   // into the teaching pool, no structure
+            Assert.AreEqual(1, (int)waterCrossings.Invoke(soundWorld, new object[] { from, to }), "the segment crosses the surface");
+            Assert.IsTrue(ClearSight(from, to));
+        }
+
+        // ---- 부록 A [태그 판정] 벽 차단 [11-16]: TagBlockRules.PathBlocked (the segment NetworkRound.TryFindTagTarget tests) ----
+
+        private static bool TagBlocked(Vector3 from, Vector3 to)
+        {
+            Physics.SyncTransforms();
+            bool blocked = TagBlockRules.PathBlocked(from, to, null, null);
+            var hits = Physics.RaycastAll(from, (to - from).normalized, Vector3.Distance(from, to), Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                .OrderBy(h => h.distance).Select(h => $"{h.collider.transform.root.name}/{h.collider.name}@{h.distance:F2}[{Marco.Network.Map.MapParts.Read(h.collider)?.DesignId ?? "-"}]");
+            TestContext.WriteLine($"tag {from:F2} -> {to:F2}: blocked={blocked}; hits: {string.Join(" | ", hits)}");
+            return blocked;
+        }
+
+        // 1-d segments: the Seeker stands on the deck with its capsule centre 0.35 m outside the water edge (origin = deck + 0.9),
+        // the Runner swims (sphere r 0.35 at the surface − 0.1); the end is the Runner's closest point. d = horizontal centre distance.
+        [TestCase(3f, 47f, -1f, .5f)] [TestCase(3f, 47f, -1f, 1f)] [TestCase(3f, 47f, -1f, 1.6f)] [TestCase(3f, 47f, -1f, 2.4f)]      // teaching W
+        [TestCase(15f, 47.5f, -1f, 1f)] [TestCase(15f, 47.5f, -1f, 1.6f)] [TestCase(15f, 47.5f, -1f, 2.4f)]                          // competition W (1.8)
+        [TestCase(40f, 47.5f, 1f, 1f)] [TestCase(40f, 47.5f, 1f, 1.6f)] [TestCase(40f, 47.5f, 1f, 2.4f)]                             // competition E (3.5)
+        public void Tag_DeckToSwimmer_NotBlockedBySideWall(float edgeX, float z, float outward, float d)
+        {
+            var origin = new Vector3(edgeX + outward * .35f, .9f, z);
+            var centre = new Vector3(origin.x - outward * d, -.1f, z);
+            var end = centre + (origin - centre).normalized * .35f;
+            Assert.IsFalse(TagBlocked(origin, end));
+        }
+
+        [Test]
+        public void Tag_LockerRowBlocks() => Assert.IsTrue(TagBlocked(new Vector3(12f, 1f, 11.5f), new Vector3(12f, 1f, 15.5f)));
+
+        [Test]
+        public void Tag_RoomWallBlocks() => Assert.IsTrue(TagBlocked(new Vector3(7f, 1f, 11f), new Vector3(11f, 1f, 11f)));
+
+        [TestCase("긴나무의자")]
+        [TestCase("신발장")]
+        [TestCase("oCol")]
+        public void Tag_FurnitureAndPillarsDoNotBlock(string name)
+        {
+            var colliders = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Collider>(true))
+                .Where(c => !c.isTrigger && c.enabled && c.GetComponentsInParent<Transform>(true).Any(t => t.name.Contains(name))).ToList();
+            Assert.Greater(colliders.Count, 0, name);
+            foreach (var target in colliders)
+            {
+                var b = target.bounds;
+                if (b.size.y < .3f) continue;
+                Vector3 axis = b.size.x < b.size.z ? Vector3.right : Vector3.forward;
+                Vector3 from = new Vector3(b.center.x, b.min.y + Mathf.Min(.5f, b.size.y * .5f), b.center.z) - axis * 1.5f, to = from + axis * 3f;
+                var hits = Physics.RaycastAll(from, axis, 3f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                if (!hits.Any(h => h.collider == target)) continue;
+                if (hits.Any(h => Marco.Network.Map.MapParts.Read(h.collider) is { TagBlocker: true })) continue;
+                TestContext.WriteLine($"{name}: {string.Join("/", target.GetComponentsInParent<Transform>(true).Reverse().Select(t => t.name))} bounds {b.min:F2} .. {b.max:F2}");
+                Assert.IsFalse(TagBlocked(from, to), "the old rule blocked on any collider; furniture and pillars no longer do");
+                return;
+            }
+            Assert.Fail("no 3 m line across a " + name + " that crosses no tag-blocking part");
         }
 
         [Test]
