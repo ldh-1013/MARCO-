@@ -319,6 +319,7 @@ namespace Marco.Network.Editor
                         float radius = RingRadiusAt(rings, hatchView.transform.position);
                         Expect(!On("DrainWorkPulse") ? radius == 0 : radius > 0 && radius <= 12f, "S7 drain work pulse", $"ring {radius}m (12m, ×0.5 per wall/water surface)");
                     }
+                    DrainTwoDeckCount();
                     step = 10; return true;
                 case 10: // S9 — live boundary flicker through the real client and server voice paths
                     {
@@ -424,6 +425,39 @@ namespace Marco.Network.Editor
         // height + margin above it (a prop top under a ceiling slab is no place to stand — the eye would sit inside
         // the slab), and among those the walkable floor, not a prop top more than 1 m above the lowest one.
         const float StandEyeHeight = 1.65f, StandMargin = .55f;
+        // S7b — 부록 A [사운드 차폐] 수면 경유 판정 [11-16]: drain 2 (teaching-pool sump) → the nearest teaching-pool edge on the
+        // deck (standing ear, +1.6 m). The path goes up the sump to the surface: 0 walls, 1 surface. Count only — the role
+        // (Seeker 7.2 m hears it, Survivor 6 m does not at 6.74 m) is covered by MapLockerOcclusionTests.
+        static void DrainTwoDeckCount()
+        {
+            var worldType = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld");
+            var count = worldType?.GetMethod("CountHearingOccluders", Flags);
+            if (count == null) { results.Add("skip S7b drain 2 deck count: no water-path judgement"); return; }
+            if (!DrainHatchView.TryGet(DrainHatchId.Second, out var hatch) || hatch == null) { results.Add("skip S7b drain 2 deck count: no hatch"); return; }
+            var world = Activator.CreateInstance(worldType, true);
+            var tryPool = worldType.GetMethod("TryPool", Flags);
+            Vector3 source = hatch.transform.position, ear = default;
+            float best = float.MaxValue;
+            for (int i = 0; i < 16; i++)
+            {
+                var direction = new Vector3(Mathf.Cos(i * Mathf.PI / 8f), 0, Mathf.Sin(i * Mathf.PI / 8f));
+                for (float d = .05f; d < 12f && d < best; d += .05f)
+                {
+                    var point = new Vector3(source.x, 0, source.z) + direction * d;
+                    if ((bool)tryPool.Invoke(world, new object[] { point, null })) continue;
+                    point += direction * .35f;   // the standing capsule's centre just behind the edge
+                    if (Physics.Raycast(point + Vector3.up * 2.5f, Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore))
+                    { best = d; ear = floor.point + Vector3.up * 1.6f; }
+                    break;
+                }
+            }
+            if (best == float.MaxValue) { results.Add("skip S7b drain 2 deck count: no deck edge"); return; }
+            var args = new object[] { source, ear, Vector3.Distance(source, ear), 0 };
+            int walls = (int)count.Invoke(world, args), water = (int)args[3];
+            Expect(walls == 0 && water == 1, "S7b drain 2 → teaching-pool edge deck",
+                $"hatch {source:F2} → ear {ear:F2} ({Vector3.Distance(source, ear):F2}m): walls={walls} water={water} (expected 0 / 1 — up the sump, through the surface)");
+        }
+
         static bool Spot(Vector3 target, float distance, out Vector3 spot)
         {
             var open = new List<Vector3>();

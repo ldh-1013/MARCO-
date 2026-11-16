@@ -14,6 +14,8 @@ namespace Marco.Network.Audio
         private readonly Dictionary<Collider, MapPart> parts = new();
         private readonly HashSet<MonoBehaviour> walls = new();
         private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> spanParts = new();
+        private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> pathParts = new();
+        private readonly List<PathLeg> legs = new(2);
         private readonly List<OccluderSpan> spans = new();
         private readonly RaycastHit[] backHits = new RaycastHit[64];
         // The map part on a collider (Marco.Network.Map.MapParts — shared with clicker sight), cached per collider.
@@ -239,8 +241,7 @@ namespace Marco.Network.Audio
             float distance = Vector3.Distance(origin, end);
             if (listener.Role == PlayerRole.Seeker) radius *= Marco.Network.Round.PulseSpec.SeekerHearing;
             if (distance >= radius) return false;
-            int wallCount = CountOccluders(origin, end, distance);
-            int waterCrossings = WaterSurfaceCrossings(origin, end);
+            int wallCount = CountHearingOccluders(origin, end, distance, out int waterCrossings);
             radius *= Mathf.Pow(PulseSpec.WallOcclusion, wallCount) * Mathf.Pow(PulseSpec.WaterOcclusion, waterCrossings);
             if (distance >= radius) return false;
             perceivedRadius = radius;
@@ -267,23 +268,95 @@ namespace Marco.Network.Audio
         // and OccluderSpans merges touching / overlapping ones (gap <= PulseSpec.OccluderMergeGap).
         private int CountOccluders(Vector3 origin, Vector3 end, float distance)
         {
-            walls.Clear();
-            spanParts.Clear();
-            spans.Clear();
-            if (distance <= 0.05f) return 0;
-            Vector3 direction = (end - origin) / distance;
-            CollectSpanHits(origin, direction, distance, visualHits, true);
-            CollectSpanHits(end, -direction, distance, backHits, false);
-            foreach (var pair in spanParts)
+            legs.Clear();
+            legs.Add(new PathLeg(origin, end));
+            return CountOccluders(legs, distance);
+        }
+
+        // 부록 A [사운드 차폐] 수면 경유 판정 [11-16]: source and listener on opposite sides of the water surface → the path runs
+        // straight up from the underwater end to the surface, then to the other end (WaterPathRules), and the surface counts
+        // once. Same side, or an underwater end with a structure above it before the surface: the straight line as before.
+        // Under water = inside a pool's area and below its surface (the same test as WaterSurfaceCrossings).
+        private int CountHearingOccluders(Vector3 origin, Vector3 end, float distance, out int waterCrossings)
+        {
+            bool originUnder = Underwater(origin, out float originSurface), endUnder = Underwater(end, out float endSurface);
+            if (originUnder != endUnder)
             {
-                bool fromInside = float.IsPositiveInfinity(pair.Value.enter), toInside = float.IsNegativeInfinity(pair.Value.exit);
-                float enter = fromInside ? 0f : pair.Value.enter;
-                float exit = toInside ? distance : pair.Value.exit;
-                // An end lying on the part's surface (e.g. a drain hatch on the pool floor) is hit from one side only, over a
-                // few centimetres: that is not "inside the part" and the part is not between the two ends.
-                if (fromInside && exit <= EndOnSurface || toInside && enter >= distance - EndOnSurface) continue;
+                Vector3 under = originUnder ? origin : end;
+                float surface = originUnder ? originSurface : endSurface;
+                if (!StructureAbove(under, surface))
+                {
+                    WaterPathRules.Build(origin, originUnder, end, endUnder, surface, legs);
+                    waterCrossings = 1;
+                    return CountOccluders(legs, distance);
+                }
+            }
+            waterCrossings = WaterSurfaceCrossings(origin, end);
+            return CountOccluders(origin, end, distance);
+        }
+
+        private bool Underwater(Vector3 point, out float surface)
+        {
+            surface = 0f;
+            if (!TryPool(point, out var pool)) return false;
+            surface = pool.center.y;
+            return point.y < surface;
+        }
+
+        // A sound structure between an underwater point and the surface straight above it (the water above is covered).
+        // A structure the point lies on (within EndOnSurface) does not count, like an end on a surface.
+        internal bool StructureAbove(Vector3 under, float surface)
+        {
+            float height = surface - under.y;
+            if (height <= EndOnSurface) return false;
+            foreach (var hit in Physics.RaycastAll(under, Vector3.up, height, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.distance <= EndOnSurface || hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                var part = Metadata(hit.collider);
+                if (part != null && part.IsSoundStructure) return true;
+            }
+            return false;
+        }
+
+        // 부록 A [사운드 차폐] 차폐 셈 단위 [11-16] over a path of legs joined end to end (one leg = the straight line). Each part's
+        // span is placed by path length; a part met on several legs is one span. The 5 cm end rule applies only at the path's
+        // two real ends, never at a joint (the surface point).
+        private int CountOccluders(List<PathLeg> path, float straightDistance)
+        {
+            walls.Clear();
+            spans.Clear();
+            pathParts.Clear();
+            if (straightDistance <= 0.05f) return 0;
+            float offset = 0f;
+            for (int k = 0; k < path.Count; k++)
+            {
+                Vector3 from = path[k].From, to = path[k].To;
+                float length = Vector3.Distance(from, to);
+                if (length <= 1e-4f) continue;
+                spanParts.Clear();
+                Vector3 direction = (to - from) / length;
+                CollectSpanHits(from, direction, length, visualHits, true);
+                CollectSpanHits(to, -direction, length, backHits, false);
+                bool first = k == 0, last = k == path.Count - 1;
+                foreach (var pair in spanParts)
+                {
+                    bool fromInside = float.IsPositiveInfinity(pair.Value.enter), toInside = float.IsNegativeInfinity(pair.Value.exit);
+                    float enter = fromInside ? 0f : pair.Value.enter;
+                    float exit = toInside ? length : pair.Value.exit;
+                    // An end lying on the part's surface (e.g. a drain hatch on the pool floor) is hit from one side only, over a
+                    // few centimetres: that is not "inside the part" and the part is not between the two ends.
+                    if (first && fromInside && exit <= EndOnSurface || last && toInside && enter >= length - EndOnSurface) continue;
+                    float pathEnter = offset + enter, pathExit = offset + Mathf.Max(enter, exit);
+                    if (pathParts.TryGetValue(pair.Key, out var seen))
+                        pathParts[pair.Key] = (Mathf.Min(seen.enter, pathEnter), Mathf.Max(seen.exit, pathExit), seen.slab);
+                    else pathParts[pair.Key] = (pathEnter, pathExit, pair.Value.slab);
+                }
+                offset += length;
+            }
+            foreach (var pair in pathParts)
+            {
                 walls.Add(pair.Key);
-                spans.Add(new OccluderSpan(enter, Mathf.Max(enter, exit), pair.Value.slab));
+                spans.Add(new OccluderSpan(pair.Value.enter, pair.Value.exit, pair.Value.slab));
             }
             return OccluderSpans.Count(spans, PulseSpec.OccluderMergeGap);
         }
