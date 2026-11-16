@@ -25,6 +25,7 @@ namespace Marco.Network.Vision
         private readonly List<Ring> pool = new();
         private readonly List<Request> queue = new();
         private readonly List<Afterglow> afterglows = new();
+        private readonly List<bool> soundSlots = new();
         private readonly List<Afterglow> afterglowPool = new();
         private Material material;
         private NetworkPlayer owner;
@@ -57,6 +58,8 @@ namespace Marco.Network.Vision
             public bool Seeker, Contact, Expand, Sound, Self;
             public Color Tint;
             public float Radius;
+            // §3.2-1 소나 (Echo body screen): the ring fades to EchoSonarRules.ResidualStartAlpha, then stays as a residual.
+            public bool Sonar;
             // Wall reveal strip (child object, same material, _Mode 1).
             public GameObject WallObject;
             public Renderer WallRenderer;
@@ -84,7 +87,7 @@ namespace Marco.Network.Vision
             public int Source, Frame;
             public Vector3 Point;
             public float Radius, Lifetime;
-            public bool DoubleEdge, Self, Own;
+            public bool DoubleEdge, Self, Own, Sonar;
             public Color Tint;
         }
 
@@ -149,6 +152,15 @@ namespace Marco.Network.Vision
                 float t = age / ring.Lifetime;
                 if (t >= 1)
                 {
+                    if (ring.Sonar)
+                    {
+                        // 3.2-1 잔류 흔적: the last shape and radius stay, fading over EchoSonarResidualSeconds; the slot frees
+                        // only when the residual ends.
+                        float s = age - ring.Lifetime;
+                        if (EchoSonarRules.ResidualDone(s)) { Remove(i); continue; }
+                        DrawResidual(ring, s);
+                        continue;
+                    }
                     if (ring.Self && ring.Sound) StartAfterglow(ring);
                     Remove(i);
                     continue;
@@ -264,7 +276,8 @@ namespace Marco.Network.Vision
         private void RequestSound(Vector3 point, float radius, float duration, Color tint, bool doubleEdge, bool self, Label label)
         {
             // §3.2-1 소나: on an Echo body's screen every other sound is one colour, single edge (source not identifiable).
-            if (!self && owner != null && owner.HasEchoBody)
+            bool sonar = !self && owner != null && owner.HasEchoBody;
+            if (sonar)
             {
                 tint = RippleVisualSettings.EchoSonar(owner.Status);
                 doubleEdge = false;
@@ -272,7 +285,7 @@ namespace Marco.Network.Vision
             Submit(new Request
             {
                 Kind = Kind.Sound, Label = label, Source = int.MinValue, Point = point, Radius = radius, Lifetime = duration,
-                DoubleEdge = doubleEdge, Self = self, Tint = tint, Frame = Time.frameCount
+                DoubleEdge = doubleEdge, Self = self, Tint = tint, Sonar = sonar, Frame = Time.frameCount
             }, self);
         }
 
@@ -313,13 +326,14 @@ namespace Marco.Network.Vision
             bool sound = request.Kind == Kind.Sound;
             if (sound)
             {
+                // A ring and its sonar residual are one slot (부록 A [메아리] 최근 8개 [11-16]); the oldest slot goes first.
                 int cap = owner.HasEchoBody ? RippleVisualSettings.EchoSoundRingCap : RippleVisualSettings.SoundRingCap;
                 while (true)
                 {
-                    int count = 0, oldest = -1;
-                    for (int i = 0; i < rings.Count; i++)
-                        if (rings[i].Sound) { count++; if (oldest < 0) oldest = i; }
-                    if (count < cap || oldest < 0) break;
+                    soundSlots.Clear();
+                    for (int i = 0; i < rings.Count; i++) soundSlots.Add(rings[i].Sound);
+                    int oldest = EchoSonarRules.SlotToEvict(soundSlots, cap);
+                    if (oldest < 0) break;
                     Remove(oldest);
                 }
             }
@@ -361,6 +375,7 @@ namespace Marco.Network.Vision
                 ring.Source = request.Source; ring.Seeker = request.DoubleEdge; ring.Contact = request.Kind == Kind.Contact;
                 ring.Radius = request.Radius; ring.Sound = sound; ring.Expand = sound; ring.Self = request.Self;
                 ring.Tint = request.Tint;
+                ring.Sonar = sound && request.Sonar;
                 Draw(ring, 0, 0, ring.Started);
                 ring.Object.SetActive(true);
                 rings.Add(ring);
@@ -383,6 +398,16 @@ namespace Marco.Network.Vision
             _ => "Movement Floor Pulse " + source
         };
 
+        // 3.2-1 잔류 흔적: the ring's end frame (full radius, end width) at EchoSonarRules.ResidualAlpha(s) — no expansion.
+        private void DrawResidual(Ring ring, float s)
+        {
+            float thin = RippleVisualSettings.ThinAtEnd;
+            float alpha = EchoSonarRules.ResidualAlpha(s);
+            RippleMesh.ApplyFrame(ring.Properties, ring.Tint, Mathf.Clamp01(alpha * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale), ring.Radius,
+                RippleVisualSettings.CoreWidth * thin, RippleVisualSettings.TrailWidth * thin);
+            ring.Renderer.SetPropertyBlock(ring.Properties);
+        }
+
         private void Draw(Ring ring, float age, float t, float now)
         {
             float fadeIn = Mathf.Clamp01(age / Mathf.Max(.001f, Mathf.Min(RippleVisualSettings.FadeInSeconds, ring.Lifetime * .25f)));
@@ -391,7 +416,8 @@ namespace Marco.Network.Vision
             if (ring.Expand)
             {
                 radius = Mathf.Lerp(RippleVisualSettings.StartRadius, ring.Radius, 1f - Mathf.Pow(1f - t, RippleVisualSettings.ExpandPower));
-                alpha = RippleVisualSettings.MaxAlpha * fadeIn * Mathf.Pow(1f - t, RippleVisualSettings.FadePower);
+                alpha = ring.Sonar ? fadeIn * EchoSonarRules.RingAlpha(t, true)
+                    : RippleVisualSettings.MaxAlpha * fadeIn * Mathf.Pow(1f - t, RippleVisualSettings.FadePower);   // survivor curve unchanged
                 float thin = Mathf.Lerp(1f, RippleVisualSettings.ThinAtEnd, t);
                 core = RippleVisualSettings.CoreWidth * width * thin;
                 trail = RippleVisualSettings.TrailWidth * width * thin;

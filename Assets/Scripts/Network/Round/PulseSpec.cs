@@ -38,8 +38,8 @@ namespace Marco.Network.Round
         public const float SeekerHearing = 1.2f;
         /// <summary>부록 A [역할별 인지 배율] 술래 "반경 ×1.2, 지속 ×1.5 (서버 판정 단계에 적용되는 기능적 수치)" — 지속 쪽 (§5.7).</summary>
         public const float SeekerDuration = 1.5f;
-        /// <summary>부록 A [메아리] "소나: 맵 전체 파문 관측, 잔류 3초 감쇠" (§3.2-1) — 메아리 몸 청취자의 링 지속(역할 배율 대신).</summary>
-        public const float EchoSonarSeconds = 3f;
+        /// <summary>소멸 후 잔류 흔적 감쇠 시간 — 부록 A [메아리], 3.2-1 380행 (3.2-1 "잔류 흔적: 소멸 후 3초간 감쇠").</summary>
+        public const float EchoSonarResidualSeconds = 3f;
         /// <summary>부록 A [사운드 차폐] "일반 벽 통과당 반경 배율 ×0.5 (중첩 가능)" · "수면(물 표면) ×0.5" (§5.6). 층간 바닥 ×0.25는 벽 2장으로 센다.</summary>
         public const float WallOcclusion = .5f, WaterOcclusion = .5f;
         /// <summary>부록 A [사운드 차폐] "차폐 시 볼륨 ×0.5 고정(벽 수와 무관)" (§5.6).</summary>
@@ -64,12 +64,13 @@ namespace Marco.Network.Round
 
         /// <summary>
         /// How long one listener perceives a pulse (§5.6 · §5.7), shared by EmitSound, footsteps, shout / scream and voice.
-        /// Seeker ×1.5 and the occlusion factor multiply the base duration. An Echo body keeps the current behaviour: a ring lasts
-        /// EchoSonarSeconds, a sound without a ring keeps its base duration (3.2-1 / 5.7 mismatch — 개정이력 11-16, to be fixed next).
+        /// Seeker ×1.5 and the occlusion factor multiply the base duration. An Echo body gets the base duration ×1.0 — no Seeker
+        /// multiplier, occlusion ignored (3.2-1 379행 "파문 표시 시간 = 본래 지속시간 그대로", 5.7 1218행 "duration × 1.0"); its
+        /// 3 s residual trace is drawn by the client after the ring (EchoSonarRules). `ring` no longer changes the result [11-16].
         /// </summary>
         public static float ListenerSeconds(float baseSeconds, bool seeker, bool echoBody, bool ring, float occludedScale)
         {
-            if (echoBody) return ring ? EchoSonarSeconds : baseSeconds;
+            if (echoBody) return baseSeconds;
             return baseSeconds * (seeker ? SeekerDuration : 1f) * occludedScale;
         }
         /// <summary>부록 A [숨 게이지] 질식 페널티 "고함급(22m) 파문 1회" — 지속은 고함 등급 정의를 따른다 (11-15).</summary>
