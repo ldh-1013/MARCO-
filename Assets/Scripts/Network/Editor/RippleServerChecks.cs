@@ -320,6 +320,38 @@ namespace Marco.Network.Editor
                         Expect(!On("DrainWorkPulse") ? radius == 0 : radius > 0 && radius <= 12f, "S7 drain work pulse", $"ring {radius}m (12m, ×0.5 per wall/water surface)");
                     }
                     DrainTwoDeckCount();
+                    step = 92; return true;
+                case 92: // R1 — 부록 A [사운드 차폐] 재판정 상향 [11-16]: a Shout-grade pulse heard muffled through a wall, then the
+                         // listener steps out → the next 0.25 s recheck sends it clear with the elapsed time (ring drawn mid-way).
+                    if (!Has("TickRecheck")) { results.Add("skip R1 recheck: not implemented"); step = 10; return true; }
+                    if (!Stand(new Vector3(7f, 0f, 11f), out recheckSource) || !Stand(new Vector3(11f, 0f, 11f), out var walled) ||
+                        !Stand(new Vector3(7.5f, 0f, 12.5f), out recheckOpen))
+                    { results.Add("skip R1 recheck: no AID / ML floor"); step = 10; return true; }
+                    rings.ClearPulses();
+                    player.GetComponent<PlayerMovement>().Teleport(walled);
+                    Physics.SyncTransforms();
+                    recheckSource += Vector3.up * .6f;
+                    Invoke(round, "EmitSound", "TagPulse", recheckSource, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds,
+                        -1, false, -1, -1, false, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
+                    recheckEmitted = now;
+                    until = now + .5; step = 93; return true;
+                case 93:
+                    if (now < until) return true;
+                    recheckRingBefore = RingRadiusAt(rings, recheckSource);
+                    player.GetComponent<PlayerMovement>().Teleport(recheckOpen);
+                    Physics.SyncTransforms();
+                    recheckMoved = now;
+                    until = now + .6; step = 94; return true;
+                case 94:
+                    if (now < until) return true;
+                    {
+                        float radius = RingRadiusAt(rings, recheckSource), age = RingAgeAt(rings, recheckSource);
+                        float sinceMove = (float)(now - recheckMoved), sinceEmit = (float)(now - recheckEmitted);
+                        // The ring is older than the time since the move: it started at the elapsed phase (≥ 0.5 s).
+                        Expect(recheckRingBefore == 0 && Mathf.Approximately(radius, PulseSpec.Shout) && age > sinceMove + .3f && age <= sinceEmit + .05f,
+                            "R1 recheck upgrade", $"behind the wall ring {recheckRingBefore}m → after stepping out ring {radius}m, age {age:F2}s " +
+                            $"(moved {sinceMove:F2}s ago, emitted {sinceEmit:F2}s ago)");
+                    }
                     step = 10; return true;
                 case 10: // S9 — live boundary flicker through the real client and server voice paths
                     {
@@ -456,6 +488,32 @@ namespace Marco.Network.Editor
             int walls = (int)count.Invoke(world, args), water = (int)args[3];
             Expect(walls == 0 && water == 1, "S7b drain 2 → teaching-pool edge deck",
                 $"hatch {source:F2} → ear {ear:F2} ({Vector3.Distance(source, ear):F2}m): walls={walls} water={water} (expected 0 / 1 — up the sump, through the surface)");
+        }
+
+        static Vector3 recheckSource, recheckOpen;
+        static double recheckEmitted, recheckMoved;
+        static float recheckRingBefore;
+
+        // A standing capsule position on the floor under (x, z) at ground level (as Spot: floor + 1.05).
+        static bool Stand(Vector3 xz, out Vector3 spot)
+        {
+            spot = default;
+            if (!Physics.Raycast(new Vector3(xz.x, 2.5f, xz.z), Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore) || floor.normal.y < .7f) return false;
+            spot = floor.point + Vector3.up * 1.05f;
+            return true;
+        }
+
+        static float RingAgeAt(WalkingFootRings rings, Vector3 point)
+        {
+            float age = -1;
+            foreach (var ring in Rings(rings))
+            {
+                var type = ring.GetType();
+                if (!(bool)type.GetField("Sound").GetValue(ring)) continue;
+                var go = (GameObject)type.GetField("Object").GetValue(ring);
+                if (Vector3.Distance(go.transform.position, point) < .3f) age = Time.time - (float)type.GetField("Started").GetValue(ring);
+            }
+            return age;
         }
 
         static bool Spot(Vector3 target, float distance, out Vector3 spot)

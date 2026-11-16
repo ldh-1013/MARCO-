@@ -213,7 +213,7 @@ namespace Marco.Network.Editor
                 Dive(true);
                 Require(Marco.Network.Audio.RoundAudioPlayback.LocalDiving, "W1: forced dive not seen");
                 // W1: a scream one-shot made while diving gets exactly one filter at 650 Hz.
-                vocalLogic.Invoke(movement, new object[] { local.Owner, near, 9f, 1f, 1f, false, true, false, -1, -1 });
+                vocalLogic.Invoke(movement, new object[] { local.Owner, near, 9f, 1f, 1f, false, true, false, -1, -1, 0f, -1 });
                 GameObject vocal = null;
                 foreach (var go in UnityEngine.Object.FindObjectsByType<AudioSource>()) if (go.name == "Ability vocal") vocal = go.gameObject;
                 Require(vocal != null, "W1: no scream one-shot");
@@ -261,7 +261,7 @@ namespace Marco.Network.Editor
                 int before = voices.Count;
                 // Same values the server sends for both (EmitSound: volume 0.65 × gain, 1.2 s × Seeker 1.5, 9 m ring).
                 target.Invoke(round, new object[] { local.Owner, clip, point, .65f * .5f, 1.8f, -1, muffled, -1, false, true,
-                    muffled ? 0f : 9f, 1.8f, -1, -1 });
+                    muffled ? 0f : 9f, 1.8f, -1, -1, 0f, -1 });
                 Require(voices.Count == before + 1, $"K: {clip} did not start a sound");
                 var voice = voices[voices.Count - 1];
                 var s = (AudioSource)voice.GetType().GetField("Source").GetValue(voice);
@@ -297,7 +297,7 @@ namespace Marco.Network.Editor
             var tick = playback.GetType().GetMethod("TickSeekerDrone", any);
             clock.SetValue(playback, Time.timeAsDouble - 60f); fadeClock.SetValue(playback, -1d);
             tick.Invoke(playback, new object[] { true });
-            target.Invoke(round, new object[] { local.Owner, "Knock", point, .325f, 1.8f, -1, false, -1, false, true, 9f, 1.8f, -1, -1 });
+            target.Invoke(round, new object[] { local.Owner, "Knock", point, .325f, 1.8f, -1, false, -1, false, true, 9f, 1.8f, -1, -1, 0f, -1 });
             bool reset = Time.timeAsDouble - (double)clock.GetValue(playback) < .05;
             fadeClock.SetValue(playback, Time.timeAsDouble - .21);
             tick.Invoke(playback, new object[] { true });
