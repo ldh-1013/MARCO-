@@ -372,6 +372,42 @@ namespace Marco.Network.Tests
             Assert.AreEqual(0, covered.Count, "no covered water in IndoorPool_v1_2");
         }
 
+        // 부록 A [사운드 차폐] 재판정 [11-16] + 수면 경유: a deck Seeker out of reach of the drain 2 forced pulse walks to the
+        // teaching-pool edge while it lasts → upgraded to muffled (path up the sump, through the surface), no ring.
+        [Test]
+        public void Recheck_DeckSeekerWalksToDrainTwoEdge_MuffledUpgrade()
+        {
+            Vector3 drain = new Vector3(7f, -3.5f, 47f), far = new Vector3(14.07f, 1.6f, 54.07f), edge = new Vector3(11.4f, 1.6f, 47f);
+            Vector3 ear = far;
+            OcclusionRecheck.Hear hear = (int id, Vector3 origin, float radius, out HearSample sample) =>
+            {
+                var c = Hearing(origin, ear);
+                float d = Vector3.Distance(origin, ear), r = radius * PulseSpec.SeekerHearing;
+                float perceived = r * Mathf.Pow(PulseSpec.WallOcclusion, c.walls) * Mathf.Pow(PulseSpec.WaterOcclusion, c.water);
+                bool heard = d < r && d < perceived;
+                sample = new HearSample { Heard = heard, Blocked = c.walls + c.water > 0, Point = origin, Gain = .5f, PerceivedRadius = perceived,
+                    DurationScale = PulseSpec.OccludedDurationScale(c.walls, c.water, false) };
+                return heard;
+            };
+            hear(1, drain, PulseSpec.DrainWork, out var first);
+            Assert.IsFalse(first.Heard, "out of reach at the start");
+            var tracker = new OcclusionRecheck();
+            var pulse = tracker.Begin(drain, PulseSpec.DrainWork, PulseSpec.DrainWorkPeriod, 0f);
+            var sent = new List<(HearSample hearing, float elapsed)>();
+            pulse.Send = (id, hearing, elapsed) => sent.Add((hearing, elapsed));
+            pulse.Note(1, HearState.None);
+            tracker.Commit(pulse);
+            for (float t = 0f; t <= 3f; t += .02f)
+            {
+                if (t >= .6f) ear = edge;
+                tracker.Tick(t, id => true, hear);
+            }
+            Assert.AreEqual(1, sent.Count, "one upgrade");
+            Assert.IsTrue(sent[0].hearing.Blocked, "muffled — through the surface, so no ring (Audio.cs showPulse = !blocked)");
+            Assert.That(sent[0].elapsed, Is.InRange(.6f, .85f));
+            TestContext.WriteLine($"upgrade at {sent[0].elapsed:F2}s: perceived {sent[0].hearing.PerceivedRadius:F2} m, duration scale {sent[0].hearing.DurationScale:F2}");
+        }
+
         [Test]
         public void DurationScale_OpenOneWallTwoWalls()
         {
