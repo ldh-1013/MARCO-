@@ -134,18 +134,37 @@ namespace Marco.Network.Player
             var round = NetworkRound.Instance;
             Vector3 origin = transform.position; origin.y = WaterEyeHeight;
             float radius = scream ? PulseSpec.Scream : PulseSpec.Shout, duration = scream ? PulseSpec.ScreamSeconds : PulseSpec.ShoutSeconds;
+            int speaker = player.PlayerId;
+            // 부록 A [사운드 차폐] 재판정 [11-16]: listeners who do not hear it clearly are re-judged every 0.25 s, upward only.
+            var tracked = round != null ? round.BeginRecheck(origin, radius, duration) : null;
+            if (tracked != null) tracked.Send = (id, hearing, elapsed) =>
+            {
+                if (this == null || !NetworkPlayer.TryGet(id, out var listener) || listener == null) return;
+                AbilitySoundTarget(listener.Owner, hearing.Point, hearing.PerceivedRadius,
+                    PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, false, true, hearing.DurationScale), hearing.Gain,
+                    hearing.Blocked, scream, false, SourceSnapshotRules.ForListener(speaker, listener, hearing.Blocked), SourceSnapshotRules.None,
+                    elapsed, tracked.Id);
+            };
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
                 if (listener.HasEchoBody && !round.CanTarget(listener)) continue;   // 3.2-1: Echo bodies watch the map's pulses
                 if (listener == player)
-                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
-                else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
-                    out bool blocked, out float perceivedRadius, out float occludedScale))
+                {
+                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None, 0f, -1);
+                    continue;
+                }
+                bool heard = round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
+                    out bool blocked, out float perceivedRadius, out float occludedScale);
+                var state = RecheckRules.State(heard, blocked);
+                if (tracked != null && listener.Status == PlayerStatus.Alive && round.CanTarget(listener) &&
+                    RecheckRules.Tracks(false, listener.HasEchoBody, false, false, state)) tracked.Note(listener.PlayerId, state);
+                if (heard)
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
                         PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, listener.HasEchoBody, true, occludedScale), gain, blocked, scream, false,
-                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None, 0f, tracked?.Id ?? -1);
             }
+            round?.CommitRecheck(tracked);
         }
 
         [TargetRpc]
@@ -161,18 +180,27 @@ namespace Marco.Network.Player
         private void FearTarget(NetworkConnection connection, float remaining) => fearEnds = Time.time + remaining;
 
         [TargetRpc]
+        // [11-16 재판정] elapsed > 0 = an upgrade of pulse pulseId: the ring starts at phase elapsed / duration and a muffled
+        // vocal of the same pulse turns clear in place (else a new one starts elapsed seconds in; skipped if the clip is shorter).
         private void AbilitySoundTarget(NetworkConnection connection, Vector3 point, float radius,
-            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB)
+            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB, float elapsed, int pulseId)
         {
             var round = NetworkRound.Instance;
-            if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream);
+            if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream, elapsed);
             if (!blocked && !self && (snapshotA >= 0 || snapshotB >= 0))   // §5.5-2
-                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, RecheckRules.Remaining(duration, elapsed)); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
             if (self && scream) screamFlash = Time.time + .2f;
             // Keep survivor screams and seeker vocals separate, including missing assets.
+            if (elapsed > 0f && pulseId >= 0 && abilityVocals.TryGetValue(pulseId, out var playing) && playing.source != null && playing.source.isPlaying)
+            {
+                playing.source.transform.position = point;
+                playing.source.volume = gain;
+                Marco.Network.Audio.RoundAudioPlayback.Follow(playing.filter, blocked);
+                return;
+            }
             var clip = Resources.Load<AudioClip>(scream ? "MarcoSound/Scream" : "MarcoSound/Shout");
-            if (clip == null) return;
+            if (clip == null || elapsed >= clip.length) return;
             var root = new GameObject("Ability vocal"); root.transform.position = point;
             var source = root.AddComponent<AudioSource>();
             source.clip = clip; source.spatialBlend = self ? 0 : 1; source.volume = gain;
@@ -180,10 +208,23 @@ namespace Marco.Network.Player
             source.rolloffMode = AudioRolloffMode.Custom;
             source.SetCustomCurve(AudioSourceCurveType.CustomRolloff, AnimationCurve.Constant(0, 1, 1));
             // Wall muffling (1,000 Hz) and the listener's own dive (650 Hz) — same values as every round sound (11-14).
-            Marco.Network.Audio.RoundAudioPlayback.Follow(root.AddComponent<AudioLowPassFilter>(), blocked);
+            var filter = root.AddComponent<AudioLowPassFilter>();
+            Marco.Network.Audio.RoundAudioPlayback.Follow(filter, blocked);
             // Audio finishes naturally; pulse lifetime is controlled independently above.
-            source.Play(); Destroy(root, clip.length + .1f);
+            if (elapsed > 0f) source.time = elapsed;
+            source.Play(); Destroy(root, clip.length - Mathf.Max(0f, elapsed) + .1f);
+            if (pulseId >= 0)
+            {
+                abilityVocalSweep.Clear();
+                foreach (var pair in abilityVocals) if (pair.Value.source == null) abilityVocalSweep.Add(pair.Key);
+                foreach (int stale in abilityVocalSweep) abilityVocals.Remove(stale);
+                abilityVocals[pulseId] = (source, filter);
+            }
         }
+
+        // Client: this speaker's vocals by pulse id, so a recheck upgrade turns the muffled one clear in place.
+        private readonly System.Collections.Generic.Dictionary<int, (AudioSource source, AudioLowPassFilter filter)> abilityVocals = new();
+        private readonly System.Collections.Generic.List<int> abilityVocalSweep = new();
 
         private void OnGUI()
         {

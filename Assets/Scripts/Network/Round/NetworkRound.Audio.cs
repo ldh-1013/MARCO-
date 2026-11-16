@@ -60,6 +60,7 @@ namespace Marco.Network.Round
             movementClocks.Clear(); movementPositions.Clear(); nextMovementTick = movementTickAt = 0;
             rotatingSounds.Clear();
             nextValvePulse.Clear();
+            recheck.Clear();
             healingSoundTimes.Clear();
             nextSoundTick = 0;
             soundWasRunning = false;
@@ -76,6 +77,7 @@ namespace Marco.Network.Round
                 return;
             }
             soundWasRunning = true;
+            TickRecheck();
             TickMovementRings();
             if (Time.time < nextSoundTick) return;
             float soundDelta = nextSoundTick > 0 ? Mathf.Min(.5f, Time.time - nextSoundTick + .25f) : 0f;
@@ -236,6 +238,19 @@ namespace Marco.Network.Round
             EmitSound("Hurt", origin, PulseSpec.Drowning, 1f, PulseSpec.DrowningSeconds, sourceId: player.PlayerId);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
             RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, PulseSpec.Drowning, PulseSpec.DrowningSeconds); // 기획서 8.2
             soundWorld ??= new SoundWorld();
+            int drowning = player.PlayerId;
+            // 부록 A [사운드 차폐] 재판정 [11-16]: a listener who could not see the ring is re-judged; this path is ring-only, so
+            // only an upgrade to clear sends (the drowning sound itself is the "Hurt" EmitSound above, followed there).
+            var tracked = BeginRecheck(origin, PulseSpec.Drowning, PulseSpec.DrowningSeconds);
+            tracked.Send = (id, hearing, elapsed) =>
+            {
+                if (!NetworkPlayer.TryGet(id, out var listener) || listener == null) return;
+                var upgraded = DrowningPulseRules.For(listener.Status, listener.Role == PlayerRole.Seeker, false,
+                    hearing.Heard, hearing.Blocked, hearing.PerceivedRadius, hearing.DurationScale);
+                if (!upgraded.Send) return;
+                DrowningPulseTarget(listener.Owner, hearing.Point, drowning, upgraded.Radius, upgraded.Seconds,
+                    SourceSnapshotRules.ForListener(drowning, listener, false), SourceSnapshotRules.None, elapsed);
+            };
             foreach (var listener in NetworkPlayer.All)
             {
                 if (!CanTarget(listener)) continue;
@@ -244,22 +259,29 @@ namespace Marco.Network.Round
                 // §5.7: the server works out this listener's radius and duration (Seeker ×1.2 / ×1.5, occlusion, Echo body).
                 var pulse = DrowningPulseRules.For(listener.Status, listener.Role == PlayerRole.Seeker, listener.HasEchoBody,
                     heard, blocked, perceivedRadius, durationScale);
+                var state = pulse.Send ? HearState.Clear : RecheckRules.State(heard, blocked);
+                if (listener.Status == PlayerStatus.Alive &&
+                    RecheckRules.Tracks(listener.PlayerId == drowning, listener.HasEchoBody, false, false, state))
+                    tracked.Note(listener.PlayerId, state);
                 if (!pulse.Send) continue;
-                DrowningPulseTarget(listener.Owner, point, player.PlayerId, pulse.Radius, pulse.Seconds,
-                    SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
+                DrowningPulseTarget(listener.Owner, point, drowning, pulse.Radius, pulse.Seconds,
+                    SourceSnapshotRules.ForListener(drowning, listener, blocked), SourceSnapshotRules.None, 0f);   // §5.5-2
             }
+            CommitRecheck(tracked);
         }
 
         // §5.7 (1221행): the client draws the radius and duration it is sent, with no further multiplier.
         [TargetRpc]
-        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source, float radius, float seconds, int snapshotA, int snapshotB)
+        // elapsed [11-16 재판정]: > 0 only for an upgrade — the ring starts at phase elapsed / seconds.
+        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source, float radius, float seconds, int snapshotA, int snapshotB,
+            float elapsed)
         {
             var local = NetworkPlayer.Local;
             if (local == null) return;
             if (source != local.PlayerId) NotifyOtherSound();
-            local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitDrowningPulse(point, radius, seconds);
+            local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitDrowningPulse(point, radius, seconds, elapsed);
             if (snapshotA >= 0 || snapshotB >= 0)
-                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, seconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, RecheckRules.Remaining(seconds, elapsed)); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
         }
 
         private static bool IsSelfOnlySound(string clip) => !RippleServerFeatures.BreathAudible && (clip == "Breath" || clip.StartsWith("Breath_"));
@@ -305,22 +327,51 @@ namespace Marco.Network.Round
             int snapshotA = SourceSnapshotRules.None, int snapshotB = SourceSnapshotRules.None)
         {
             soundWorld ??= new SoundWorld();
+            bool selfOnly = IsSelfOnlySound(clip), looping = loopKey >= 0;
+            // 부록 A [사운드 차폐] 재판정 [11-16]: listeners who do not hear it clearly are re-judged every 0.25 s, upward only.
+            var tracked = looping || selfOnly ? null : BeginRecheck(origin, radius, duration);
+            if (tracked != null)
+                tracked.Send = (id, hearing, elapsed) =>
+                {
+                    if (NetworkPlayer.TryGet(id, out var listener) && listener != null)
+                        SendSound(listener, clip, origin, radius, volume, duration, loopKey, underwater, actionId, sourceId, playAudio, forcePulse,
+                            snapshotA, snapshotB, false, hearing.Point, hearing.Gain, hearing.Blocked, hearing.PerceivedRadius, hearing.DurationScale,
+                            elapsed, tracked.Id);
+                };
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
                 if (clip == EchoKnockRules.Clip && listener.PlayerId == sourceId) continue;   // §3.2: the knocker's own screen shows no knock
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
                 if (!CanTarget(listener)) continue;   // a connection that is leaving (not an observer any more)
-                if (IsSelfOnlySound(clip))
+                if (selfOnly)
                 {
                     SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f,
-                        SourceSnapshotRules.None, SourceSnapshotRules.None);
+                        SourceSnapshotRules.None, SourceSnapshotRules.None, 0f, -1);
                     continue;
                 }
                 bool own = sourceId == listener.PlayerId;
-                if (!soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
-                    out bool blocked, out float perceivedRadius, out float occludedScale) && !own) continue;
+                bool heard = soundWorld.HearResolved(origin, listener, radius, out var point, out float gain,
+                    out bool blocked, out float perceivedRadius, out float occludedScale);
+                if (tracked != null && listener.Status == PlayerStatus.Alive)
+                {
+                    var state = RecheckRules.State(heard, blocked);
+                    if (RecheckRules.Tracks(own, listener.HasEchoBody, looping, selfOnly, state)) tracked.Note(listener.PlayerId, state);
+                }
+                if (!heard && !own) continue;
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; occludedScale = 1f; }
+                SendSound(listener, clip, origin, radius, volume, duration, loopKey, underwater, actionId, sourceId, playAudio, forcePulse,
+                    snapshotA, snapshotB, own, point, gain, blocked, perceivedRadius, occludedScale, 0f, tracked?.Id ?? -1);
+            }
+            if (tracked != null) CommitRecheck(tracked);
+        }
+
+        // One listener's SoundTarget (emission, or a 0.25 s recheck upgrade with elapsed > 0). Same values as before.
+        private void SendSound(NetworkPlayer listener, string clip, Vector3 origin, float radius, float volume, float duration,
+            int loopKey, bool underwater, int actionId, int sourceId, bool playAudio, bool forcePulse, int snapshotA, int snapshotB,
+            bool own, Vector3 point, float gain, bool blocked, float perceivedRadius, float occludedScale, float elapsed, int pulseId)
+        {
+            {
                 bool seekerScale = !own && listener.Role == PlayerRole.Seeker;
                 float pulseSeconds = clip == "ValveUnderwater" ? PulseSpec.UnderwaterForcedSeconds : duration;
                 bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
@@ -343,25 +394,32 @@ namespace Marco.Network.Round
                     seenA = SourceSnapshotRules.ForFakeRunner(listener, blocked);   // §5.5-2 메아리 노크
                 SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain,
                     PulseSpec.ListenerSeconds(duration, seekerScale, listener.HasEchoBody, false, occludedScale), loopKey,
-                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB);
+                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB,
+                    elapsed, pulseId);
             }
         }
 
         [TargetRpc]
         private void SoundTarget(NetworkConnection connection, string clip, Vector3 point, float volume,
             float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds,
-            int snapshotA, int snapshotB)
+            int snapshotA, int snapshotB, float elapsed, int pulseId)
         {
             if (fromOther) NotifyOtherSound();
+            // [11-16 재판정] elapsed > 0 = an upgrade: everything starts that far in (ring phase elapsed / pulseSeconds).
+            float remaining = RecheckRules.Remaining(pulseSeconds, elapsed);
             // §5.1 · 5.5-2: a knock (FakeRunner) is drawn as a Runner's Talk ring, never by where it came from.
-            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds, snapshotA == SourceSnapshotRules.FakeRunner ? false : (bool?)null);
+            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds, snapshotA == SourceSnapshotRules.FakeRunner ? false : (bool?)null, elapsed);
             if (pulseRadius > 0 && snapshotA == SourceSnapshotRules.FakeRunner)
-                try { Marco.Network.Vision.SourceSnapshots.ShowFakeRunner(point, Random.Range(0f, 360f), pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots.Fake", exception); }
+                try { Marco.Network.Vision.SourceSnapshots.ShowFakeRunner(point, Random.Range(0f, 360f), remaining); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots.Fake", exception); }
             // §5.5-2: the source snapshot goes with the ring (the server sent -1 for none).
             if (pulseRadius > 0 && (snapshotA >= 0 || snapshotB >= 0))
-                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
-            if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local);
-            try { Marco.Network.Vision.DirectionHints.OnSound(clip, point, muffled, loopKey, actionId, fromOther, pulseRadius, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SoundTarget", exception); }
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, remaining); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
+            if (soundPlayback != null)
+            {
+                if (elapsed > 0f) soundPlayback.PlayUpgrade(clip, point, volume, duration, muffled, actionId, elapsed, pulseId);
+                else soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local, 0f, pulseId);
+            }
+            try { Marco.Network.Vision.DirectionHints.OnSound(clip, point, muffled, loopKey, actionId, fromOther, pulseRadius, remaining); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SoundTarget", exception); }
         }
 
         internal bool UsesPoolAudio => SoundMap;
@@ -378,10 +436,10 @@ namespace Marco.Network.Round
             return soundWorld.HearResolved(origin, listener, radius, out point, out gain, out blocked, out perceivedRadius, out occludedScale);
         }
 
-        internal void ShowSoundPulse(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
+        internal void ShowSoundPulse(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null, float elapsed = 0f)
         {
             var rings = NetworkPlayer.Local?.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>();
-            rings?.ShowSound(point, radius, duration, voiceFromSeeker);
+            rings?.ShowSound(point, radius, duration, voiceFromSeeker, elapsed);
         }
 
         internal void PlaySeekerSwingAudio() =>

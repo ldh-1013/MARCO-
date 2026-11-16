@@ -21,6 +21,7 @@ namespace Marco.Network.Audio
             public float Until, Started, Gain;
             public bool Muffled;
             public int LoopKey = -1, ActionId = -1;
+            public int PulseId = -1;   // [11-16 재판정] the server's pulse id (−1 = none)
         }
         private readonly List<Voice> voices = new();
         private readonly Dictionary<string, AudioClip> clips = new();
@@ -150,7 +151,7 @@ namespace Marco.Network.Audio
         }
 
         public void Play(string name, Vector3 point, float volume, float duration, int loopKey,
-            bool muffled, int actionId, bool local = false, float startTime = 0)
+            bool muffled, int actionId, bool local = false, float startTime = 0, int pulseId = -1)
         {
             if (name == Marco.Network.Round.PulseSpec.NoAudio) return; // ring-only pulse (D9): explicitly silent
             // §5.1 구분 불가 그룹 · 11-14: a knock plays one of the moan clips, picked here the way the server picks a moan
@@ -170,7 +171,7 @@ namespace Marco.Network.Audio
                 var source = CreateSource("SFX " + name, local);
                 if (loopKey >= 200000) source.volume = 0f;
                 voice = new Voice { Source = source, Filter = source.gameObject.AddComponent<AudioLowPassFilter>(),
-                    LoopKey = loopKey, ActionId = actionId };
+                    LoopKey = loopKey, ActionId = actionId, PulseId = pulseId };
                 voices.Add(voice);
                 source.clip = clip;
                 source.loop = loopKey >= 0;
@@ -189,6 +190,42 @@ namespace Marco.Network.Audio
                 if (name == "SurfaceSwim") voice.Source.volume = 0;
                 voice.Source.Play();
             }
+        }
+
+        // 부록 A [사운드 차폐] 재판정 상향 [11-16]: the server re-judged this listener upward elapsed seconds into the pulse.
+        // A playing sound of the same pulse turns clear in place (position · volume · filter); otherwise the clip starts elapsed
+        // seconds in, and is skipped when the clip is already over. duration is the listener's full perceived duration.
+        public void PlayUpgrade(string name, Vector3 point, float volume, float duration, bool muffled, int actionId, float elapsed, int pulseId)
+        {
+            if (name == Marco.Network.Round.PulseSpec.NoAudio) return;
+            if (pulseId >= 0)
+                foreach (var voice in voices)
+                {
+                    if (voice.PulseId != pulseId || voice.Source == null || !voice.Source.isPlaying) continue;
+                    voice.Source.transform.position = point;
+                    voice.Source.volume = Mathf.Clamp01(volume); voice.Gain = voice.Source.volume;
+                    voice.Muffled = muffled;
+                    ApplyVoiceFilter(voice);
+                    float left = voice.Source.clip != null ? voice.Source.clip.length - voice.Source.time : 0f;
+                    voice.Until = Time.time + Mathf.Max(0f, Mathf.Min(duration - elapsed, left));
+                    return;
+                }
+            if (name == Marco.Network.Round.EchoKnockRules.Clip) name = "Moan_" + Random.Range(0, 2);
+            var clip = Clip(name);
+            if (clip == null || elapsed >= clip.length || duration - elapsed <= 0f || voices.Count >= 48) return;
+            if (name == "MetalStairs") volume *= .55f;
+            var source = CreateSource("SFX " + name, false);
+            var added = new Voice { Source = source, Filter = source.gameObject.AddComponent<AudioLowPassFilter>(), ActionId = actionId, PulseId = pulseId };
+            voices.Add(added);
+            source.clip = clip; source.loop = false;
+            source.transform.position = point;
+            source.volume = Mathf.Clamp01(volume);
+            added.Muffled = muffled;
+            ApplyVoiceFilter(added);
+            added.Until = Time.time + Mathf.Min(duration - elapsed, clip.length - elapsed);
+            added.Started = Time.time; added.Gain = source.volume;
+            source.time = elapsed;
+            source.Play();
         }
 
         private static void ApplyVoiceFilter(Voice voice) => ApplyMuffle(voice.Filter, voice.Muffled);
@@ -229,7 +266,10 @@ namespace Marco.Network.Audio
         public static void Follow(AudioLowPassFilter filter, bool muffled)
         {
             ApplyMuffle(filter, muffled);
-            if (filter != null) followed.Add((filter, muffled));
+            if (filter == null) return;
+            // A recheck upgrade (11-16) re-follows the same filter clear: one entry per filter.
+            for (int i = followed.Count - 1; i >= 0; i--) if (followed[i].filter == filter) followed.RemoveAt(i);
+            followed.Add((filter, muffled));
         }
 
         private static void UpdateFollowed()

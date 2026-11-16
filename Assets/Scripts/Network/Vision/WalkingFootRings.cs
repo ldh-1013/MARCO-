@@ -89,6 +89,7 @@ namespace Marco.Network.Vision
             public float Radius, Lifetime;
             public bool DoubleEdge, Self, Own, Sonar;
             public Color Tint;
+            public float Elapsed;   // [11-16 재판정] an upgraded ring starts this far in (phase Elapsed / Lifetime)
         }
 
         private void Start()
@@ -188,13 +189,13 @@ namespace Marco.Network.Vision
 
         // The drowning ring (부록 A [숨 게이지] 질식 페널티): the radius and duration come from the server for this listener
         // (§5.7 — Seeker ×1.2 / ×1.5, Echo body); drawn as they are. Its own entry so no radius comparison can misroute it.
-        public void EmitDrowningPulse(Vector3 origin, float radius, float duration)
+        public void EmitDrowningPulse(Vector3 origin, float radius, float duration, float elapsed = 0f)
         {
             try
             {
-                if (!CanUse() || radius <= 0 || duration <= 0) return;
+                if (!CanUse() || radius <= 0 || duration <= 0 || elapsed >= duration) return;
                 Classify(origin, out var tint, out bool doubleEdge);
-                RequestSound(origin, radius, duration, tint, doubleEdge, IsSelf(origin), Label.Water);
+                RequestSound(origin, radius, duration, tint, doubleEdge, IsSelf(origin), Label.Water, elapsed);
             }
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.EmitDrowningPulse", exception, this); }
         }
@@ -236,11 +237,11 @@ namespace Marco.Network.Vision
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.ClearPulses", exception, this); }
         }
 
-        public void ShowSound(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null)
+        public void ShowSound(Vector3 point, float radius, float duration, bool? voiceFromSeeker = null, float elapsed = 0f)
         {
             try
             {
-                if (!CanUse() || radius <= 0 || duration <= 0) return;
+                if (!CanUse() || radius <= 0 || duration <= 0 || elapsed >= duration) return;
                 Color tint;
                 bool doubleEdge;
                 if (voiceFromSeeker.HasValue)
@@ -249,7 +250,7 @@ namespace Marco.Network.Vision
                     tint = doubleEdge ? RippleVisualSettings.Seeker : RippleVisualSettings.Runner;
                 }
                 else Classify(point, out tint, out doubleEdge);
-                RequestSound(point, radius, duration, tint, doubleEdge, IsSelf(point) || IsEchoOwnVoice(point, voiceFromSeeker), Label.Sound);
+                RequestSound(point, radius, duration, tint, doubleEdge, IsSelf(point) || IsEchoOwnVoice(point, voiceFromSeeker), Label.Sound, elapsed);
             }
             catch (Exception exception) { RippleSafety.Report("WalkingFootRings.ShowSound", exception, this); }
         }
@@ -273,7 +274,7 @@ namespace Marco.Network.Vision
             }, source == owner.PlayerId);
         }
 
-        private void RequestSound(Vector3 point, float radius, float duration, Color tint, bool doubleEdge, bool self, Label label)
+        private void RequestSound(Vector3 point, float radius, float duration, Color tint, bool doubleEdge, bool self, Label label, float elapsed = 0f)
         {
             // §3.2-1 소나: on an Echo body's screen every other sound is one colour, single edge (source not identifiable).
             bool sonar = !self && owner != null && owner.HasEchoBody;
@@ -285,7 +286,7 @@ namespace Marco.Network.Vision
             Submit(new Request
             {
                 Kind = Kind.Sound, Label = label, Source = int.MinValue, Point = point, Radius = radius, Lifetime = duration,
-                DoubleEdge = doubleEdge, Self = self, Tint = tint, Sonar = sonar, Frame = Time.frameCount
+                DoubleEdge = doubleEdge, Self = self, Tint = tint, Sonar = sonar, Frame = Time.frameCount, Elapsed = Mathf.Max(0f, elapsed)
             }, self);
         }
 
@@ -371,12 +372,14 @@ namespace Marco.Network.Vision
                 ring.WallObject.SetActive(ring.HasWall);
                 ring.Object.name = Name(request.Label, request.Source);
                 ring.Object.transform.position = request.Point;
-                ring.Started = Time.time; ring.Lifetime = request.Lifetime; ring.StoppedAt = -1;
+                // §5.6 재판정 [11-16]: an upgraded ring is already Elapsed seconds old (0 for every other ring).
+                ring.Started = Time.time - request.Elapsed; ring.Lifetime = request.Lifetime; ring.StoppedAt = -1;
                 ring.Source = request.Source; ring.Seeker = request.DoubleEdge; ring.Contact = request.Kind == Kind.Contact;
                 ring.Radius = request.Radius; ring.Sound = sound; ring.Expand = sound; ring.Self = request.Self;
                 ring.Tint = request.Tint;
                 ring.Sonar = sound && request.Sonar;
-                Draw(ring, 0, 0, ring.Started);
+                if (request.Elapsed > 0f) Draw(ring, request.Elapsed, Mathf.Clamp01(request.Elapsed / request.Lifetime), Time.time);
+                else Draw(ring, 0, 0, ring.Started);
                 ring.Object.SetActive(true);
                 rings.Add(ring);
             }

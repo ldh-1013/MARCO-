@@ -53,6 +53,10 @@ namespace Marco.Network.Round
         /// </summary>
         public const float OccluderMergeGap = .7f;
 
+        /// 부록 A [사운드 차폐] 3530행 "차폐 재판정 주기 0.25초 — 발생 시점에 판정하고, 파문이 지속되는 동안 청취자별로 다시 판정 (5.6, GAP-3)"
+        /// · 재판정 상향 규칙 [11-16]. OcclusionRecheck.
+        public const float OcclusionRecheckSeconds = .25f;
+
         /// <summary>§5.6 perceivedDuration factor for one listener: max(0.5^walls × 0.5^water, 0.5); 1 when nothing is in the way or
         /// for an Echo body (it ignores occlusion — 5.7).</summary>
         public static float OccludedDurationScale(int wallCount, int waterCrossings, bool echoBody)
