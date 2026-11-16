@@ -25,7 +25,7 @@ namespace Marco.Network.Tests
 
         private Scene scene;
         private object soundWorld;
-        private MethodInfo metadata, hearResolved, hearResolvedWithDuration, hasClearSight, waterCrossings;
+        private MethodInfo metadata, hearResolved, hearResolvedWithDuration, hasClearSight, waterCrossings, hearingOccluders, structureAbove;
         private GameObject listener;
 
         [OneTimeSetUp]
@@ -40,6 +40,8 @@ namespace Marco.Network.Tests
             hearResolvedWithDuration = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 8);
             hasClearSight = type.GetMethod("HasClearSight", Any);
             waterCrossings = type.GetMethod("WaterSurfaceCrossings", Any);
+            hearingOccluders = type.GetMethod("CountHearingOccluders", Any);
+            structureAbove = type.GetMethod("StructureAbove", Any);
             listener = new GameObject("occlusion listener");
             listener.AddComponent(typeof(NetworkPlayer));
         }
@@ -290,6 +292,84 @@ namespace Marco.Network.Tests
                 return;
             }
             Assert.Fail("no 3 m line across a " + name + " that crosses no tag-blocking part");
+        }
+
+        // ---- 부록 A [사운드 차폐] 수면 경유 판정 [11-16] ----
+
+        private (int walls, int water) Hearing(Vector3 source, Vector3 ear)
+        {
+            Physics.SyncTransforms();
+            var args = new object[] { source, ear, Vector3.Distance(source, ear), 0 };
+            int walls = (int)hearingOccluders.Invoke(soundWorld, args);
+            return (walls, (int)args[3]);
+        }
+
+        // HearResolved's radius rule (SoundWorld.cs) for a 12 m forced pulse: Seeker ×1.2, ×0.5 per wall / surface.
+        private static string Judge(float distance, (int walls, int water) c, float hearing)
+        {
+            float perceived = 12f * hearing * Mathf.Pow(.5f, c.walls + c.water);
+            bool heard = distance < 12f * hearing && distance < perceived;
+            bool muffled = c.walls + c.water > 0;
+            return $"{perceived:F2} {(heard ? "heard" : "not heard")} ring={(heard && !muffled ? "Y" : "N")} gain={(heard ? (muffled ? .5f : 1f - distance / perceived) : 0f):F3}";
+        }
+
+        private static readonly (string source, Vector3 at, (string, Vector3)[] ears)[] V24Rows =
+        {
+            ("Drain 1", new Vector3(36f, -3.5f, 47.5f), new[] { ("edge", new Vector3(40.4f, 1.6f, 47.5f)), ("6m", new Vector3(42f, 1.6f, 47.5f)), ("10m", new Vector3(46f, 1.6f, 47.5f)) }),
+            ("Drain 2", new Vector3(7f, -3.5f, 47f), new[] { ("edge", new Vector3(11.4f, 1.6f, 47f)), ("6m", new Vector3(13f, 1.6f, 47f)), ("10m", new Vector3(14.07f, 1.6f, 54.07f)) }),
+            ("Valve B", new Vector3(38.5f, -2.31f, 52f), new[] { ("edge", new Vector3(40.35f, 1.6f, 52f)), ("6m", new Vector3(44.5f, 1.6f, 52f)), ("10m", new Vector3(48.5f, 1.6f, 52f)) }),
+            ("Valve E", new Vector3(4.5f, -.11f, 51f), new[] { ("edge", new Vector3(2.6f, 1.6f, 51f)), ("6m", new Vector3(10.04f, 1.6f, 53.3f)), ("10m", new Vector3(14.5f, 1.6f, 51f)) }),
+            ("V23 diver", new Vector3(3.6f, -.8f, 47f), new[] { ("west deck", new Vector3(1.5f, 1.6f, 47f)) }),
+        };
+
+        [Test]
+        public void WaterPath_V24Table()
+        {
+            foreach (var row in V24Rows)
+                foreach (var (label, ear) in row.ears)
+                {
+                    var c = Hearing(row.at, ear);
+                    float d = Vector3.Distance(row.at, ear);
+                    TestContext.WriteLine($"{row.source} {row.at:F2} -> {label} {ear:F2} d={d:F2}: walls={c.walls} water={c.water} | Survivor {Judge(d, c, 1f)} | Seeker {Judge(d, c, 1.2f)}");
+                }
+            var drain2Edge = Hearing(new Vector3(7f, -3.5f, 47f), new Vector3(11.4f, 1.6f, 47f));
+            Assert.AreEqual((0, 1), drain2Edge, "drain 2 → teaching east edge: the path goes up the sump, through the surface");
+            StringAssert.StartsWith("7.20 heard ring=N", Judge(6.74f, drain2Edge, 1.2f), "Seeker hears it muffled");
+            StringAssert.StartsWith("6.00 not heard", Judge(6.74f, drain2Edge, 1f), "Survivor: 6.74 > 6");
+        }
+
+        [Test]
+        public void WaterPath_SameSide_Unchanged()
+        {
+            // sump-bottom diver → diver in the shallow part (both under water): still the straight line through the sump wall
+            var underwater = Hearing(new Vector3(7f, -3.2f, 47f), new Vector3(4.5f, -.8f, 44f));
+            Assert.AreEqual(1, underwater.walls, "sump wall");
+            Assert.AreEqual(0, underwater.water);
+            // deck → deck across the teaching pool: straight, nothing between
+            Assert.AreEqual((0, 0), Hearing(new Vector3(2f, 1.6f, 47f), new Vector3(12f, 1.6f, 47f)));
+        }
+
+        // 결정 11-16 예외: an underwater end with a structure above it before the surface keeps the straight line.
+        [Test]
+        public void WaterPath_CoveredWaterScan()
+        {
+            var covered = new List<string>();
+            int probes = 0;
+            foreach (var (pool, min, max) in new[] { ("teaching", new Vector2(3f, 41f), new Vector2(11f, 53f)), ("competition", new Vector2(15f, 37f), new Vector2(40f, 58f)) })
+                for (float x = min.x + .25f; x < max.x; x += .5f)
+                    for (float z = min.y + .25f; z < max.y; z += .5f)
+                    {
+                        if (!Physics.Raycast(new Vector3(x, -.01f, z), Vector3.down, out var floor, 5f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                        foreach (float lift in new[] { .05f, .5f })
+                        {
+                            var p = floor.point + Vector3.up * lift;
+                            if (p.y >= 0f) continue;
+                            probes++;
+                            if ((bool)structureAbove.Invoke(soundWorld, new object[] { p, 0f })) covered.Add($"{pool} {p:F2}");
+                        }
+                    }
+            TestContext.WriteLine($"{probes} underwater probes, covered: {covered.Count}" + (covered.Count > 0 ? " | " + string.Join(" | ", covered.Take(40)) : ""));
+            Assert.AreEqual(0, covered.Count, "no covered water in IndoorPool_v1_2");
         }
 
         [Test]
