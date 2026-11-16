@@ -34,7 +34,10 @@ namespace Marco.Network.Tests
         {
             Assert.AreEqual(EchoSonarRules.MaxAlpha, EchoSonarRules.RingAlpha(0f, true), T, "t = 0");
             Assert.AreEqual(EchoSonarRules.ResidualStartAlpha, EchoSonarRules.RingAlpha(1f, true), T, "t = 1 → R");
-            Assert.AreEqual(.15f, EchoSonarRules.ResidualStartAlpha, T, "R = 잔상 15% (AfterglowAlpha)");
+            // R = 잔상 값 차용 (결정 11-16): the same constant as RippleVisualSettings.AfterglowAlpha (internal — read by reflection).
+            float afterglow = (float)typeof(EchoSonarRules).Assembly.GetType("Marco.Network.Vision.RippleVisualSettings", true)
+                .GetField("AfterglowAlpha").GetValue(null);
+            Assert.AreEqual(afterglow, EchoSonarRules.ResidualStartAlpha, T, "R = AfterglowAlpha");
         }
 
         [Test]

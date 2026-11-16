@@ -24,7 +24,7 @@ namespace Marco.Network.Tests
 
         private Scene scene;
         private object soundWorld;
-        private MethodInfo metadata, hearResolved, hearResolvedWithDuration;
+        private MethodInfo metadata, hearResolved, hearResolvedWithDuration, hasClearSight;
         private GameObject listener;
 
         [OneTimeSetUp]
@@ -37,6 +37,7 @@ namespace Marco.Network.Tests
             metadata = type.GetMethod("Metadata", Any);
             hearResolved = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 7);
             hearResolvedWithDuration = type.GetMethods(Any).Single(m => m.Name == "HearResolved" && m.GetParameters().Length == 8);
+            hasClearSight = type.GetMethod("HasClearSight", Any);
             listener = new GameObject("occlusion listener");
             listener.AddComponent(typeof(NetworkPlayer));
         }
@@ -177,6 +178,52 @@ namespace Marco.Network.Tests
             // From the CL lobby (2nd floor) down through Floor_CL_18_32 and into Wall_ML_Z25_16 under it, ending in the sealed
             // PS1 space behind the wall: the slab (2) and the wall block (1) are different families — 3 [11-16 V20].
             Assert.AreEqual(3, Walls(new Vector3(24f, 5f, 20f), new Vector3(26f, 1.5f, 20f)));
+        }
+
+        private bool ClearSight(Vector3 from, Vector3 to)
+        {
+            Physics.SyncTransforms();
+            bool clear = (bool)hasClearSight.Invoke(soundWorld, new object[] { from, to });
+            TestContext.WriteLine($"sight {from} -> {to}: clear={clear}; hits: {Hits(from, to)}");
+            return clear;
+        }
+
+        // 7절 · 부록 A [아이템] 섬광 대상 [11-16] — clicker sight uses the sound-occlusion structures only.
+        [Test]
+        public void ClickerSight_WallBlocks()
+        {
+            // AID → ML through Wall_AID_Z9_9 (x 9), 4 m.
+            Assert.IsFalse(ClearSight(new Vector3(7f, 1f, 11f), new Vector3(11f, 1f, 11f)));
+        }
+
+        [Test]
+        public void ClickerSight_LockerRowBlocks()
+        {
+            // ML, across the back-to-back rows z13.19 / z13.97 (x 9.2–14.9), 4 m.
+            Assert.IsFalse(ClearSight(new Vector3(12f, 1f, 11.5f), new Vector3(12f, 1f, 15.5f)));
+        }
+
+        [Test]
+        public void ClickerSight_FurnitureDoesNotBlock()
+        {
+            // A 4 m line straight across a 긴나무의자 (wooden bench FBX, no PoolV12Part) that crosses no structure.
+            var benches = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Collider>(true))
+                .Where(c => !c.isTrigger && c.GetComponentInParent<Transform>().root.name.Contains("긴나무의자")).ToList();
+            Assert.Greater(benches.Count, 0, "bench colliders");
+            foreach (var bench in benches)
+            {
+                var b = bench.bounds;
+                Vector3 axis = b.size.x < b.size.z ? Vector3.right : Vector3.forward;   // across the bench's short side
+                Vector3 from = new Vector3(b.center.x, Mathf.Min(b.max.y - .05f, b.min.y + .3f), b.center.z) - axis * 2f, to = from + axis * 4f;
+                bool hitsBench = Physics.RaycastAll(from, axis, 4f, ~0, QueryTriggerInteraction.Ignore).Any(h => h.collider == bench);
+                bool crossesStructure = Physics.RaycastAll(from, axis, 4f, ~0, QueryTriggerInteraction.Ignore)
+                    .Any(h => metadata.Invoke(soundWorld, new object[] { h.collider }) is { } p && (bool)p.GetType().GetProperty("IsSoundStructure").GetValue(p));
+                if (!hitsBench || crossesStructure) continue;
+                TestContext.WriteLine("bench " + bench.transform.root.name + " / " + bench.name + " bounds " + b.min.ToString("F2") + " .. " + b.max.ToString("F2"));
+                Assert.IsTrue(ClearSight(from, to), "a bench does not block the flash");
+                return;
+            }
+            Assert.Fail("no bench with a clear 4 m line across it");
         }
 
         [Test]
