@@ -1211,17 +1211,8 @@ namespace Marco.Network.Round
                 if (body == null || !body.enabled) continue;
                 var offset = body.ClosestPoint(origin) - origin;
                 if (offset.sqrMagnitude > best || Vector3.Angle(forward, Vector3.ProjectOnPlane(offset, Vector3.up)) > tagHalfAngle) continue;
-                bool blocked = false;
-                float distance = offset.magnitude;
-                if (distance > 0.001f)
-                    foreach (var blocker in Physics.RaycastAll(origin, offset / distance, distance,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    {
-                        if (blocker.transform.IsChildOf(seeker) || blocker.transform.IsChildOf(player.transform)) continue;
-                        blocked = true;
-                        break;
-                    }
-                if (blocked) continue;
+                // 부록 A [태그 판정] [11-16]: only tagBlocker map parts stop a tag (TagBlockRules); bodies are ignored.
+                if (TagBlockRules.PathBlocked(origin, origin + offset, seeker, player.transform)) continue;
                 best = offset.sqrMagnitude;
                 target = player;
             }
