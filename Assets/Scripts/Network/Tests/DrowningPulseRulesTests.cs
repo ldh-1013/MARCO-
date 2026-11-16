@@ -33,11 +33,11 @@ namespace Marco.Network.Tests
         public void EchoBody_AlwaysGetsIt_FarAndBlocked(PlayerStatus status)
         {
             // 100 m away and behind walls: an Echo body ignores distance and occlusion (5.7 1218행). Radius = base 22 m;
-            // duration = the current Echo rule of PulseSpec.ListenerSeconds (3 s — the 3.2-1 fix is a later step).
+            // duration = the base 2.5 s ×1.0 [11-16 V21b — was 3 s before the 3.2-1 fix; the 3 s residual is drawn by the client].
             var p = DrowningPulseRules.For(status, false, true, false, true, 0f, 1f, true);
             Assert.IsTrue(p.Send);
             Assert.AreEqual(22f, p.Radius, T);
-            Assert.AreEqual(PulseSpec.EchoSonarSeconds, p.Seconds, T);
+            Assert.AreEqual(2.5f, p.Seconds, T);
         }
 
         [Test]
@@ -61,7 +61,7 @@ namespace Marco.Network.Tests
             var p = DrowningPulseRules.For(PlayerStatus.Spectating, false, true, false, true, 0f, 1f, true);
             Assert.IsTrue(p.Send);
             Assert.AreEqual(22f, p.Radius, T);
-            Assert.AreEqual(PulseSpec.EchoSonarSeconds, p.Seconds, T);
+            Assert.AreEqual(2.5f, p.Seconds, T, "[11-16 V21b] base 2.5 s ×1.0 — was 3 s");
         }
 
         [Test]

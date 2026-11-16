@@ -68,8 +68,8 @@ namespace Marco.Network.Tests
         [Test]
         public void ListenerSeconds_EchoBodyUnchanged()
         {
-            // Echo bodies ignore occlusion (scale 1) and keep the current ring rule until the 3.2-1 fix (개정이력 11-16).
-            Assert.AreEqual(PulseSpec.EchoSonarSeconds, PulseSpec.ListenerSeconds(1.2f, false, true, true, 1f), 1e-4f);
+            // Echo bodies ignore occlusion (scale 1) and get the base duration ×1.0 [11-16 V21b — was EchoSonarSeconds (3 s)].
+            Assert.AreEqual(1.2f, PulseSpec.ListenerSeconds(1.2f, false, true, true, 1f), 1e-4f);
             Assert.AreEqual(1.2f, PulseSpec.ListenerSeconds(1.2f, true, true, false, 1f), 1e-4f);
             Assert.AreEqual(1.2f, PulseSpec.ListenerSeconds(1.2f, false, false, false, 1f), 1e-4f, "runner, open");
         }
