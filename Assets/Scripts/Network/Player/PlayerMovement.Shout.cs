@@ -179,9 +179,9 @@ namespace Marco.Network.Player
         [TargetRpc]
         private void FearTarget(NetworkConnection connection, float remaining) => fearEnds = Time.time + remaining;
 
-        [TargetRpc]
         // [11-16 재판정] elapsed > 0 = an upgrade of pulse pulseId: the ring starts at phase elapsed / duration and a muffled
         // vocal of the same pulse turns clear in place (else a new one starts elapsed seconds in; skipped if the clip is shorter).
+        [TargetRpc]
         private void AbilitySoundTarget(NetworkConnection connection, Vector3 point, float radius,
             float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB, float elapsed, int pulseId)
         {

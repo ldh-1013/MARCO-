@@ -271,8 +271,8 @@ namespace Marco.Network.Round
         }
 
         // §5.7 (1221행): the client draws the radius and duration it is sent, with no further multiplier.
-        [TargetRpc]
         // elapsed [11-16 재판정]: > 0 only for an upgrade — the ring starts at phase elapsed / seconds.
+        [TargetRpc]
         private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source, float radius, float seconds, int snapshotA, int snapshotB,
             float elapsed)
         {
