@@ -1,0 +1,80 @@
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace Marco.Network.Tests
+{
+    // V28a A-0: the EdgeStain shader itself, rendered into a float render texture and read back (not the C# reference).
+    // Needs a graphics device — run EditMode without -nographics; with no device the test is ignored, not passed.
+    public class EdgeStainShaderTests
+    {
+        private static Texture2D Render(float aspect, float seed, float drift, int height = 216)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) Assert.Ignore("no graphics device (-nographics)");
+            var shader = Resources.Load<Shader>("MarcoPresentation/EdgeStain");
+            Assert.IsNotNull(shader, "Resources/MarcoPresentation/EdgeStain");
+            Assert.IsTrue(shader.isSupported, "shader compiles on this device");
+            int width = Mathf.RoundToInt(height * aspect);
+            var material = new Material(shader);
+            material.SetColor("_Color", Color.white);
+            material.SetFloat("_Alpha", 1f);
+            material.SetFloat("_Seed", seed);
+            material.SetFloat("_Drift", drift);
+            material.SetFloat("_Aspect", aspect);
+            var target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+            var previous = RenderTexture.active;
+            RenderTexture.active = target;
+            GL.Clear(true, true, new Color(0, 0, 0, 0));
+            Graphics.Blit(null, target, material);
+            RenderTexture.active = target;
+            var read = new Texture2D(width, height, TextureFormat.RGBAFloat, false, true);
+            read.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+            read.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(material);
+            return read;
+        }
+
+        [TestCase(16f / 9f)]
+        [TestCase(21f / 9f)]
+        [TestCase(4f / 3f)]
+        public void CentreSeventyPercent_IsZero_AndDepthStaysWithinTheLimit(float aspect)
+        {
+            foreach (float seed in new[] { 0f, 7.3f, 41.9f })
+            {
+                var image = Render(aspect, seed, .3f);
+                int w = image.width, h = image.height, lit = 0;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        float a = image.GetPixel(x, y).a;
+                        if (a <= 0f) continue;
+                        lit++;
+                        float u = (x + .5f) / w, v = (y + .5f) / h;
+                        Assert.IsFalse(Mathf.Abs(u - .5f) < .35f && Mathf.Abs(v - .5f) < .35f, $"centre 70 % lit at ({u:F3}, {v:F3}) a={a}");
+                        // depth (short-side units) never beyond 15 %
+                        float dx = Mathf.Min(u, 1f - u) * aspect / Mathf.Min(aspect, 1f), dy = Mathf.Min(v, 1f - v) / Mathf.Min(aspect, 1f);
+                        Assert.LessOrEqual(Mathf.Min(dx, dy), .15f + 1.5f / h, $"deeper than 15 % at ({u:F3}, {v:F3})");
+                        // middle of the top / bottom side: never beyond 6 % (+ one pixel)
+                        if (Mathf.Abs(u - .5f) < .5f / w + 1e-4f) Assert.LessOrEqual(dy, .06f + 1.5f / h, $"edge middle deeper than 6 % at v={v:F3}");
+                    }
+                Assert.Greater(lit, 0, "the stain draws something at the edges");
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        [Test]
+        public void Corners_DeeperThanEdgeMiddles()
+        {
+            var image = Render(16f / 9f, 3f, 0f);
+            int w = image.width, h = image.height;
+            // straight in from the middle of the bottom edge vs. along the diagonal from the bottom-left corner
+            int middle = 0; while (middle < h / 2 && image.GetPixel(w / 2, middle).a > 0f) middle++;
+            int corner = 0; while (corner < h / 2 && image.GetPixel(corner, corner).a > 0f) corner++;
+            TestContext.WriteLine($"lit depth: corner diagonal {corner}px (≈ {corner * 1.414f:F0}px from the corner), edge middle {middle}px (height {h})");
+            Assert.Greater(corner, middle);
+            Object.DestroyImmediate(image);
+        }
+    }
+}

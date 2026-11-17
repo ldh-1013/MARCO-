@@ -58,7 +58,8 @@ Shader "Marco/EdgeStain"
                 float corner = smoothstep(0.0, 1.0, saturate(1.0 - edge.x * 2.0) * saturate(1.0 - edge.y * 2.0));
                 float n = 0.65 * noise(float2(_Seed + uv.x * 3.1 + _Drift, _Seed * 0.37 + uv.y * 3.1))
                         + 0.35 * noise(float2(_Seed * 1.7 + uv.x * 7.3, _Seed + uv.y * 7.3 - _Drift));
-                float depth = lerp(0.06, 0.15, corner) * lerp(0.55, 1.0, n);
+                // noise only thins the stain: n is clamped to [0, 1], so depth never exceeds 15 % (corner) / 6 % (edge middle)
+                float depth = lerp(0.06, 0.15, corner) * lerp(0.55, 1.0, saturate(n));
                 float m = max(1.0 - smoothstep(0.0, 1.0, dx / depth), 1.0 - smoothstep(0.0, 1.0, dy / depth));
                 return fixed4(_Color.rgb, m * m * _Alpha);
             }
