@@ -83,17 +83,26 @@ Shader "Marco/RippleRing"
                 return dot(w0, v.h0) + dot(w1, v.h1) + dot(w2, v.h2) + dot(w3, v.h3);
             }
 
-            // World metres covered by one screen pixel along the ring's radial direction at this point.
+            // World metres of the ring's radial direction covered by one screen pixel ACROSS the drawn line at this point.
             // Seen at a grazing angle the radial direction is foreshortened, so this grows and the strip widens.
+            // [VB B-1] Measured across the line (perpendicular to its on-screen direction), not as the radial step's whole
+            // screen movement: off the centre column of a far, flat ring that movement runs mostly ALONG the line, which
+            // read as a small footprint, left the strip narrower than one row and broke the line into dashes. Where the
+            // radial step crosses the line squarely (rings seen from above, near rings) the two are the same.
             float RadialMetresPerPixel(float3 positionWS, float3 radialWS)
             {
                 const float probe = 0.05;
                 float4 a = TransformWorldToHClip(positionWS);
                 float4 b = TransformWorldToHClip(positionWS + radialWS * probe);
-                if (a.w <= 1e-3 || b.w <= 1e-3) return _MaxPad;
+                float4 c = TransformWorldToHClip(positionWS + cross(float3(0, 1, 0), radialWS) * probe);
+                if (a.w <= 1e-3 || b.w <= 1e-3 || c.w <= 1e-3) return _MaxPad;
                 float2 halfScreen = _ScreenParams.xy * 0.5;
-                float pixels = length(b.xy / b.w * halfScreen - a.xy / a.w * halfScreen) / probe;
-                return 1.0 / max(pixels, 1e-4);
+                float2 pa = a.xy / a.w * halfScreen;
+                float2 across = b.xy / b.w * halfScreen - pa;      // where the radial step moves on screen
+                float2 along = c.xy / c.w * halfScreen - pa;       // the line's own direction on screen
+                float alongLength = length(along);
+                float moved = alongLength > 1e-6 ? abs(along.x * across.y - along.y * across.x) / alongLength : length(across);
+                return 1.0 / max(moved / probe, 1e-4);
             }
 
             Varyings vert(Attributes v)
@@ -113,9 +122,14 @@ Shader "Marco/RippleRing"
                 float3 frontWS = TransformObjectToWorld(float3(dir.x * front, Height(v, front), dir.y * front));
                 float3 radialWS = normalize(TransformObjectToWorldDir(float3(dir.x, 0, dir.y)));
                 // Room for at least _MinPixels across the line on screen; the fragment stage does exact coverage.
-                float pad = min(_MinPixels * 2.0 * RadialMetresPerPixel(frontWS, radialWS), _MaxPad);
+                float metresPerPixel = RadialMetresPerPixel(frontWS, radialWS);
+                float pad = min(_MinPixels * 2.0 * metresPerPixel, _MaxPad);
+                // [VB B-1] the strip holds the core the fragment stage draws — never thinner than _MinPixels on screen
+                // (max(_Core, _MinPixels px), as in frag); far away the capped pad alone left that core outside the strip.
+                // Near rings: unchanged (the core is _Core).
+                float core = max(_Core, _MinPixels * metresPerPixel);
 
-                float inner = _Trail + _Core + _Double * _Gap + pad;
+                float inner = _Trail + core + _Double * _Gap + pad;
                 float outer = _Halo + pad;
                 float d = v.ray.w > 0.5 ? front + outer : max(0.0, front - inner);
 
