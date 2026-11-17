@@ -14,13 +14,16 @@ namespace Marco.Network.Vision
         // colour moves toward its own luminance, brightness = multiplier. 1.0 상처 (술래 레드) is darker and duller than
         // 1.5 회복 중 (앰버), which must still read as amber (11-17 후속 2).
         public const float WoundedDesaturate = .35f, WoundedBrightness = .60f;
-        public const float RecoveringDesaturate = .10f, RecoveringBrightness = .85f;
+        public const float RecoveringDesaturate = .10f, RecoveringBrightness = .70f;   // 11-17 후속 3 (was .85)
         public const float ChangeSeconds = .3f, SwellSeconds = .2f, SwellInSeconds = .04f, SwellGain = .6f;
         public const float DriftPerSecond = .01f;   // UV/s, ≤ 0.02
         public const float CentreKeepOut = .70f;    // the middle 70 % (each axis) is never touched
 
         // 2 halves = 1.0 상처, 3 = 1.5 회복 중, otherwise nothing.
         public static float TargetAlpha(int halves) => halves == 2 ? WoundedAlpha : halves == 3 ? RecoveringAlpha : 0f;
+
+        // Screen contribution of a state = opacity × brightness multiplier (11-17 후속 3 — kept so 1.5 stays below 1.0).
+        public static float Contribution(int halves) => TargetAlpha(halves) * Correction(halves).y;
 
         // (desaturate, brightness) for a state; 2 halves = 1.0, 3 = 1.5. Other states draw nothing (identity).
         public static Vector2 Correction(int halves) =>
