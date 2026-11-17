@@ -21,6 +21,14 @@ namespace Marco.Network.Vision
         public static Vector3 CurrentPosition { get; private set; }
         public static float CurrentFov { get; private set; }
         public static float CurrentFlashAlpha { get; private set; }
+        // V32 걷기 bob 위상: the height added this frame to put the walking bob on the own footstep phase (m), its blend
+        // weight and the learned profile (lows paired with SFX phase 0 / 0.5) — for checks and the capture CSV.
+        public static float CurrentBobFix { get; private set; }
+        public static float CurrentBobWeight { get; private set; }
+        public static bool BobProfileReady { get; private set; }
+        public static float BobLowA { get; private set; }
+        public static float BobLowB { get; private set; }
+        public static int BobCyclesLearned { get; private set; }
         // How many times each one-shot fired (one event = one effect).
         public static int SeekerWoundHits { get; private set; }
         public static int SeekerEchoHits { get; private set; }
@@ -39,6 +47,7 @@ namespace Marco.Network.Vision
         private float hitAt = Never, echoAt = Never, missAt = Never, hurtAt = Never, nudgeAt = Never;
         private float hurtSide, hurtSeed, seenInjury = -1f;
         private Vector3 bobBaseline; private bool bobBaselineSet;
+        private readonly WalkBobProfile walkBob = new(); private float walkBobWeight, walkGaitSince = Never, lastPitch; private object walkBobKey; private bool walkCrouch;
         private readonly DiveRefraction refraction = new();
         private readonly Collider[] probeHits = new Collider[16];
         private readonly System.Collections.Generic.Dictionary<Collider, bool> structureOf = new();
@@ -104,7 +113,7 @@ namespace Marco.Network.Vision
             if (interactor != null) interactor.LocalSwingConfirmed -= OnLocalSwing;
             SetRim(Color.black);
             refraction.Release();
-            ownBody = new Renderer[0]; bobBaselineSet = false;
+            ownBody = new Renderer[0]; bobBaselineSet = false; walkBob.Reset(); walkBobWeight = 0f; walkBobKey = null; walkGaitSince = Never; CurrentBobFix = 0f;
             wasInside = false; wallPassAt = Never; structureOf.Clear(); lastEyeSet = false;
             Restore();
             interactor = null; view = null; player = null;
@@ -236,17 +245,56 @@ namespace Marco.Network.Vision
             Quaternion baseRotation = wrote && t.localRotation == writtenRotation ? writtenRotation * Quaternion.Inverse(lastRotation) : t.localRotation;
             Vector3 basePosition = wrote && t.localPosition == writtenPosition ? writtenPosition - lastPosition : t.localPosition;
             float baseFov = wrote && Mathf.Approximately(view.fieldOfView, writtenFov) ? writtenFov - lastFov : view.fieldOfView;
+            // [V32] 2.1 the walking bob on the own footstep phase: a height shift of the base — part of the bob (outside the
+            // 2 cm feel cap), written and taken back like our own offset
+            Vector3 bobFix = WalkBobFix(t, basePosition);
+            Vector3 bobbed = basePosition + bobFix;
             // [V30] the animated head bob counts toward the 2 cm cap: our offset gets only what is left (bob untouched)
-            if (!bobBaselineSet || (basePosition - bobBaseline).sqrMagnitude > .25f) { bobBaseline = basePosition; bobBaselineSet = true; }
-            bobBaseline = FeelRules.Baseline(bobBaseline, basePosition, Time.deltaTime);
-            position = FeelRules.CapPositionWithBob(position, basePosition - bobBaseline);
+            if (!bobBaselineSet || (bobbed - bobBaseline).sqrMagnitude > .25f) { bobBaseline = bobbed; bobBaselineSet = true; }
+            bobBaseline = FeelRules.Baseline(bobBaseline, bobbed, Time.deltaTime);
+            position = FeelRules.CapPositionWithBob(position, bobbed - bobBaseline);
             CurrentPosition = position;
-            Vector3 positionInParent = baseRotation * position;
+            Vector3 positionInParent = baseRotation * position + bobFix;
             t.localRotation = writtenRotation = baseRotation * rotation;
             t.localPosition = writtenPosition = basePosition + positionInParent;
             view.fieldOfView = writtenFov = Mathf.Clamp(baseFov + fov, 1f, 179f);
             lastRotation = rotation; lastPosition = positionInParent; lastFov = fov;
             wrote = true;
+        }
+
+        // [V32] 2.1 걷기 bob 위상 (WalkBobRules): reads the gait phase (CharacterMotion.GaitPhase / FootstepIndex — the
+        // values the own footstep SFX uses) and the live camera height; changes neither. Walk gait only: not sprinting
+        // (FootstepRunning), not swimming / diving, not the Echo. Returns the height shift in the camera parent's space.
+        private Vector3 WalkBobFix(Transform t, Vector3 basePosition)
+        {
+            float now = Time.time, dt = Time.deltaTime;
+            player.TryGetComponent<CharacterMotion>(out var motion);
+            player.TryGetComponent<PlayerMovement>(out var movement);
+            player.TryGetComponent<CharacterBody>(out var body);
+            bool cycle = motion != null && motion.HasFootstepCycle;
+            bool walk = cycle && movement != null && player.Status == PlayerStatus.Alive && !player.HasEchoBody &&
+                !movement.IsSwimming && !movement.IsDiving && motion.Speed > .05f && !motion.FootstepRunning;
+            // another character (role swap, model rebuild) has its own walk clip: learn again
+            object key = body != null ? body.Definition : null;
+            if (!ReferenceEquals(key, walkBobKey)) { walkBob.Reset(); walkBobKey = key; }
+            if (!walk) walkGaitSince = Never;
+            else if (walkGaitSince == Never || movement.IsCrouching != walkCrouch) { walkGaitSince = now; walkCrouch = movement.IsCrouching; }
+            float pitch = motion != null ? motion.LookPitch : 0f;
+            float pitchRate = dt > 0f ? Mathf.Abs(Mathf.DeltaAngle(lastPitch, pitch)) / dt : 0f;
+            lastPitch = pitch;
+            if (cycle)
+            {
+                Vector3 world = t.parent != null ? t.parent.TransformPoint(basePosition) : basePosition;
+                bool valid = walk && now - walkGaitSince >= WalkBobRules.SettleSeconds && !motion.IsAttacking &&
+                    pitchRate < WalkBobRules.MaxPitchDegreesPerSecond;
+                walkBob.Observe(motion.FootstepIndex / 2, motion.GaitPhase, world.y - player.transform.position.y, valid);
+            }
+            walkBobWeight = WalkBobRules.Fade(walkBobWeight, walk && walkBob.Ready, dt);
+            float fix = cycle ? walkBob.Correction(motion.GaitPhase) * WalkBobRules.Shown(walkBobWeight) : 0f;
+            CurrentBobFix = fix; CurrentBobWeight = walkBobWeight; BobProfileReady = walkBob.Ready;
+            BobLowA = walkBob.LowA; BobLowB = walkBob.LowB; BobCyclesLearned = walkBob.CyclesLearned;
+            Vector3 up = Vector3.up * fix;
+            return t.parent != null ? t.parent.InverseTransformVector(up) : up;
         }
 
         // 4.2 술래 화면 적색 #EF6A4C 전체 플래시 — above the darkness (100) and the edge stain (50), behind the HUD (0).
