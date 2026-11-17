@@ -15,12 +15,14 @@ namespace Marco.Network.Vision
         public static readonly Color AmberColorBlind = new Color32(0xC9, 0x8A, 0x2E, 0xFF);
 
         private static readonly int ColorId = Shader.PropertyToID("_Color"), AlphaId = Shader.PropertyToID("_Alpha"),
-            SeedId = Shader.PropertyToID("_Seed"), DriftId = Shader.PropertyToID("_Drift"), AspectId = Shader.PropertyToID("_Aspect");
+            SeedId = Shader.PropertyToID("_Seed"), DriftId = Shader.PropertyToID("_Drift"), AspectId = Shader.PropertyToID("_Aspect"),
+            CornerDepthId = Shader.PropertyToID("_CornerDepth"), EdgeDepthId = Shader.PropertyToID("_EdgeDepth");
 
         private Material material;
         private int trackedHalves = -1;
         private float fromAlpha, toAlpha, changedAt = -10f, seed, seenInjury = -1f;
         private Color fromColor, toColor;
+        private Vector2 fromDepth = InjuryEdgeRules.Depth(2), toDepth = InjuryEdgeRules.Depth(2);
         private bool failed, hitChange;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -54,12 +56,16 @@ namespace Marco.Network.Vision
             float current = hitChange ? toAlpha : InjuryEdgeRules.Transition(fromAlpha, toAlpha, now - changedAt);
             if (halves != trackedHalves)
             {
-                Color currentColor = Color.Lerp(fromColor, toColor, Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds));
+                float blend = hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds);
+                Color currentColor = Color.Lerp(fromColor, toColor, blend);
+                Vector2 currentDepth = Vector2.Lerp(fromDepth, toDepth, blend * blend * (3f - 2f * blend));
                 trackedHalves = halves;
                 fromAlpha = current;
                 toAlpha = InjuryEdgeRules.TargetAlpha(halves);
                 fromColor = current > 0f ? currentColor : StateColor(halves);
                 toColor = halves > 0 ? StateColor(halves) : fromColor;
+                fromDepth = current > 0f ? currentDepth : InjuryEdgeRules.Depth(halves);
+                toDepth = halves > 0 ? InjuryEdgeRules.Depth(halves) : fromDepth;   // fading out keeps its shape
                 changedAt = shown ? now : now - InjuryEdgeRules.ChangeSeconds;   // leaving the round clears at once
                 // a hit lowers the lives and stamps LastInjuryTime in the same message (NetworkPlayer.HealthTarget)
                 hitChange = shown && halves > 0 && player.LastInjuryTime >= 0f && Mathf.Abs(player.LastInjuryTime - now) < .1f;
@@ -84,6 +90,10 @@ namespace Marco.Network.Vision
             material.SetFloat(SeedId, seed);
             material.SetFloat(DriftId, now * InjuryEdgeRules.DriftPerSecond);
             material.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
+            float shape = hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds);
+            Vector2 depthNow = Vector2.Lerp(fromDepth, toDepth, shape * shape * (3f - 2f * shape));
+            material.SetFloat(CornerDepthId, depthNow.x);
+            material.SetFloat(EdgeDepthId, depthNow.y);
             var saved = GUI.matrix;
             int depth = GUI.depth;
             GUI.matrix = Matrix4x4.identity;

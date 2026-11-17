@@ -8,7 +8,7 @@ namespace Marco.Network.Tests
     // Needs a graphics device — run EditMode without -nographics; with no device the test is ignored, not passed.
     public class EdgeStainShaderTests
     {
-        private static Texture2D Render(float aspect, float seed, float drift, int height = 216)
+        private static Texture2D Render(float aspect, float seed, float drift, int height = 216, float cornerDepth = .15f, float edgeDepth = .06f)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) Assert.Ignore("no graphics device (-nographics)");
             var shader = Resources.Load<Shader>("MarcoPresentation/EdgeStain");
@@ -21,6 +21,8 @@ namespace Marco.Network.Tests
             material.SetFloat("_Seed", seed);
             material.SetFloat("_Drift", drift);
             material.SetFloat("_Aspect", aspect);
+            material.SetFloat("_CornerDepth", cornerDepth);
+            material.SetFloat("_EdgeDepth", edgeDepth);
             var target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
             var previous = RenderTexture.active;
             RenderTexture.active = target;
@@ -60,6 +62,32 @@ namespace Marco.Network.Tests
                         if (Mathf.Abs(u - .5f) < .5f / w + 1e-4f) Assert.LessOrEqual(dy, .06f + 1.5f / h, $"edge middle deeper than 6 % at v={v:F3}");
                     }
                 Assert.Greater(lit, 0, "the stain draws something at the edges");
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        // 11-17 후속 5: the 1.5 state is drawn with its own depth — corner 9 %, edge middle 3.5 % — and the centre stays empty.
+        [TestCase(16f / 9f)]
+        [TestCase(21f / 9f)]
+        public void RecoveringDepth_CornerNinePercent_EdgeMiddleThreeAndAHalf(float aspect)
+        {
+            const float Corner = .09f, Edge = .035f;
+            foreach (float seed in new[] { 0f, 7.3f, 41.9f })
+            {
+                var image = Render(aspect, seed, .3f, 216, Corner, Edge);
+                int w = image.width, h = image.height, lit = 0;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        if (image.GetPixel(x, y).a <= 0f) continue;
+                        lit++;
+                        float u = (x + .5f) / w, v = (y + .5f) / h;
+                        Assert.IsFalse(Mathf.Abs(u - .5f) < .35f && Mathf.Abs(v - .5f) < .35f, $"centre lit at ({u:F3}, {v:F3})");
+                        float dx = Mathf.Min(u, 1f - u) * aspect, dy = Mathf.Min(v, 1f - v);
+                        Assert.LessOrEqual(Mathf.Min(dx, dy), Corner + 1.5f / h, $"deeper than 9 % at ({u:F3}, {v:F3})");
+                        if (Mathf.Abs(u - .5f) < .5f / w + 1e-4f) Assert.LessOrEqual(dy, Edge + 1.5f / h, $"edge middle deeper than 3.5 % at v={v:F3}");
+                    }
+                Assert.Greater(lit, 0);
                 Object.DestroyImmediate(image);
             }
         }

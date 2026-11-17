@@ -13,7 +13,9 @@ namespace Marco.Network.Tests
         public void StateOpacity()
         {
             Assert.AreEqual(.40f, InjuryEdgeRules.TargetAlpha(2), T, "1.0 상처");
-            Assert.AreEqual(.13f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중 (11-17 후속 4; 0.22 → 0.30 → 0.13)");
+            Assert.AreEqual(.18f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중 (11-17 후속 5; 0.22 → 0.30 → 0.13 → 0.18)");
+            Assert.AreEqual(new Vector2(.09f, .035f), InjuryEdgeRules.Depth(3), "1.5 depth: corner 9 %, edge middle 3.5 %");
+            Assert.AreEqual(new Vector2(.15f, .06f), InjuryEdgeRules.Depth(2), "1.0 depth unchanged");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(4), T, "2.0 정상");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(-1), T);
         }
@@ -22,11 +24,11 @@ namespace Marco.Network.Tests
         public void ColourCorrection_PerState_AndStrengthOrder()
         {
             Assert.AreEqual(new Vector2(.35f, .60f), InjuryEdgeRules.Correction(2), "1.0: desaturate 35 %, brightness 60 %");
-            Assert.AreEqual(new Vector2(.10f, .70f), InjuryEdgeRules.Correction(3), "1.5: desaturate 10 %, brightness 70 % (11-17 후속 3, was 85 %)");
-            // Order regression guard (11-17 후속 4). Replaces the 후속 3 check "opacity × brightness multiplier", which passed
-            // while the screen showed 1.5 as strong as 1.0: the 술래 레드 is a far darker colour than the 앰버. Strength is now
-            // opacity × Rec.709 luminance of the corrected colour, gamma values (InjuryEdgeRules.Strength), normal and
-            // colour-blind palettes.
+            Assert.AreEqual(new Vector2(.10f, .85f), InjuryEdgeRules.Correction(3), "1.5: desaturate 10 %, brightness 85 % (11-17 후속 5, back from 70 %)");
+            // Order regression guard (11-17 후속 5). Weighted strength = opacity × Rec.709 luminance of the corrected colour
+            // (gamma values) × corner depth / the 1.0 corner depth (InjuryEdgeRules.Strength), normal and colour-blind palettes.
+            // Replaces 후속 4 (no depth factor — 1.5 is now lighter by area) and 후속 3 ("opacity × brightness multiplier",
+            // which ignored that the 술래 레드 is a far darker colour than the 앰버).
             foreach (var (redPalette, amberPalette, mode) in new[]
             {
                 ((Color)new Color32(0xFF, 0x3B, 0x4D, 0xFF), (Color)new Color32(0xFF, 0xB8, 0x4D, 0xFF), "normal"),
@@ -47,7 +49,7 @@ namespace Marco.Network.Tests
             // brightness 85 % = the multiplier after desaturating 10 % toward the palette colour's own luminance
             Color palette = new Color32(0xFF, 0xB8, 0x4D, 0xFF);
             float luminance = palette.r * .299f + palette.g * .587f + palette.b * .114f;
-            Assert.AreEqual((palette.r * .9f + luminance * .1f) * .70f, amber.r, 1e-4f, "brightness 70 %");
+            Assert.AreEqual((palette.r * .9f + luminance * .1f) * .85f, amber.r, 1e-4f, "brightness 85 %");
             Assert.AreEqual(1f, amber.a);
         }
 
@@ -67,6 +69,18 @@ namespace Marco.Network.Tests
                         float dx = Mathf.Min(u, 1f - u) * aspect, dy = Mathf.Min(v, 1f - v);
                         if (Mathf.Min(dx, dy) > InjuryEdgeRules.CornerDepth + T) Assert.AreEqual(0f, m, $"too deep ({u}, {v})");
                     }
+        }
+
+        [Test]
+        public void RecoveringMask_StaysWithinItsDepth()
+        {
+            var depth = InjuryEdgeRules.Depth(3);
+            for (float u = 0f; u <= 1f; u += .0125f)
+                for (float v = 0f; v <= 1f; v += .0125f)
+                {
+                    float m = InjuryEdgeRules.Mask(u, v, 16f / 9f, 5f, .2f, depth.x, depth.y);
+                    if (Mathf.Min(Mathf.Min(u, 1f - u) * 16f / 9f, Mathf.Min(v, 1f - v)) > depth.x + T) Assert.AreEqual(0f, m, $"({u}, {v})");
+                }
         }
 
         [Test]

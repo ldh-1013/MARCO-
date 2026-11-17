@@ -4,20 +4,27 @@ namespace Marco.Network.Vision
 {
     // V28 A-0 체력 가장자리 표시 (기획서 §3.3-1 상태 2.0 / 1.5 / 1.0, 색 §16.2). Pure curves and mask shape.
     // [GAP 연출 고유 시작값 — 연출.md 16.1]: depth corner 15% / edge middle 6% of the short side, opacity 1.0 → 0.40,
-    // 1.5 → 0.13 (11-17 후속 4), colour correction per state, state change 0.3 s ease-in-out, first-hit swell 0.2 s,
+    // 1.5 → 0.18 with depth 9 % / 3.5 % (11-17 후속 5), colour correction per state, state change 0.3 s ease-in-out, first-hit swell 0.2 s,
     // pattern drift ≤ 0.02 UV/s, no pulsing.
     public static class InjuryEdgeRules
     {
+        // Depth (short-side units): CornerDepth / EdgeDepth are the 1.0 상처 values and the overall limit.
         public const float CornerDepth = .15f, EdgeDepth = .06f;
-        public const float WoundedAlpha = .40f, RecoveringAlpha = .13f;   // 11-17 후속 4 (0.22 → 0.30 → 0.13)
+        // 1.5 회복 중 is lighter by area, not by colour (11-17 후속 5): a thinner stain keeps the amber readable.
+        public const float RecoveringCornerDepth = .09f, RecoveringEdgeDepth = .035f;
+        public const float WoundedAlpha = .40f, RecoveringAlpha = .18f;   // 11-17 후속 5 (0.22 → 0.30 → 0.13 → 0.18)
         // Colour correction toward a low-saturation seep (alpha blended, never additive): desaturate = how far the palette
         // colour moves toward its own luminance, brightness = multiplier. 1.0 상처 (술래 레드) is darker and duller than
         // 1.5 회복 중 (앰버), which must still read as amber (11-17 후속 2).
         public const float WoundedDesaturate = .35f, WoundedBrightness = .60f;
-        public const float RecoveringDesaturate = .10f, RecoveringBrightness = .70f;   // 11-17 후속 3 (was .85)
+        public const float RecoveringDesaturate = .10f, RecoveringBrightness = .85f;   // 11-17 후속 5 (back to the 후속 2 value; 후속 3 used .70)
         public const float ChangeSeconds = .3f, SwellSeconds = .2f, SwellInSeconds = .04f, SwellGain = .6f;
         public const float DriftPerSecond = .01f;   // UV/s, ≤ 0.02
         public const float CentreKeepOut = .70f;    // the middle 70 % (each axis) is never touched
+
+        // (corner, edge-middle) depth for a state; anything but 1.5 uses the 1.0 depth (nothing is drawn for 2.0).
+        public static Vector2 Depth(int halves) =>
+            halves == 3 ? new Vector2(RecoveringCornerDepth, RecoveringEdgeDepth) : new Vector2(CornerDepth, EdgeDepth);
 
         // 2 halves = 1.0 상처, 3 = 1.5 회복 중, otherwise nothing.
         public static float TargetAlpha(int halves) => halves == 2 ? WoundedAlpha : halves == 3 ? RecoveringAlpha : 0f;
@@ -29,10 +36,12 @@ namespace Marco.Network.Vision
         // (ProjectSettings m_ActiveColorSpace 0 — the screen composites gamma values); 색 공간이 바뀌면 재검토.
         public static float Luminance709(Color c) => .2126f * c.r + .7152f * c.g + .0722f * c.b;
 
-        // How strongly a state shows = opacity × Luminance709(corrected colour). The one function the order test and the
-        // capture report use (11-17 후속 4 — replaces "opacity × brightness multiplier", which ignored that the 술래 레드
-        // is a much darker colour than the 앰버).
-        public static float Strength(int halves, Color palette) => TargetAlpha(halves) * Luminance709(StainColor(palette, halves));
+        // How strongly a state shows = opacity × Luminance709(corrected colour) × (its corner depth / the 1.0 corner depth).
+        // The one function the order test and the capture report use. 11-17 후속 5: the depth factor was added when 1.5
+        // became lighter by area; 후속 4 had opacity × luminance (후속 3, opacity × brightness, ignored that the 술래 레드 is
+        // a much darker colour than the 앰버).
+        public static float Strength(int halves, Color palette) =>
+            TargetAlpha(halves) * Luminance709(StainColor(palette, halves)) * (Depth(halves).x / CornerDepth);
 
         // (desaturate, brightness) for a state; 2 halves = 1.0, 3 = 1.5. Other states draw nothing (identity).
         public static Vector2 Correction(int halves) =>
@@ -73,8 +82,13 @@ namespace Marco.Network.Vision
         // Mask 0..1 at screen point (u, v in 0..1) for a screen of the given aspect (width / height).
         // Depth grows toward the corners, the boundary is broken by 2-octave low-frequency noise (seeded), and it fades
         // inward with smoothstep. Zero inside the centre 70 %.
-        public static float Mask(float u, float v, float aspect, float seed, float drift)
+        public static float Mask(float u, float v, float aspect, float seed, float drift) =>
+            Mask(u, v, aspect, seed, drift, CornerDepth, EdgeDepth);
+
+        // The same shape with a state's depth (EdgeStain _CornerDepth / _EdgeDepth), clamped to the 1.0 limit.
+        public static float Mask(float u, float v, float aspect, float seed, float drift, float cornerDepth, float edgeDepth)
         {
+            cornerDepth = Mathf.Min(cornerDepth, CornerDepth); edgeDepth = Mathf.Min(edgeDepth, EdgeDepth);
             if (Mathf.Abs(u - .5f) < CentreKeepOut * .5f && Mathf.Abs(v - .5f) < CentreKeepOut * .5f) return 0f;
             float shortSide = Mathf.Min(aspect, 1f);
             // edge distances in short-side units
@@ -83,7 +97,7 @@ namespace Marco.Network.Vision
             float corner = Mathf.SmoothStep(0f, 1f, cx * cy);
             float n = .65f * Mathf.PerlinNoise(seed + u * 3.1f + drift, seed * .37f + v * 3.1f) +
                       .35f * Mathf.PerlinNoise(seed * 1.7f + u * 7.3f, seed + v * 7.3f - drift);
-            float depth = Mathf.Lerp(EdgeDepth, CornerDepth, corner) * Mathf.Lerp(.55f, 1f, n);
+            float depth = Mathf.Lerp(edgeDepth, cornerDepth, corner) * Mathf.Lerp(.55f, 1f, Mathf.Clamp01(n));
             float horizontal = 1f - Mathf.SmoothStep(0f, 1f, dx / depth);
             float vertical = 1f - Mathf.SmoothStep(0f, 1f, dy / depth);
             float m = Mathf.Max(horizontal, vertical);
