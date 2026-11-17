@@ -23,7 +23,7 @@ namespace Marco.Network.Vision
         private int trackedHalves = -1;
         private float fromAlpha, toAlpha, changedAt = -10f, seed, seenInjury = -1f;
         private Color fromColor, toColor;
-        private bool failed;
+        private bool failed, hitChange;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
@@ -59,7 +59,7 @@ namespace Marco.Network.Vision
                 player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
             int halves = shown && player.HealthHalves > 0 && player.HealthHalves < round.FullHalves ? player.HealthHalves : 0;
             float now = Time.time;
-            float current = InjuryEdgeRules.Transition(fromAlpha, toAlpha, now - changedAt);
+            float current = hitChange ? toAlpha : InjuryEdgeRules.Transition(fromAlpha, toAlpha, now - changedAt);
             if (halves != trackedHalves)
             {
                 Color currentColor = Color.Lerp(fromColor, toColor, Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds));
@@ -69,6 +69,8 @@ namespace Marco.Network.Vision
                 fromColor = current > 0f ? currentColor : StateColor(halves);
                 toColor = halves > 0 ? StateColor(halves) : fromColor;
                 changedAt = shown ? now : now - InjuryEdgeRules.ChangeSeconds;   // leaving the round clears at once
+                // a hit lowers the lives and stamps LastInjuryTime in the same message (NetworkPlayer.HealthTarget)
+                hitChange = shown && halves > 0 && player.LastInjuryTime >= 0f && Mathf.Abs(player.LastInjuryTime - now) < .1f;
             }
             float swell = 0f;
             if (shown && player.LastInjuryTime >= 0f)
@@ -76,7 +78,8 @@ namespace Marco.Network.Vision
                 if (player.LastInjuryTime != seenInjury) { seenInjury = player.LastInjuryTime; seed = UnityEngine.Random.Range(0f, 64f); }
                 swell = InjuryEdgeRules.Swell(now - player.LastInjuryTime);
             }
-            float alpha = Mathf.Clamp01(current * (1f + swell));
+            float alpha = InjuryEdgeRules.Displayed(fromAlpha, toAlpha, now - changedAt, hitChange,
+                swell > 0f ? now - player.LastInjuryTime : -1f);
             if (alpha <= .001f) return;
             if (material == null)
             {
@@ -84,7 +87,7 @@ namespace Marco.Network.Vision
                 if (shader == null) { failed = true; return; }
                 material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             }
-            material.SetColor(ColorId, Color.Lerp(fromColor, toColor, Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds)));
+            material.SetColor(ColorId, Color.Lerp(fromColor, toColor, hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds)));
             material.SetFloat(AlphaId, alpha);
             material.SetFloat(SeedId, seed);
             material.SetFloat(DriftId, now * InjuryEdgeRules.DriftPerSecond);

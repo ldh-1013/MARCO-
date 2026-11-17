@@ -64,6 +64,20 @@ namespace Marco.Network.Tests
             }
         }
 
+        // V28a capture fix: the first-hit swell must ride on the new state value, not on a value still easing up from 0.
+        [Test]
+        public void Displayed_HitGoesStraightToTheStateAndSwells_RecoveryEases()
+        {
+            float target = InjuryEdgeRules.WoundedAlpha;
+            Assert.AreEqual(target * (1f + InjuryEdgeRules.SwellGain), InjuryEdgeRules.Displayed(0f, target, .04f, true, .04f), T, "peak at 40 ms");
+            Assert.Greater(InjuryEdgeRules.Displayed(0f, target, .05f, true, .05f), target, "brighter than the state at 0.05 s");
+            Assert.AreEqual(target, InjuryEdgeRules.Displayed(0f, target, .2f, true, .2f), T, "settled at 0.2 s");
+            Assert.AreEqual(target, InjuryEdgeRules.Displayed(0f, target, .35f, true, .35f), T);
+            // recovery 1.0 → 1.5: eases over 0.3 s, no swell
+            Assert.AreEqual((target + InjuryEdgeRules.RecoveringAlpha) / 2f, InjuryEdgeRules.Displayed(target, InjuryEdgeRules.RecoveringAlpha, .15f, false, -1f), T);
+            Assert.AreEqual(InjuryEdgeRules.RecoveringAlpha, InjuryEdgeRules.Displayed(target, InjuryEdgeRules.RecoveringAlpha, .3f, false, -1f), T);
+        }
+
         [Test]
         public void Swell_FastIn_SlowOut_OverByPointTwoSeconds()
         {

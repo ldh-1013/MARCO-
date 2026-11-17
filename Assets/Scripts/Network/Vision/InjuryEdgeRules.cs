@@ -23,6 +23,11 @@ namespace Marco.Network.Vision
             return Mathf.Lerp(from, to, t * t * (3f - 2f * t));
         }
 
+        // What is drawn: a change caused by a hit goes to the new state at once and swells on top of it (the flash settles
+        // into the state value — 연출 15.3); any other change (recovery, leaving the round) eases over ChangeSeconds.
+        public static float Displayed(float from, float to, float sinceChange, bool hitChange, float sinceHit) =>
+            Mathf.Clamp01((hitChange ? to : Transition(from, to, sinceChange)) * (1f + Swell(sinceHit)));
+
         // First-hit swell on top of the state value: in over 40 ms, out (ease-out) by 0.2 s. 0 outside [0, 0.2].
         public static float Swell(float sinceHit)
         {
