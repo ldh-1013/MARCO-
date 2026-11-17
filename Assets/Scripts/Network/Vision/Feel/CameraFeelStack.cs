@@ -213,14 +213,21 @@ namespace Marco.Network.Vision
             bool hitActive = tHit >= 0f && tHit < FeelRules.HitKickSeconds;
             float hitScale = FeelRules.PriorityScale(punchActive);
             float missScale = FeelRules.PriorityScale(punchActive || hitActive);
+            // 7.2 노크 (VB B-3): the lowest priority — 40 % while any other one-shot runs
+            bool missActive = tMiss >= 0f && tMiss < FeelRules.MissSeconds, hurtActive = now - hurtAt >= 0f && now - hurtAt < FeelRules.HurtSeconds;
+            float knockScale = FeelRules.PriorityScale(punchActive || hitActive || missActive || hurtActive);
 
             Vector3 rotation = FeelRules.HitKickRotation(tHit) * hitScale
                 + FeelRules.MissRotation(tMiss) * missScale
                 + FeelRules.HurtRotation(now - hurtAt, hurtSide, hurtSeed)
-                + NudgeRotation(now - nudgeAt)
+                + EchoFeelRules.KnockRotation(now - nudgeAt) * knockScale
                 + BreathFeelRules.SwayRotation(now, swayWeight);
-            Vector3 position = new Vector3(0f, 0f, -FeelRules.HitKickBack(tHit) * hitScale) + BreathFeelRules.SwayPosition(now, swayWeight);
-            float fov = sprintNow + sneakNow + FeelRules.PunchFovOffset(tEcho);
+            Vector3 position = new Vector3(0f, 0f, -FeelRules.HitKickBack(tHit) * hitScale) + BreathFeelRules.SwayPosition(now, swayWeight)
+                + EchoFeelRules.KnockPosition(now - nudgeAt) * knockScale;
+            // 7.1 전환 직후 (VB B-3): FOV −2° under the tag blackout, back to 0 while the sonar view opens (0.5 s, ease-out).
+            float sinceTag = player.HasEchoBody ? TagBlackoutLocal.Elapsed(player) : float.PositiveInfinity;
+            float echoWiden = float.IsInfinity(sinceTag) ? 0f : EchoFeelRules.RevealFov(sinceTag - EchoBodyRules.TagBlackoutSeconds);
+            float fov = sprintNow + sneakNow + FeelRules.PunchFovOffset(tEcho) + echoWiden;
 
             rotation = FeelRules.CapRotation(rotation);
             position = FeelRules.CapPosition(position);
@@ -237,13 +244,6 @@ namespace Marco.Network.Vision
             TickWallPass(inRound && player.HasEchoBody, now);
         }
 
-        // 7.2 knock: 0.1 s, 0.45°, low-frequency noise (the old CameraNudge values).
-        private static Vector3 NudgeRotation(float t)
-        {
-            const float Seconds = .1f, Degrees = .45f;
-            if (t < 0f || t >= Seconds) return Vector3.zero;
-            return new Vector3((Mathf.PerlinNoise(t * 90f, 0f) - .5f) * 2f, (Mathf.PerlinNoise(0f, t * 90f) - .5f) * 2f, 0f) * Degrees * FeelRules.FeelIntensity;
-        }
 
         private void SetRim(Color rim)
         {
