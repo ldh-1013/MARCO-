@@ -11,7 +11,7 @@ namespace Marco.Network.Vision
     // capped after the sum (FeelRules), and is written once per frame on top of whatever the game set this frame
     // (FirstPersonBody's head follow, the look pitch, the settings FOV). Local presentation only: it reads events and
     // state the client already has (PlayerInteractor.LocalSwingConfirmed, NetworkPlayer.LastInjuryTime,
-    // PlayerMovement.IsSprinting) and never touches input, movement or anything sent.
+    // PlayerMovement.IsSprinting / IsSprintExhausted) and never touches input, movement or anything sent.
     [DefaultExecutionOrder(1100)]
     public sealed class CameraFeelStack : MonoBehaviour
     {
@@ -39,6 +39,9 @@ namespace Marco.Network.Vision
         public static float CurrentWallNoiseAlpha { get; private set; }
         public static bool InsideStructure { get; private set; }
         public static double LastProbeMicroseconds { get; private set; }
+        // V31 B-1 스태미나 소진: the contraction's opacity now, and how many exhaustions started (one per state entry).
+        public static float CurrentExhaustionAlpha { get; private set; }
+        public static int SprintExhaustions { get; private set; }
 
         private const float Never = -1000f;
         private NetworkPlayer player;
@@ -58,6 +61,9 @@ namespace Marco.Network.Vision
         private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
         private static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
         private bool sprintOn, sneakOn;
+        private bool exhaustOn; private float exhaustFrom, exhaustChanged = Never, exhaustSeen = Never; private Material exhaustEdge; private bool exhaustEdgeFailed;
+        private static readonly int ColorId = Shader.PropertyToID("_Color"), SeedId = Shader.PropertyToID("_Seed"), DriftId = Shader.PropertyToID("_Drift"),
+            CornerDepthId = Shader.PropertyToID("_CornerDepth"), EdgeDepthId = Shader.PropertyToID("_EdgeDepth");
         private float sprintFrom, sprintTo, sprintChanged = Never, sneakFrom, sneakTo, sneakChanged = Never;
         private Quaternion writtenRotation = Quaternion.identity;
         private Vector3 writtenPosition;
@@ -118,6 +124,7 @@ namespace Marco.Network.Vision
             Restore();
             interactor = null; view = null; player = null;
             hitAt = echoAt = missAt = hurtAt = nudgeAt = Never;
+            exhaustOn = false; exhaustFrom = 0f; exhaustChanged = exhaustSeen = Never; CurrentExhaustionAlpha = 0f;
         }
 
         // Put back exactly what this stack added, so nothing is left behind when it stops.
@@ -161,7 +168,19 @@ namespace Marco.Network.Vision
 
             // 연출 2.2 질주 +5° · 술래 잠행 −3° (0.2 s in, sprint out 0.25 s), ease-out, frame-rate independent.
             var movement = player.GetComponent<PlayerMovement>();
-            bool sprint = inRound && alive && movement != null && movement.IsSprinting;
+            // 2.2 스태미나 소진 (V31 B-1): the owner's own exhaustion state — the same value its movement uses this frame.
+            bool exhausted = inRound && alive && player.Role == PlayerRole.Runner && movement != null && movement.IsSprintExhausted;
+            if (exhausted) exhaustSeen = now;
+            float exhaustNow = ExhaustionRules.Alpha(exhaustFrom, exhaustOn, now - exhaustChanged);
+            if (exhausted != exhaustOn)
+            {
+                exhaustOn = exhausted; exhaustFrom = exhaustNow; exhaustChanged = now;
+                if (exhausted) { SprintExhaustions++; Debug.Log("[MARCO][Feel] sprint exhausted"); }
+            }
+            CurrentExhaustionAlpha = ExhaustionRules.Alpha(exhaustFrom, exhaustOn, now - exhaustChanged);
+            // the sprint FOV goes back (0.25 s ease-out) when the exhaustion starts and does not rise again while it lasts
+            bool sprint = inRound && alive && movement != null &&
+                ExhaustionRules.SprintFovAllowed(movement.IsSprinting, exhausted, exhaustSeen == Never ? -1f : now - exhaustSeen);
             bool sneak = inRound && alive && player.Role == PlayerRole.Seeker && movement != null && !movement.IsSwimming &&
                 Cursor.lockState == CursorLockMode.Locked && Input.GetKey(KeyCode.LeftControl) && IsMoving();
             float sprintNow = FeelRules.Follow(sprintFrom, sprintTo, now - sprintChanged, sprintTo > sprintFrom ? FeelRules.FovInSeconds : FeelRules.SprintFovOutSeconds);
@@ -328,6 +347,7 @@ namespace Marco.Network.Vision
         private void OnGUI()
         {
             if (Event.current.type != EventType.Repaint) return;
+            DrawExhaustion();
             DrawWallNoise();
             if (CurrentFlashAlpha <= .001f) return;
             var saved = GUI.color; int depth = GUI.depth;
@@ -349,6 +369,30 @@ namespace Marco.Network.Vision
             return structure;
         }
 
+        // 2.2 스태미나 소진 수축 — the A-0 edge mask (EdgeStain) in black, still (no drift, no pulse); drawn under the health
+        // edge stain (50) so the health state stays readable on top of it.
+        private void DrawExhaustion()
+        {
+            if (CurrentExhaustionAlpha <= .001f || exhaustEdgeFailed) return;
+            if (exhaustEdge == null)
+            {
+                var shader = Resources.Load<Shader>("MarcoPresentation/EdgeStain");
+                if (shader == null) { exhaustEdgeFailed = true; return; }
+                exhaustEdge = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+                exhaustEdge.SetColor(ColorId, ExhaustionRules.Colour);
+                exhaustEdge.SetFloat(SeedId, 23.7f);
+                exhaustEdge.SetFloat(DriftId, 0f);
+                exhaustEdge.SetFloat(CornerDepthId, ExhaustionRules.CornerDepth);
+                exhaustEdge.SetFloat(EdgeDepthId, ExhaustionRules.EdgeDepth);
+            }
+            exhaustEdge.SetFloat(AlphaId, CurrentExhaustionAlpha);
+            exhaustEdge.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
+            var saved = GUI.matrix; int depth = GUI.depth;
+            GUI.matrix = Matrix4x4.identity; GUI.depth = 52;
+            Graphics.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture, exhaustEdge);
+            GUI.matrix = saved; GUI.depth = depth;
+        }
+
         // 2.2 벽 통과 overlay — above the darkness (100), behind the HUD (0).
         private void DrawWallNoise()
         {
@@ -368,6 +412,6 @@ namespace Marco.Network.Vision
             GUI.matrix = saved; GUI.depth = depth;
         }
 
-        private void OnDestroy() { Unbind(); if (wallNoise != null) Destroy(wallNoise); if (Instance == this) Instance = null; }
+        private void OnDestroy() { Unbind(); if (wallNoise != null) Destroy(wallNoise); if (exhaustEdge != null) Destroy(exhaustEdge); if (Instance == this) Instance = null; }
     }
 }

@@ -47,6 +47,7 @@ namespace Marco.Network.Player
         public bool IsCrouching => crouching;
         public float SprintStaminaRatio => Mathf.Clamp01(sprintStamina /
             Mathf.Max(0.01f, MovementConfig.RunnerSprintStaminaSeconds));
+        public bool IsSprintExhausted => sprintExhaustionRemaining > 0f;
         private WinConditionConfig MovementConfig => NetworkRound.Instance != null
             ? NetworkRound.Instance.MovementConfig : FallbackMovementConfig;
 

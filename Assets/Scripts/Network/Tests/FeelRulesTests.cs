@@ -171,6 +171,70 @@ namespace Marco.Network.Tests
             Assert.AreEqual(new Color32(0xEF, 0x6A, 0x4C, 0xFF), (Color32)FeelRules.SeekerFlashColor, "연출 4.2 #EF6A4C");
         }
 
+        // V31 B-1 스태미나 소진 수축: 0 → 0.12 over 0.3 s (ease-out), held without a pulse, 0.12 → 0 over 0.3 s after the end;
+        // a change mid-fade continues from the value shown.
+        [Test]
+        public void Exhaustion_Contraction_InHoldOut()
+        {
+            Assert.AreEqual(0f, ExhaustionRules.Alpha(0f, true, 0f), T, "starts from nothing");
+            Assert.AreEqual(ExhaustionRules.MaxAlpha, ExhaustionRules.Alpha(0f, true, ExhaustionRules.FadeSeconds), T, "0.12 at 0.3 s");
+            Assert.AreEqual(.12f, ExhaustionRules.MaxAlpha, T);
+            Assert.AreEqual(.3f, ExhaustionRules.FadeSeconds, T);
+            float last = -1f;
+            for (float t = 0f; t <= ExhaustionRules.FadeSeconds + T; t += .01f)
+            {
+                float a = ExhaustionRules.Alpha(0f, true, t);
+                Assert.GreaterOrEqual(a, last - T, $"rises monotonically (t={t:F2})"); last = a;
+            }
+            for (float t = ExhaustionRules.FadeSeconds; t < 6f; t += .05f)
+                Assert.AreEqual(ExhaustionRules.MaxAlpha, ExhaustionRules.Alpha(0f, true, t), T, $"held, no pulse (t={t:F2})");
+            Assert.AreEqual(ExhaustionRules.MaxAlpha, ExhaustionRules.Alpha(ExhaustionRules.MaxAlpha, false, 0f), T, "the end starts from the shown value");
+            Assert.AreEqual(0f, ExhaustionRules.Alpha(ExhaustionRules.MaxAlpha, false, ExhaustionRules.FadeSeconds), T, "gone 0.3 s after the end");
+            last = 1f;
+            for (float t = 0f; t <= ExhaustionRules.FadeSeconds + T; t += .01f)
+            {
+                float a = ExhaustionRules.Alpha(ExhaustionRules.MaxAlpha, false, t);
+                Assert.LessOrEqual(a, last + T, $"falls monotonically (t={t:F2})"); last = a;
+            }
+            // fast-in (ease-out): more than half of the way in the first third
+            Assert.Greater(ExhaustionRules.Alpha(0f, true, ExhaustionRules.FadeSeconds / 3f), ExhaustionRules.MaxAlpha * .5f);
+            // reversal mid-fade: no jump
+            float shown = ExhaustionRules.Alpha(0f, true, .1f);
+            Assert.AreEqual(shown, ExhaustionRules.Alpha(shown, false, 0f), T);
+            // frame-rate independent: the value depends on the time since the change only
+            foreach (float fps in new[] { 30f, 60f, 144f })
+            {
+                float dt = 1f / fps, t = 0f;
+                while (t + dt <= .2f) t += dt;
+                Assert.AreEqual(FeelRules.Follow(0f, ExhaustionRules.MaxAlpha, t, ExhaustionRules.FadeSeconds), ExhaustionRules.Alpha(0f, true, t), T);
+            }
+            Assert.AreEqual(Color.black, ExhaustionRules.Colour);
+            Assert.AreEqual(.09f, ExhaustionRules.CornerDepth, T, "corner 9 %");
+            Assert.AreEqual(.035f, ExhaustionRules.EdgeDepth, T, "edge middle 3.5 %");
+        }
+
+        // V31 B-1: the sprint FOV goes back when the exhaustion starts (0.25 s ease-out) and does not rise while it lasts,
+        // nor in the 0.1 s after (a client's server correction can flip IsSprinting for a frame).
+        [Test]
+        public void Exhaustion_SprintFov_BackAndNotRaised()
+        {
+            Assert.IsTrue(ExhaustionRules.SprintFovAllowed(true, false, -1f), "sprinting, never exhausted");
+            Assert.IsFalse(ExhaustionRules.SprintFovAllowed(false, false, -1f));
+            Assert.IsFalse(ExhaustionRules.SprintFovAllowed(true, true, 0f), "exhausted: never raised");
+            Assert.IsFalse(ExhaustionRules.SprintFovAllowed(true, false, .05f), "0.05 s after the end: still held");
+            Assert.IsTrue(ExhaustionRules.SprintFovAllowed(true, false, ExhaustionRules.SprintFovHoldSeconds), "0.1 s after the end");
+            Assert.IsTrue(ExhaustionRules.SprintFovAllowed(true, false, 10f));
+            // the FOV curve the stack follows from the exhaustion start: +5 → 0 in 0.25 s, monotone, ease-out
+            Assert.AreEqual(.25f, FeelRules.SprintFovOutSeconds, T);
+            float last = FeelRules.SprintFov;
+            for (float t = 0f; t <= FeelRules.SprintFovOutSeconds + T; t += .01f)
+            {
+                float fov = FeelRules.Follow(FeelRules.SprintFov, 0f, t, FeelRules.SprintFovOutSeconds);
+                Assert.LessOrEqual(fov, last + T, $"never rises again (t={t:F2})"); last = fov;
+            }
+            Assert.AreEqual(0f, FeelRules.Follow(FeelRules.SprintFov, 0f, FeelRules.SprintFovOutSeconds, FeelRules.SprintFovOutSeconds), T, "back at 0.25 s");
+        }
+
         [Test]
         public void OneEvent_OneEffect()
         {
