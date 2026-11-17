@@ -4,12 +4,12 @@ namespace Marco.Network.Vision
 {
     // V28 A-0 체력 가장자리 표시 (기획서 §3.3-1 상태 2.0 / 1.5 / 1.0, 색 §16.2). Pure curves and mask shape.
     // [GAP 연출 고유 시작값 — 연출.md 16.1]: depth corner 15% / edge middle 6% of the short side, opacity 1.0 → 0.40,
-    // 1.5 → 0.30 (11-17 후속 2), colour correction per state, state change 0.3 s ease-in-out, first-hit swell 0.2 s,
+    // 1.5 → 0.13 (11-17 후속 4), colour correction per state, state change 0.3 s ease-in-out, first-hit swell 0.2 s,
     // pattern drift ≤ 0.02 UV/s, no pulsing.
     public static class InjuryEdgeRules
     {
         public const float CornerDepth = .15f, EdgeDepth = .06f;
-        public const float WoundedAlpha = .40f, RecoveringAlpha = .30f;
+        public const float WoundedAlpha = .40f, RecoveringAlpha = .13f;   // 11-17 후속 4 (0.22 → 0.30 → 0.13)
         // Colour correction toward a low-saturation seep (alpha blended, never additive): desaturate = how far the palette
         // colour moves toward its own luminance, brightness = multiplier. 1.0 상처 (술래 레드) is darker and duller than
         // 1.5 회복 중 (앰버), which must still read as amber (11-17 후속 2).
@@ -22,8 +22,17 @@ namespace Marco.Network.Vision
         // 2 halves = 1.0 상처, 3 = 1.5 회복 중, otherwise nothing.
         public static float TargetAlpha(int halves) => halves == 2 ? WoundedAlpha : halves == 3 ? RecoveringAlpha : 0f;
 
-        // Screen contribution of a state = opacity × brightness multiplier (11-17 후속 3 — kept so 1.5 stays below 1.0).
-        public static float Contribution(int halves) => TargetAlpha(halves) * Correction(halves).y;
+        // 1.5 must read weaker than 1.0: Strength(1.5) ≤ Strength(1.0) × this (11-17 후속 4).
+        public const float RecoveringStrengthLimit = .70f;
+
+        // Rec.709 luminance of the final stain RGB taken as it is (sRGB values, not linearised). 감마 색 공간 기준
+        // (ProjectSettings m_ActiveColorSpace 0 — the screen composites gamma values); 색 공간이 바뀌면 재검토.
+        public static float Luminance709(Color c) => .2126f * c.r + .7152f * c.g + .0722f * c.b;
+
+        // How strongly a state shows = opacity × Luminance709(corrected colour). The one function the order test and the
+        // capture report use (11-17 후속 4 — replaces "opacity × brightness multiplier", which ignored that the 술래 레드
+        // is a much darker colour than the 앰버).
+        public static float Strength(int halves, Color palette) => TargetAlpha(halves) * Luminance709(StainColor(palette, halves));
 
         // (desaturate, brightness) for a state; 2 halves = 1.0, 3 = 1.5. Other states draw nothing (identity).
         public static Vector2 Correction(int halves) =>

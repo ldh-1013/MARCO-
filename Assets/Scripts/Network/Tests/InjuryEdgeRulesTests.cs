@@ -13,7 +13,7 @@ namespace Marco.Network.Tests
         public void StateOpacity()
         {
             Assert.AreEqual(.40f, InjuryEdgeRules.TargetAlpha(2), T, "1.0 상처");
-            Assert.AreEqual(.30f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중 (11-17 후속 2, was 0.22)");
+            Assert.AreEqual(.13f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중 (11-17 후속 4; 0.22 → 0.30 → 0.13)");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(4), T, "2.0 정상");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(-1), T);
         }
@@ -23,10 +23,20 @@ namespace Marco.Network.Tests
         {
             Assert.AreEqual(new Vector2(.35f, .60f), InjuryEdgeRules.Correction(2), "1.0: desaturate 35 %, brightness 60 %");
             Assert.AreEqual(new Vector2(.10f, .70f), InjuryEdgeRules.Correction(3), "1.5: desaturate 10 %, brightness 70 % (11-17 후속 3, was 85 %)");
-            // order regression guard (11-17 후속 3): 1.5's screen contribution (opacity × brightness) stays below 1.0's
-            Assert.AreEqual(.30f * .70f, InjuryEdgeRules.Contribution(3), 1e-4f);
-            Assert.AreEqual(.40f * .60f, InjuryEdgeRules.Contribution(2), 1e-4f);
-            Assert.Less(InjuryEdgeRules.Contribution(3), InjuryEdgeRules.Contribution(2), "1.5 contributes less than 1.0");
+            // Order regression guard (11-17 후속 4). Replaces the 후속 3 check "opacity × brightness multiplier", which passed
+            // while the screen showed 1.5 as strong as 1.0: the 술래 레드 is a far darker colour than the 앰버. Strength is now
+            // opacity × Rec.709 luminance of the corrected colour, gamma values (InjuryEdgeRules.Strength), normal and
+            // colour-blind palettes.
+            foreach (var (redPalette, amberPalette, mode) in new[]
+            {
+                ((Color)new Color32(0xFF, 0x3B, 0x4D, 0xFF), (Color)new Color32(0xFF, 0xB8, 0x4D, 0xFF), "normal"),
+                ((Color)new Color32(0x33, 0x57, 0xFF, 0xFF), (Color)new Color32(0xC9, 0x8A, 0x2E, 0xFF), "colour-blind"),
+            })
+            {
+                float wounded = InjuryEdgeRules.Strength(2, redPalette), recovering = InjuryEdgeRules.Strength(3, amberPalette);
+                TestContext.WriteLine($"{mode}: 1.0 {wounded:F4}, 1.5 {recovering:F4}, ratio {recovering / wounded:F2}");
+                Assert.LessOrEqual(recovering, wounded * InjuryEdgeRules.RecoveringStrengthLimit, mode + ": 1.5 ≤ 1.0 × 0.70");
+            }
             Assert.Less(InjuryEdgeRules.TargetAlpha(3), InjuryEdgeRules.TargetAlpha(2), "1.5 stays weaker than 1.0");
             // §16.2 앰버 #FFB84D keeps its hue after the correction (r > g > b, still orange-yellow)
             var amber = InjuryEdgeRules.StainColor(new Color32(0xFF, 0xB8, 0x4D, 0xFF), 3);
