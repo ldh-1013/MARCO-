@@ -41,6 +41,10 @@ namespace Marco.Network.Vision
         public static double LastProbeMicroseconds { get; private set; }
         // V31 B-1 스태미나 소진: the contraction's opacity now, and how many exhaustions started (one per state entry).
         public static float CurrentExhaustionAlpha { get; private set; }
+        // VB B-4 8.1 억제 성공 (black edge pulse) and 8.2 부상 후 흔들림 (sway weight) — for checks and the capture CSV.
+        public static float CurrentSuppressAlpha { get; private set; }
+        public static int Suppressions { get; private set; }
+        public static float CurrentSwayWeight { get; private set; }
         public static int SprintExhaustions { get; private set; }
 
         private const float Never = -1000f;
@@ -61,6 +65,7 @@ namespace Marco.Network.Vision
         private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
         private static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
         private bool sprintOn, sneakOn;
+        private float lastBreath = -1f, suppressAt = Never, swayWeight;
         private bool exhaustOn; private float exhaustFrom, exhaustChanged = Never, exhaustSeen = Never; private Material exhaustEdge; private bool exhaustEdgeFailed;
         private static readonly int ColorId = Shader.PropertyToID("_Color"), SeedId = Shader.PropertyToID("_Seed"), DriftId = Shader.PropertyToID("_Drift"),
             CornerDepthId = Shader.PropertyToID("_CornerDepth"), EdgeDepthId = Shader.PropertyToID("_EdgeDepth");
@@ -125,6 +130,7 @@ namespace Marco.Network.Vision
             interactor = null; view = null; player = null;
             hitAt = echoAt = missAt = hurtAt = nudgeAt = Never;
             exhaustOn = false; exhaustFrom = 0f; exhaustChanged = exhaustSeen = Never; CurrentExhaustionAlpha = 0f;
+            lastBreath = -1f; suppressAt = Never; swayWeight = 0f; CurrentSuppressAlpha = CurrentSwayWeight = 0f;
         }
 
         // Put back exactly what this stack added, so nothing is left behind when it stops.
@@ -178,6 +184,19 @@ namespace Marco.Network.Vision
                 if (exhausted) { SprintExhaustions++; Debug.Log("[MARCO][Feel] sprint exhausted"); }
             }
             CurrentExhaustionAlpha = ExhaustionRules.Alpha(exhaustFrom, exhaustOn, now - exhaustChanged);
+            // 8.1 억제 성공 (VB B-4): the only readable trace is the 4.5 s of breath spent at once, out of the water.
+            bool runner = inRound && alive && player.Role == PlayerRole.Runner && movement != null;
+            if (runner)
+            {
+                if (lastBreath >= 0f && BreathFeelRules.Suppressed(lastBreath, movement.BreathSeconds, movement.IsDiving))
+                { suppressAt = now; Suppressions++; Debug.Log("[MARCO][Feel] suppression"); }
+                lastBreath = movement.BreathSeconds;
+            }
+            else lastBreath = -1f;
+            CurrentSuppressAlpha = BreathFeelRules.SuppressAlpha(now - suppressAt);
+            // 8.2 부상 후: a breathing sway while the forced-surfacing slow lasts (SwimPenaltyRemaining, already sent).
+            swayWeight = BreathFeelRules.SwayFade(swayWeight, runner && movement.SwimPenaltyRemaining > 0f, Time.deltaTime);
+            CurrentSwayWeight = swayWeight;
             // the sprint FOV goes back (0.25 s ease-out) when the exhaustion starts and does not rise again while it lasts
             bool sprint = inRound && alive && movement != null &&
                 ExhaustionRules.SprintFovAllowed(movement.IsSprinting, exhausted, exhaustSeen == Never ? -1f : now - exhaustSeen);
@@ -198,8 +217,9 @@ namespace Marco.Network.Vision
             Vector3 rotation = FeelRules.HitKickRotation(tHit) * hitScale
                 + FeelRules.MissRotation(tMiss) * missScale
                 + FeelRules.HurtRotation(now - hurtAt, hurtSide, hurtSeed)
-                + NudgeRotation(now - nudgeAt);
-            Vector3 position = new Vector3(0f, 0f, -FeelRules.HitKickBack(tHit) * hitScale);
+                + NudgeRotation(now - nudgeAt)
+                + BreathFeelRules.SwayRotation(now, swayWeight);
+            Vector3 position = new Vector3(0f, 0f, -FeelRules.HitKickBack(tHit) * hitScale) + BreathFeelRules.SwayPosition(now, swayWeight);
             float fov = sprintNow + sneakNow + FeelRules.PunchFovOffset(tEcho);
 
             rotation = FeelRules.CapRotation(rotation);
@@ -373,7 +393,9 @@ namespace Marco.Network.Vision
         // edge stain (50) so the health state stays readable on top of it.
         private void DrawExhaustion()
         {
-            if (CurrentExhaustionAlpha <= .001f || exhaustEdgeFailed) return;
+            // the suppression pulse (8.1, VB B-4) is the same black edge at the same depth: one draw, the larger opacity
+            float alpha = Mathf.Max(CurrentExhaustionAlpha, CurrentSuppressAlpha);
+            if (alpha <= .001f || exhaustEdgeFailed) return;
             if (exhaustEdge == null)
             {
                 var shader = Resources.Load<Shader>("MarcoPresentation/EdgeStain");
@@ -385,7 +407,7 @@ namespace Marco.Network.Vision
                 exhaustEdge.SetFloat(CornerDepthId, ExhaustionRules.CornerDepth);
                 exhaustEdge.SetFloat(EdgeDepthId, ExhaustionRules.EdgeDepth);
             }
-            exhaustEdge.SetFloat(AlphaId, CurrentExhaustionAlpha);
+            exhaustEdge.SetFloat(AlphaId, alpha);
             exhaustEdge.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
             var saved = GUI.matrix; int depth = GUI.depth;
             GUI.matrix = Matrix4x4.identity; GUI.depth = 52;

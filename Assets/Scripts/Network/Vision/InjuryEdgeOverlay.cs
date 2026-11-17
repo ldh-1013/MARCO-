@@ -19,6 +19,11 @@ namespace Marco.Network.Vision
             CornerDepthId = Shader.PropertyToID("_CornerDepth"), EdgeDepthId = Shader.PropertyToID("_EdgeDepth");
 
         private Material material;
+        // VB B-4 8.2 질식: when the owner's forced-surfacing slow starts (PlayerMovement.SwimPenaltyRemaining — the value the
+        // server already sends), the stain closes in red and hands back to the health edge (BreathFeelRules); one stain, one peak.
+        public static int Suffocations { get; private set; }
+        public static float CurrentSuffocationWeight { get; private set; }
+        private float lastPenalty, suffocatedAt = -10f;
         private int trackedHalves = -1;
         private float fromAlpha, toAlpha, changedAt = -10f, seed, seenInjury = -1f;
         private Color fromColor, toColor;
@@ -76,8 +81,17 @@ namespace Marco.Network.Vision
                 if (player.LastInjuryTime != seenInjury) { seenInjury = player.LastInjuryTime; seed = UnityEngine.Random.Range(0f, 64f); }
                 swell = InjuryEdgeRules.Swell(now - player.LastInjuryTime);
             }
+            float penalty = shown && player.TryGetComponent<PlayerMovement>(out var movement) ? movement.SwimPenaltyRemaining : 0f;
+            if (shown && BreathFeelRules.Suffocated(lastPenalty, penalty)) { suffocatedAt = now; Suffocations++; Debug.Log("[MARCO][Feel] suffocation edge"); }
+            lastPenalty = penalty;
+            float sinceSuffocation = now - suffocatedAt;
+            bool suffocating = shown && sinceSuffocation >= 0f && sinceSuffocation < BreathFeelRules.SuffocationSeconds;
+            CurrentSuffocationWeight = suffocating ? BreathFeelRules.SuffocationWeight(sinceSuffocation) : 0f;
+            // while the suffocation runs, the health edge's own swell is folded into it (a single peak)
             float alpha = InjuryEdgeRules.Displayed(fromAlpha, toAlpha, now - changedAt, hitChange,
-                swell > 0f ? now - player.LastInjuryTime : -1f);
+                swell > 0f && !suffocating ? now - player.LastInjuryTime : -1f);
+            float healthAlpha = alpha;
+            if (suffocating) alpha = BreathFeelRules.MixAlpha(healthAlpha, sinceSuffocation);
             if (alpha <= .001f) return;
             if (material == null)
             {
@@ -85,13 +99,17 @@ namespace Marco.Network.Vision
                 if (shader == null) { failed = true; return; }
                 material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             }
-            material.SetColor(ColorId, Color.Lerp(fromColor, toColor, hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds)));
+            Color stain = Color.Lerp(fromColor, toColor, hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds));
+            // 질식 red = the 1.0 edge's own colour (#FF3B4D through InjuryEdgeRules), so the hand-over has no colour step
+            if (suffocating) stain = Color.Lerp(healthAlpha > .001f ? stain : StateColor(2), StateColor(2), CurrentSuffocationWeight);
+            material.SetColor(ColorId, stain);
             material.SetFloat(AlphaId, alpha);
             material.SetFloat(SeedId, seed);
             material.SetFloat(DriftId, now * InjuryEdgeRules.DriftPerSecond);
             material.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
             float shape = hitChange ? 1f : Mathf.Clamp01((now - changedAt) / InjuryEdgeRules.ChangeSeconds);
             Vector2 depthNow = Vector2.Lerp(fromDepth, toDepth, shape * shape * (3f - 2f * shape));
+            if (suffocating) depthNow = BreathFeelRules.MixDepth(depthNow, healthAlpha > .001f, sinceSuffocation);
             material.SetFloat(CornerDepthId, depthNow.x);
             material.SetFloat(EdgeDepthId, depthNow.y);
             var saved = GUI.matrix;

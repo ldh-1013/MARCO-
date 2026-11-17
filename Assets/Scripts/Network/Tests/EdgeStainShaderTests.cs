@@ -124,6 +124,43 @@ namespace Marco.Network.Tests
             Object.DestroyImmediate(image);
         }
 
+        // VB B-4 8.1 억제 성공 (black 0.10, 9 % / 3.5 %) and 8.2 질식 at its peak (red 0.55, 22 % / 9 %): the same shader,
+        // centre 70 % alpha 0, never deeper than asked, never more opaque than asked.
+        [TestCase(16f / 9f, 0)]
+        [TestCase(21f / 9f, 0)]
+        [TestCase(16f / 9f, 1)]
+        [TestCase(21f / 9f, 1)]
+        [TestCase(4f / 3f, 1)]
+        public void BreathEdges_CentreZero_DepthAndOpacityAsAsked(float aspect, int which)
+        {
+            bool suffocation = which == 1;
+            float corner = suffocation ? Marco.Network.Vision.BreathFeelRules.SuffocationPeakDepth.x : Marco.Network.Vision.BreathFeelRules.SuppressCornerDepth;
+            float edge = suffocation ? Marco.Network.Vision.BreathFeelRules.SuffocationPeakDepth.y : Marco.Network.Vision.BreathFeelRules.SuppressEdgeDepth;
+            float alpha = suffocation ? Marco.Network.Vision.BreathFeelRules.SuffocationAlpha : Marco.Network.Vision.BreathFeelRules.SuppressMaxAlpha;
+            Color colour = suffocation ? new Color32(0xFF, 0x3B, 0x4D, 0xFF) : Color.black;
+            foreach (float seed in new[] { 0f, 23.7f, 41.9f })
+            {
+                var image = Render(aspect, seed, 0f, 216, corner, edge, colour, alpha);
+                int w = image.width, h = image.height, lit = 0; float max = 0f;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        var c = image.GetPixel(x, y);
+                        if (c.a <= 0f) continue;
+                        lit++; max = Mathf.Max(max, c.a);
+                        float u = (x + .5f) / w, v = (y + .5f) / h;
+                        Assert.IsFalse(Mathf.Abs(u - .5f) < .35f && Mathf.Abs(v - .5f) < .35f, $"centre lit at ({u:F3}, {v:F3})");
+                        float dx = Mathf.Min(u, 1f - u) * aspect / Mathf.Min(aspect, 1f), dy = Mathf.Min(v, 1f - v) / Mathf.Min(aspect, 1f);
+                        Assert.LessOrEqual(Mathf.Min(dx, dy), corner + 1.5f / h, $"deeper than {corner:P0} at ({u:F3}, {v:F3})");
+                        if (Mathf.Abs(u - .5f) < .5f / w + 1e-4f) Assert.LessOrEqual(dy, edge + 1.5f / h, $"edge middle deeper than {edge:P1} at v={v:F3}");
+                    }
+                Assert.Greater(lit, 0);
+                // read-back alpha is the source alpha blended on a cleared target (a² or a): never above what was asked
+                Assert.LessOrEqual(max, alpha + 1e-4f);
+                Object.DestroyImmediate(image);
+            }
+        }
+
         // V31 벽 통과 노이즈 — the same edge shape: centre 70 % alpha 0, depth ≤ 15 %.
         [TestCase(16f / 9f)]
         [TestCase(21f / 9f)]

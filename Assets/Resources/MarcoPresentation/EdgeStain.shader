@@ -60,9 +60,9 @@ Shader "Marco/EdgeStain"
                 float corner = smoothstep(0.0, 1.0, saturate(1.0 - edge.x * 2.0) * saturate(1.0 - edge.y * 2.0));
                 float n = 0.65 * noise(float2(_Seed + uv.x * 3.1 + _Drift, _Seed * 0.37 + uv.y * 3.1))
                         + 0.35 * noise(float2(_Seed * 1.7 + uv.x * 7.3, _Seed + uv.y * 7.3 - _Drift));
-                // the state's depth (1.0: 15 % / 6 %, 1.5: 9 % / 3.5 %), never beyond the 1.0 limit; noise only thins it
-                // (n is clamped to [0, 1])
-                float depth = lerp(min(_EdgeDepth, 0.06), min(_CornerDepth, 0.15), corner) * lerp(0.55, 1.0, saturate(n));
+                // the state's depth (1.0: 15 % / 6 %, 1.5: 9 % / 3.5 %; [VB B-4] the suffocation closes to 22 % / 9 %, the
+                // deepest any caller asks for); noise only thins it (n is clamped to [0, 1]). The centre 70 % stays empty above.
+                float depth = lerp(min(_EdgeDepth, 0.09), min(_CornerDepth, 0.22), corner) * lerp(0.55, 1.0, saturate(n));
                 float m = max(1.0 - smoothstep(0.0, 1.0, dx / depth), 1.0 - smoothstep(0.0, 1.0, dy / depth));
                 return fixed4(_Color.rgb, m * m * _Alpha);
             }
