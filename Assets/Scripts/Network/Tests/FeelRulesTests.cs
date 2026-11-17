@@ -129,6 +129,9 @@ namespace Marco.Network.Tests
             Assert.IsFalse(WallPassRules.Entered(true, true));
             Assert.IsFalse(WallPassRules.Entered(true, false));
             Assert.IsTrue(WallPassRules.Entered(false, true));
+            // a thin wall crossed within one frame (outside before and after) still counts once; leaving does not
+            Assert.IsTrue(WallPassRules.Entered(false, false, true), "crossed in one frame");
+            Assert.IsFalse(WallPassRules.Entered(true, false, true), "the exit surface is not an entry");
         }
 
         [Test]

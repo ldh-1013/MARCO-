@@ -10,10 +10,14 @@ namespace Marco.Network.Vision
     {
         public const float MaxAlpha = .25f, InSeconds = .02f, OutSeconds = .08f;
         public const float TotalSeconds = InSeconds + OutSeconds;
-        // The camera probe: a small sphere at the eye (Physics.OverlapSphereNonAlloc, triggers ignored).
-        public const float ProbeRadius = .1f;
+        // The camera probe: a point-sized sphere at the eye (Physics.OverlapSphereNonAlloc, triggers ignored) — inside, not
+        // merely near (V31 capture: a 0.1 m sphere 9 cm above a floor slab counted as "inside"). Plus the segment from the
+        // last frame's eye to this one (RaycastNonAlloc), so a thin wall crossed within one frame still counts.
+        public const float ProbeRadius = .01f;
 
-        public static bool Entered(bool wasInside, bool isInside) => isInside && !wasInside;
+        // An entry: now inside a structure, or a structure surface crossed this frame — and not already inside.
+        public static bool Entered(bool wasInside, bool isInside, bool crossedSurface = false) =>
+            !wasInside && (isInside || crossedSurface);
 
         // Overlay opacity t seconds after an entry: fast ease-out in, ease-out fall (no hold, no pulse).
         public static float Alpha(float t)

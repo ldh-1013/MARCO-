@@ -42,6 +42,8 @@ namespace Marco.Network.Vision
         private readonly DiveRefraction refraction = new();
         private readonly Collider[] probeHits = new Collider[16];
         private readonly System.Collections.Generic.Dictionary<Collider, bool> structureOf = new();
+        private readonly RaycastHit[] crossHits = new RaycastHit[16];
+        private Vector3 lastEye; private bool lastEyeSet;
         private bool wasInside; private float wallPassAt = Never; private Material wallNoise; private bool wallNoiseFailed;
         private static readonly int AlphaId = Shader.PropertyToID("_Alpha"), FrameId = Shader.PropertyToID("_Frame"), AspectId = Shader.PropertyToID("_Aspect");
         private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
@@ -103,7 +105,7 @@ namespace Marco.Network.Vision
             SetRim(Color.black);
             refraction.Release();
             ownBody = new Renderer[0]; bobBaselineSet = false;
-            wasInside = false; wallPassAt = Never; structureOf.Clear();
+            wasInside = false; wallPassAt = Never; structureOf.Clear(); lastEyeSet = false;
             Restore();
             interactor = null; view = null; player = null;
             hitAt = echoAt = missAt = hurtAt = nudgeAt = Never;
@@ -254,21 +256,22 @@ namespace Marco.Network.Vision
             if (echoView)
             {
                 long start = System.Diagnostics.Stopwatch.GetTimestamp();
-                int count = Physics.OverlapSphereNonAlloc(view.transform.position, WallPassRules.ProbeRadius, probeHits, ~0, QueryTriggerInteraction.Ignore);
-                for (int i = 0; i < count && !inside; i++)
+                Vector3 eye = view.transform.position;
+                int count = Physics.OverlapSphereNonAlloc(eye, WallPassRules.ProbeRadius, probeHits, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < count && !inside; i++) inside = IsStructure(probeHits[i]);
+                bool crossed = false;
+                Vector3 step = eye - lastEye;
+                // a teleport (> 2 m in a frame) is not a pass
+                if (lastEyeSet && step.sqrMagnitude > 1e-6f && step.sqrMagnitude < 4f)
                 {
-                    var hit = probeHits[i];
-                    if (hit == null) continue;
-                    if (!structureOf.TryGetValue(hit, out bool structure))
-                    {
-                        var part = Marco.Network.Map.MapParts.Read(hit);
-                        structureOf[hit] = structure = part != null && part.IsSoundStructure;
-                    }
-                    inside = structure;
+                    int hits = Physics.RaycastNonAlloc(lastEye, step.normalized, crossHits, step.magnitude, ~0, QueryTriggerInteraction.Ignore);
+                    for (int i = 0; i < hits && !crossed; i++) crossed = IsStructure(crossHits[i].collider);
                 }
+                lastEye = eye; lastEyeSet = true;
                 LastProbeMicroseconds = (System.Diagnostics.Stopwatch.GetTimestamp() - start) * 1e6 / System.Diagnostics.Stopwatch.Frequency;
-                if (WallPassRules.Entered(wasInside, inside)) { wallPassAt = now; WallPasses++; Debug.Log("[MARCO][Feel] wall pass"); }
+                if (WallPassRules.Entered(wasInside, inside, crossed)) { wallPassAt = now; WallPasses++; Debug.Log("[MARCO][Feel] wall pass"); }
             }
+            else lastEyeSet = false;
             wasInside = inside;
             InsideStructure = inside;
             CurrentWallNoiseAlpha = echoView ? WallPassRules.Alpha(now - wallPassAt) : 0f;
@@ -285,6 +288,17 @@ namespace Marco.Network.Vision
             GUI.color = c;
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
             GUI.color = saved; GUI.depth = depth;
+        }
+
+        private bool IsStructure(Collider hit)
+        {
+            if (hit == null) return false;
+            if (!structureOf.TryGetValue(hit, out bool structure))
+            {
+                var part = Marco.Network.Map.MapParts.Read(hit);
+                structureOf[hit] = structure = part != null && part.IsSoundStructure;
+            }
+            return structure;
         }
 
         // 2.2 벽 통과 overlay — above the darkness (100), behind the HUD (0).

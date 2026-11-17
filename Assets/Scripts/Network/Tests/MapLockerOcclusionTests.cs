@@ -428,8 +428,17 @@ namespace Marco.Network.Tests
             }
             Assert.IsTrue(Inside(new Vector3(9f, 1.6f, 11f)), "inside Wall_AID_Z9_9 (x 8.9 – 9.1)");
             Assert.IsFalse(Inside(new Vector3(7f, 1.6f, 11f)), "open air in AID");
-            Assert.IsTrue(Inside(new Vector3(12f, 1f, 13.58f)), "between the back-to-back locker rows z13.19 / z13.97");
+            // locker cabinets are mesh colliders: their inside is caught by the frame-to-frame segment hitting the entry face
+            // (raycasts do not report back faces, so leaving is not an entry)
+            bool Crossed(Vector3 from, Vector3 to)
+            {
+                var hits = Physics.RaycastAll(from, (to - from).normalized, Vector3.Distance(from, to), ~0, QueryTriggerInteraction.Ignore);
+                foreach (var h in hits) { var p = Marco.Network.Map.MapParts.Read(h.collider); if (p != null && p.IsSoundStructure) return true; }
+                return false;
+            }
+            Assert.IsTrue(Crossed(new Vector3(12f, 1f, 12.7f), new Vector3(12f, 1f, 12.9f)) || Crossed(new Vector3(12f, 1f, 12.5f), new Vector3(12f, 1f, 13.2f)), "into locker row z13.19");
             Assert.IsFalse(Inside(new Vector3(36.06f, 3.85f, 20.9f)), "inside a 긴나무의자 (furniture is not a structure)");
+            Assert.IsFalse(Inside(new Vector3(36.06f, 3.65f, 18.965f)), "9 cm above the storey-2 floor is not inside it (V31 capture case)");
             var watch = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < 2000; i++) Inside(new Vector3(7f + (i % 40) * .1f, 1.6f, 11f));
             double micro = watch.Elapsed.TotalMilliseconds * 1000.0 / 2000;
