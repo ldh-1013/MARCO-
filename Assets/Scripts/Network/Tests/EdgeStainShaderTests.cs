@@ -161,6 +161,36 @@ namespace Marco.Network.Tests
             }
         }
 
+        // V36 A 자동 비명 섬광 — white 0.30 at 9 % / 3.5 %: centre 70 % alpha 0, never deeper or more opaque than asked.
+        [TestCase(16f / 9f)]
+        [TestCase(21f / 9f)]
+        [TestCase(4f / 3f)]
+        public void ScreamFlash_White_CentreZero(float aspect)
+        {
+            foreach (float seed in new[] { 0f, 11.3f, 41.9f })
+            {
+                var image = Render(aspect, seed, 0f, 216, Marco.Network.Vision.ScreamFlashRules.CornerDepth, Marco.Network.Vision.ScreamFlashRules.EdgeDepth,
+                    Marco.Network.Vision.ScreamFlashRules.Colour, Marco.Network.Vision.ScreamFlashRules.MaxAlpha);
+                int w = image.width, h = image.height, lit = 0; float max = 0f;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        var c = image.GetPixel(x, y);
+                        if (c.a <= 0f) continue;
+                        lit++; max = Mathf.Max(max, c.a);
+                        float u = (x + .5f) / w, v = (y + .5f) / h;
+                        Assert.IsFalse(Mathf.Abs(u - .5f) < .35f && Mathf.Abs(v - .5f) < .35f, $"centre lit at ({u:F3}, {v:F3})");
+                        float dx = Mathf.Min(u, 1f - u) * aspect / Mathf.Min(aspect, 1f), dy = Mathf.Min(v, 1f - v) / Mathf.Min(aspect, 1f);
+                        Assert.LessOrEqual(Mathf.Min(dx, dy), .09f + 1.5f / h, $"deeper than 9 % at ({u:F3}, {v:F3})");
+                        if (Mathf.Abs(u - .5f) < .5f / w + 1e-4f) Assert.LessOrEqual(dy, .035f + 1.5f / h, $"edge middle deeper than 3.5 % at v={v:F3}");
+                        Assert.Greater(c.r + c.g + c.b, 0f, "white, not black");
+                    }
+                Assert.Greater(lit, 0);
+                Assert.LessOrEqual(max, .30f + 1e-4f);
+                Object.DestroyImmediate(image);
+            }
+        }
+
         // V31 벽 통과 노이즈 — the same edge shape: centre 70 % alpha 0, depth ≤ 15 %.
         [TestCase(16f / 9f)]
         [TestCase(21f / 9f)]

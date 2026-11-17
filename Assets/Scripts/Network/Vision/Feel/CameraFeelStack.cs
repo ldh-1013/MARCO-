@@ -43,6 +43,9 @@ namespace Marco.Network.Vision
         public static float CurrentExhaustionAlpha { get; private set; }
         // VB B-4 8.1 억제 성공 (black edge pulse) and 8.2 부상 후 흔들림 (sway weight) — for checks and the capture CSV.
         public static float CurrentSuppressAlpha { get; private set; }
+        // VB V36-A 8.1 억제 실패 · 자동 비명: white edge flash, one per scream the server sent this client (LocalScreamFlash).
+        public static int ScreamFlashes { get; private set; }
+        public static float CurrentScreamFlashAlpha { get; private set; }
         public static int Suppressions { get; private set; }
         public static float CurrentSwayWeight { get; private set; }
         public static int SprintExhaustions { get; private set; }
@@ -50,6 +53,7 @@ namespace Marco.Network.Vision
         private const float Never = -1000f;
         private NetworkPlayer player;
         private PlayerInteractor interactor;
+        private PlayerMovement shoutOwner; private float screamAt = Never; private Material screamEdge; private bool screamEdgeFailed;
         private Camera view;
         private float hitAt = Never, echoAt = Never, missAt = Never, hurtAt = Never, nudgeAt = Never;
         private float hurtSide, hurtSeed, seenInjury = -1f;
@@ -103,6 +107,9 @@ namespace Marco.Network.Vision
             }
         }
 
+        // PlayerMovement.LocalScreamFlash: the server's scream message reached this client (self && scream). One event, one flash.
+        private void OnLocalScream() { screamAt = Time.time; ScreamFlashes++; Debug.Log("[MARCO][Feel] scream flash"); }
+
         private void Bind()
         {
             var local = NetworkPlayer.Local;
@@ -115,6 +122,8 @@ namespace Marco.Network.Vision
             if (view == null) view = player.GetComponentInChildren<Camera>(true);
             interactor = player.GetComponent<PlayerInteractor>();
             if (interactor != null) interactor.LocalSwingConfirmed += OnLocalSwing;
+            shoutOwner = player.GetComponent<PlayerMovement>();
+            if (shoutOwner != null) shoutOwner.LocalScreamFlash += OnLocalScream;
             seenInjury = player.LastInjuryTime;
             wrote = false;
         }
@@ -122,6 +131,8 @@ namespace Marco.Network.Vision
         private void Unbind()
         {
             if (interactor != null) interactor.LocalSwingConfirmed -= OnLocalSwing;
+            if (shoutOwner != null) shoutOwner.LocalScreamFlash -= OnLocalScream;
+            shoutOwner = null; screamAt = Never; CurrentScreamFlashAlpha = 0f;
             SetRim(Color.black);
             refraction.Release();
             ownBody = new Renderer[0]; bobBaselineSet = false; walkBob.Reset(); walkBobWeight = 0f; walkBobKey = null; walkGaitSince = Never; CurrentBobFix = 0f;
@@ -194,6 +205,7 @@ namespace Marco.Network.Vision
             }
             else lastBreath = -1f;
             CurrentSuppressAlpha = BreathFeelRules.SuppressAlpha(now - suppressAt);
+            CurrentScreamFlashAlpha = ScreamFlashRules.Alpha(now - screamAt);
             // 8.2 부상 후: a breathing sway while the forced-surfacing slow lasts (SwimPenaltyRemaining, already sent).
             swayWeight = BreathFeelRules.SwayFade(swayWeight, runner && movement.SwimPenaltyRemaining > 0f, Time.deltaTime);
             CurrentSwayWeight = swayWeight;
@@ -368,6 +380,7 @@ namespace Marco.Network.Vision
         {
             if (Event.current.type != EventType.Repaint) return;
             DrawExhaustion();
+            DrawScreamFlash();
             DrawWallNoise();
             if (CurrentFlashAlpha <= .001f) return;
             var saved = GUI.color; int depth = GUI.depth;
@@ -387,6 +400,28 @@ namespace Marco.Network.Vision
                 structureOf[hit] = structure = part != null && part.IsSoundStructure;
             }
             return structure;
+        }
+
+        // 8.1 억제 실패 · 자동 비명 — the A-0 edge mask in white (the 4.2 tag flash's white), above the health edge (50) and the
+        // exhaustion contraction (52), under the wall noise (42) and the Seeker flash (40) it never meets (other roles' screens).
+        private void DrawScreamFlash()
+        {
+            if (CurrentScreamFlashAlpha <= .001f || screamEdgeFailed) return;
+            if (screamEdge == null)
+            {
+                var shader = Resources.Load<Shader>("MarcoPresentation/EdgeStain");
+                if (shader == null) { screamEdgeFailed = true; return; }
+                screamEdge = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+                screamEdge.SetColor(ColorId, ScreamFlashRules.Colour);
+                screamEdge.SetFloat(SeedId, 11.3f); screamEdge.SetFloat(DriftId, 0f);
+                screamEdge.SetFloat(CornerDepthId, ScreamFlashRules.CornerDepth); screamEdge.SetFloat(EdgeDepthId, ScreamFlashRules.EdgeDepth);
+            }
+            screamEdge.SetFloat(AlphaId, CurrentScreamFlashAlpha);
+            screamEdge.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
+            var saved = GUI.matrix; int depth = GUI.depth;
+            GUI.matrix = Matrix4x4.identity; GUI.depth = 48;
+            Graphics.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture, screamEdge);
+            GUI.matrix = saved; GUI.depth = depth;
         }
 
         // 2.2 스태미나 소진 수축 — the A-0 edge mask (EdgeStain) in black, still (no drift, no pulse); drawn under the health
@@ -434,6 +469,7 @@ namespace Marco.Network.Vision
             GUI.matrix = saved; GUI.depth = depth;
         }
 
-        private void OnDestroy() { Unbind(); if (wallNoise != null) Destroy(wallNoise); if (exhaustEdge != null) Destroy(exhaustEdge); if (Instance == this) Instance = null; }
+        private void OnDisable() => Unbind();
+        private void OnDestroy() { if (screamEdge != null) Destroy(screamEdge); Unbind(); if (wallNoise != null) Destroy(wallNoise); if (exhaustEdge != null) Destroy(exhaustEdge); if (Instance == this) Instance = null; }
     }
 }

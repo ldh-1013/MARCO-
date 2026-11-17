@@ -9,7 +9,9 @@ namespace Marco.Network.Player
 {
     public sealed partial class PlayerMovement
     {
-        private float shoutEnds, shoutReady, localShoutEnds, localShoutReady, fearEnds, screamFlash;
+        private float shoutEnds, shoutReady, localShoutEnds, localShoutReady, fearEnds;
+        // Read-only presentation event: this client's own automatic scream (연출 8.1 white edge flash is drawn by a subscriber).
+        public event System.Action LocalScreamFlash;
         private const float ShoutWindupSeconds = 1f, ShoutCooldownSeconds = 45f;
         private bool shoutPending, localShoutRequested;
         private readonly HashSet<int> suppressedRunners = new();
@@ -190,7 +192,7 @@ namespace Marco.Network.Player
             if (!blocked && !self && (snapshotA >= 0 || snapshotB >= 0))   // §5.5-2
                 try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, RecheckRules.Remaining(duration, elapsed)); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
-            if (self && scream) screamFlash = Time.time + .2f;
+            if (self && scream) LocalScreamFlash?.Invoke();
             // Keep survivor screams and seeker vocals separate, including missing assets.
             if (elapsed > 0f && pulseId >= 0 && abilityVocals.TryGetValue(pulseId, out var playing) && playing.source != null && playing.source.isPlaying)
             {
@@ -232,14 +234,6 @@ namespace Marco.Network.Player
             string message = player.Role == PlayerRole.Runner && fearEnds > Time.time
                 ? "[Left Ctrl] 숨 참기 · 숨 4.5 소모" : "";
             if (message.Length > 0) GUI.Box(new Rect(Screen.width / 2f - 160, Screen.height - 170, 320, 30), message);
-            if (screamFlash > Time.time)
-            {
-                var previous = GUI.color;
-                GUI.color = new Color(1, 1, 1, (screamFlash - Time.time) * 2);
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, 8), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(0, Screen.height - 8, Screen.width, 8), Texture2D.whiteTexture);
-                GUI.color = previous;
-            }
         }
     }
 }
