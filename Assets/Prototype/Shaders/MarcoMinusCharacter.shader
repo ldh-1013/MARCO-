@@ -11,6 +11,9 @@ Shader "MARCO/WorldSpaceCharacter"
         _SrcBlend ("Source Blend", Float) = 1
         _DstBlend ("Destination Blend", Float) = 0
         _ZWrite ("Z Write", Float) = 1
+        // V30 연출 15.3 술래 손끝 림 — set only on the local player's own body through a MaterialPropertyBlock
+        // (CameraFeelStack). Default 0: every other renderer draws exactly as before.
+        _FeelRim ("Feel rim (rgb × intensity)", Color) = (0,0,0,0)
     }
 
     SubShader
@@ -42,6 +45,7 @@ Shader "MARCO/WorldSpaceCharacter"
             float _MarcoFalloffPower;
             float4 _MarcoPlayerPosition;
             float4 _MarcoLightColor;
+            float4 _FeelRim;
 
             struct Attributes
             {
@@ -87,6 +91,10 @@ Shader "MARCO/WorldSpaceCharacter"
                 {
                     surface.rgb *= shade;
                 }
+                // Rim added after the light, so the flash reads in the dark; mostly on silhouette edges.
+                float3 toCamera = normalize(_WorldSpaceCameraPos - input.worldPosition);
+                float fresnel = pow(1.0 - saturate(dot(normal, toCamera)), 3.0);
+                surface.rgb += _FeelRim.rgb * (0.25 + 0.75 * fresnel);
                 return surface;
             }
             ENDCG

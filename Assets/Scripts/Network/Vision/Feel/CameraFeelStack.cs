@@ -32,7 +32,11 @@ namespace Marco.Network.Vision
         private PlayerInteractor interactor;
         private Camera view;
         private float hitAt = Never, echoAt = Never, missAt = Never, hurtAt = Never, nudgeAt = Never;
-        private float hurtSide, hurtSeed, missSide = 1f, seenInjury = -1f;
+        private float hurtSide, hurtSeed, seenInjury = -1f;
+        private Vector3 bobBaseline; private bool bobBaselineSet;
+        private readonly DiveRefraction refraction = new();
+        private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
+        private static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
         private bool sprintOn, sneakOn;
         private float sprintFrom, sprintTo, sprintChanged = Never, sneakFrom, sneakTo, sneakChanged = Never;
         private Quaternion writtenRotation = Quaternion.identity;
@@ -87,6 +91,9 @@ namespace Marco.Network.Vision
         private void Unbind()
         {
             if (interactor != null) interactor.LocalSwingConfirmed -= OnLocalSwing;
+            SetRim(Color.black);
+            refraction.Release();
+            ownBody = new Renderer[0]; bobBaselineSet = false;
             Restore();
             interactor = null; view = null; player = null;
             hitAt = echoAt = missAt = hurtAt = nudgeAt = Never;
@@ -149,7 +156,7 @@ namespace Marco.Network.Vision
             float missScale = FeelRules.PriorityScale(punchActive || hitActive);
 
             Vector3 rotation = FeelRules.HitKickRotation(tHit) * hitScale
-                + FeelRules.MissRotation(tMiss, missSide) * missScale
+                + FeelRules.MissRotation(tMiss) * missScale
                 + FeelRules.HurtRotation(now - hurtAt, hurtSide, hurtSeed)
                 + NudgeRotation(now - nudgeAt);
             Vector3 position = new Vector3(0f, 0f, -FeelRules.HitKickBack(tHit) * hitScale);
@@ -161,6 +168,11 @@ namespace Marco.Network.Vision
             CurrentRotation = rotation; CurrentPosition = position; CurrentFov = fov;
             CurrentFlashAlpha = FeelRules.ShowsSeekerFlash(player.Role == PlayerRole.Seeker) ? FeelRules.FlashAlpha(tEcho) : 0f;
             Write(Quaternion.Euler(rotation), position, fov);
+
+            // 15.3 술래 손끝 림 — the local Seeker's own body only (MaterialPropertyBlock on its own renderers, never sent).
+            SetRim(player.Role == PlayerRole.Seeker && alive ? FeelRules.RimColor(tHit) : Color.black);
+            // 2.2 잠수 가장자리 물 굴절 — the player camera only, while diving.
+            refraction.Update(view, inRound && alive && movement != null && movement.IsDiving);
         }
 
         // 7.2 knock: 0.1 s, 0.45°, low-frequency noise (the old CameraNudge values).
@@ -169,6 +181,24 @@ namespace Marco.Network.Vision
             const float Seconds = .1f, Degrees = .45f;
             if (t < 0f || t >= Seconds) return Vector3.zero;
             return new Vector3((Mathf.PerlinNoise(t * 90f, 0f) - .5f) * 2f, (Mathf.PerlinNoise(0f, t * 90f) - .5f) * 2f, 0f) * Degrees * FeelRules.FeelIntensity;
+        }
+
+        private void SetRim(Color rim)
+        {
+            bool on = rim.maxColorComponent > .001f;
+            if (!on && !rimOn) return;
+            if (on && ownBody.Length == 0 && player != null && player.TryGetComponent<CharacterBody>(out var body) && body.BodyRoot != null)
+                ownBody = body.BodyRoot.GetComponentsInChildren<Renderer>(true);
+            rimBlock ??= new MaterialPropertyBlock();
+            foreach (var renderer in ownBody)
+            {
+                if (renderer == null) continue;
+                renderer.GetPropertyBlock(rimBlock);
+                rimBlock.SetColor(FeelRimId, on ? rim : Color.black);
+                renderer.SetPropertyBlock(rimBlock);
+            }
+            rimOn = on;
+            if (!on) ownBody = new Renderer[0];   // re-read after a model rebuild
         }
 
         private bool IsMoving() => player.TryGetComponent<CharacterMotion>(out var motion) && motion.Speed > .05f;
@@ -192,6 +222,11 @@ namespace Marco.Network.Vision
             Quaternion baseRotation = wrote && t.localRotation == writtenRotation ? writtenRotation * Quaternion.Inverse(lastRotation) : t.localRotation;
             Vector3 basePosition = wrote && t.localPosition == writtenPosition ? writtenPosition - lastPosition : t.localPosition;
             float baseFov = wrote && Mathf.Approximately(view.fieldOfView, writtenFov) ? writtenFov - lastFov : view.fieldOfView;
+            // [V30] the animated head bob counts toward the 2 cm cap: our offset gets only what is left (bob untouched)
+            if (!bobBaselineSet || (basePosition - bobBaseline).sqrMagnitude > .25f) { bobBaseline = basePosition; bobBaselineSet = true; }
+            bobBaseline = FeelRules.Baseline(bobBaseline, basePosition, Time.deltaTime);
+            position = FeelRules.CapPositionWithBob(position, basePosition - bobBaseline);
+            CurrentPosition = position;
             Vector3 positionInParent = baseRotation * position;
             t.localRotation = writtenRotation = baseRotation * rotation;
             t.localPosition = writtenPosition = basePosition + positionInParent;

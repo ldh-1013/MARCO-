@@ -20,8 +20,9 @@ namespace Marco.Network.Vision
 
         // 술래 적중 (15.3): back 1.2 cm and pitch 0.5° (head up), 40 ms in, critically damped return, gone by 0.25 s.
         public const float HitKickBackMeters = .012f, HitKickPitchDegrees = .5f, HitKickRiseSeconds = .04f, HitKickSeconds = .25f;
-        // 헛스윙 (15.3): toward the swing — yaw 0.35°, roll 0.2° — back by 0.3 s.
-        public const float MissYawDegrees = .35f, MissRollDegrees = .2f, MissRiseSeconds = .06f, MissSeconds = .3f;
+        // 헛스윙 (15.3): a pitch lean (forward, with the swing) of 0.3°, back by 0.3 s. [V30] No yaw / roll — the client does
+        // not know which way the arm swings (V29 assumed a right-hand swing).
+        public const float MissPitchDegrees = .3f, MissRiseSeconds = .06f, MissSeconds = .3f;
         // 맞은 도망자 (15.3): away from the Seeker — yaw 0.6°, pitch 0.4° — 40 ms in, 0.3 s decay, then 150 ms of low-frequency
         // residual (0.15°).
         public const float HurtYawDegrees = .6f, HurtPitchDegrees = .4f, HurtRiseSeconds = .04f, HurtDecaySeconds = .3f,
@@ -50,9 +51,23 @@ namespace Marco.Network.Vision
         public static Vector3 HitKickRotation(float t) => new Vector3(-HitKickPitchDegrees, 0f, 0f) * Impulse(t, HitKickRiseSeconds, HitKickSeconds) * FeelIntensity;
         public static float HitKickBack(float t) => HitKickBackMeters * Impulse(t, HitKickRiseSeconds, HitKickSeconds) * FeelIntensity;
 
-        // Miss sway toward the swing side (+1 right, −1 left).
-        public static Vector3 MissRotation(float t, float side) =>
-            new Vector3(0f, MissYawDegrees * side, -MissRollDegrees * side) * Impulse(t, MissRiseSeconds, MissSeconds) * FeelIntensity;
+        // Miss lean: pitch only (direction-less).
+        public static Vector3 MissRotation(float t) =>
+            new Vector3(MissPitchDegrees, 0f, 0f) * Impulse(t, MissRiseSeconds, MissSeconds) * FeelIntensity;
+
+        // 15.3 술래 손끝 림: the Seeker's own rim colour (#EF6A4C) flashed for 0.15 s, 40 ms in, then a critically damped fall.
+        public const float RimSeconds = .15f, RimRiseSeconds = .04f, RimIntensity = 1.2f;
+        public static Color RimColor(float t) => SeekerFlashColor * (RimIntensity * Impulse(t, RimRiseSeconds, RimSeconds) * FeelIntensity);
+
+        // [V30] The animated head bob (FirstPersonBody) is outside this stack. The stack's own position effects get only the
+        // room left under the 2 cm cap after the bob offset of this frame — the bob itself is never cut or changed.
+        public const float BobBaselineSeconds = .3f;
+        public static float PositionBudget(Vector3 bobOffset) => Mathf.Max(0f, MaxPositionMeters - bobOffset.magnitude);
+        public static Vector3 CapPositionWithBob(Vector3 offset, Vector3 bobOffset) =>
+            Vector3.ClampMagnitude(CapPosition(offset), PositionBudget(bobOffset));
+        // Low-pass of the camera's base position (time constant BobBaselineSeconds) — the bob is what is left over.
+        public static Vector3 Baseline(Vector3 previous, Vector3 current, float deltaTime) =>
+            Vector3.Lerp(previous, current, 1f - Mathf.Exp(-Mathf.Max(0f, deltaTime) / BobBaselineSeconds));
 
         // Hurt shake: away from the Seeker (awaySide +1 = turn right, −1 = left, 0 = no direction known → pitch only).
         public static float HurtSeconds => HurtRiseSeconds + HurtDecaySeconds + HurtResidualSeconds;

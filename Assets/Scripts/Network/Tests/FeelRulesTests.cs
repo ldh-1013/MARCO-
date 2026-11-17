@@ -16,8 +16,8 @@ namespace Marco.Network.Tests
             // position: hit kick 1.2 cm + a 1.4 cm sprint bob would be 2.6 cm → capped at 2 cm
             var position = FeelRules.CapPosition(new Vector3(0f, -.014f, -FeelRules.HitKickBackMeters));
             Assert.LessOrEqual(position.magnitude, FeelRules.MaxPositionMeters + T);
-            // rotation: hit 0.5° + miss 0.35° / 0.2° + hurt 0.6° / 0.4° all at their peaks
-            var rotation = FeelRules.CapRotation(new Vector3(-.5f, 0f, 0f) + new Vector3(0f, .35f, -.2f) + new Vector3(-.4f, .6f, 0f));
+            // rotation: hit 0.5° + miss 0.3° (V30 pitch only) + hurt 0.6° / 0.4° all at their peaks
+            var rotation = FeelRules.CapRotation(new Vector3(-.5f, 0f, 0f) + new Vector3(.3f, 0f, 0f) + new Vector3(-.4f, .6f, 0f) + new Vector3(0f, .6f, 0f));
             Assert.LessOrEqual(rotation.magnitude, FeelRules.MaxRotationDegrees + T);
             Assert.AreEqual(5f, FeelRules.CapFov(9f), T);
             Assert.AreEqual(-5f, FeelRules.CapFov(-8f), T);
@@ -43,7 +43,7 @@ namespace Marco.Network.Tests
             Assert.LessOrEqual(FeelRules.HurtSeconds, .5f + T);
             Assert.LessOrEqual(FeelRules.FlashSeconds, .5f);
             Assert.AreEqual(Vector3.zero, FeelRules.HitKickRotation(FeelRules.HitKickSeconds));
-            Assert.AreEqual(Vector3.zero, FeelRules.MissRotation(FeelRules.MissSeconds, 1f));
+            Assert.AreEqual(Vector3.zero, FeelRules.MissRotation(FeelRules.MissSeconds));
             Assert.AreEqual(Vector3.zero, FeelRules.HurtRotation(FeelRules.HurtSeconds, 1f, 3f));
             Assert.AreEqual(0f, FeelRules.FlashAlpha(FeelRules.FlashSeconds), T);
             Assert.AreEqual(FeelRules.FlashMaxAlpha, FeelRules.FlashAlpha(FeelRules.FlashRiseSeconds), T, "4.2: max at 0.15 s");
@@ -77,6 +77,45 @@ namespace Marco.Network.Tests
             Assert.AreEqual(FeelRules.Impulse(.1f, .04f, .25f), FeelRules.Impulse(t, .04f, .25f), .03f);
             Assert.AreEqual(FeelRules.FlashAlpha(.1f), FeelRules.FlashAlpha(t), .02f);
             Assert.AreEqual(FeelRules.Follow(0f, 5f, .1f, .2f), FeelRules.Follow(0f, 5f, t, .2f), .3f);
+        }
+
+        // V30: the miss lean is pitch only, 0.3° (V29's yaw 0.35° / roll 0.2° assumed a right-hand swing the client cannot know).
+        [Test]
+        public void Miss_PitchOnly()
+        {
+            var peak = FeelRules.MissRotation(FeelRules.MissRiseSeconds);
+            Assert.AreEqual(.3f, peak.x, T);
+            Assert.AreEqual(0f, peak.y, T, "no yaw");
+            Assert.AreEqual(0f, peak.z, T, "no roll");
+        }
+
+        [Test]
+        public void SeekerRim_FifteenHundredthsOfASecond_InTheSeekerRimColour()
+        {
+            Assert.AreEqual(0f, FeelRules.RimColor(FeelRules.RimSeconds).maxColorComponent, T, "gone at 0.15 s");
+            var peak = FeelRules.RimColor(FeelRules.RimRiseSeconds);
+            Assert.AreEqual(FeelRules.SeekerFlashColor.r * FeelRules.RimIntensity, peak.r, 1e-3f, "#EF6A4C, peak at 40 ms");
+            Assert.AreEqual(FeelRules.SeekerFlashColor.g / FeelRules.SeekerFlashColor.r, peak.g / peak.r, 1e-3f, "same hue");
+        }
+
+        [Test]
+        public void HeadBob_CountsTowardTheCap_ButIsNeverCut()
+        {
+            // a 1.6 cm bob leaves 0.4 cm for the hit kick's 1.2 cm
+            var bob = new Vector3(0f, .016f, 0f);
+            var kick = new Vector3(0f, 0f, -FeelRules.HitKickBackMeters);
+            Assert.AreEqual(.004f, FeelRules.CapPositionWithBob(kick, bob).magnitude, 1e-5f);
+            Assert.LessOrEqual((FeelRules.CapPositionWithBob(kick, bob) + bob).magnitude, FeelRules.MaxPositionMeters + 1e-5f);
+            // a 3.3 cm sprint bob leaves nothing — the bob itself is not touched
+            Assert.AreEqual(0f, FeelRules.CapPositionWithBob(kick, new Vector3(0f, .033f, 0f)).magnitude, 1e-6f);
+            Assert.AreEqual(.012f, FeelRules.CapPositionWithBob(kick, Vector3.zero).magnitude, 1e-5f, "no bob: the full kick");
+            // the baseline is a time-based low-pass: same at any frame rate
+            foreach (int fps in new[] { 30, 60, 144 })
+            {
+                Vector3 b = Vector3.zero;
+                for (int i = 0; i < fps; i++) b = FeelRules.Baseline(b, Vector3.up, 1f / fps);
+                Assert.AreEqual(1f - Mathf.Exp(-1f / FeelRules.BobBaselineSeconds), b.y, 1e-3f, fps + " fps");
+            }
         }
 
         [Test]
