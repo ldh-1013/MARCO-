@@ -118,6 +118,29 @@ namespace Marco.Network.Tests
             }
         }
 
+        // V31 벽 통과: one effect per entry, none while inside, again after leaving.
+        [Test]
+        public void WallPass_EnterStayLeaveReenter()
+        {
+            bool[] inside = { false, true, true, true, false, false, true, true, false };
+            int effects = 0; bool was = false;
+            foreach (bool now in inside) { if (WallPassRules.Entered(was, now)) effects++; was = now; }
+            Assert.AreEqual(2, effects, "enter → 1, stay → 0, leave → 0, re-enter → 1");
+            Assert.IsFalse(WallPassRules.Entered(true, true));
+            Assert.IsFalse(WallPassRules.Entered(true, false));
+            Assert.IsTrue(WallPassRules.Entered(false, true));
+        }
+
+        [Test]
+        public void WallPass_Overlay_20msIn_80msOut()
+        {
+            Assert.AreEqual(0f, WallPassRules.Alpha(-.001f), T);
+            Assert.AreEqual(WallPassRules.MaxAlpha, WallPassRules.Alpha(WallPassRules.InSeconds), T, "max 0.25 at 20 ms");
+            Assert.Less(WallPassRules.Alpha(.06f), WallPassRules.MaxAlpha * .5f, "falling");
+            Assert.AreEqual(0f, WallPassRules.Alpha(.1f), T, "gone at 0.1 s");
+            Assert.AreEqual(.1f, WallPassRules.TotalSeconds, T);
+        }
+
         [Test]
         public void Priority_LowerToFortyPercent()
         {

@@ -26,6 +26,11 @@ namespace Marco.Network.Vision
         public static int SeekerEchoHits { get; private set; }
         public static int SeekerMisses { get; private set; }
         public static int RunnerHurts { get; private set; }
+        // V31 벽 통과: entries counted, the overlay's opacity now, and the last probe's cost (µs).
+        public static int WallPasses { get; private set; }
+        public static float CurrentWallNoiseAlpha { get; private set; }
+        public static bool InsideStructure { get; private set; }
+        public static double LastProbeMicroseconds { get; private set; }
 
         private const float Never = -1000f;
         private NetworkPlayer player;
@@ -35,6 +40,10 @@ namespace Marco.Network.Vision
         private float hurtSide, hurtSeed, seenInjury = -1f;
         private Vector3 bobBaseline; private bool bobBaselineSet;
         private readonly DiveRefraction refraction = new();
+        private readonly Collider[] probeHits = new Collider[16];
+        private readonly System.Collections.Generic.Dictionary<Collider, bool> structureOf = new();
+        private bool wasInside; private float wallPassAt = Never; private Material wallNoise; private bool wallNoiseFailed;
+        private static readonly int AlphaId = Shader.PropertyToID("_Alpha"), FrameId = Shader.PropertyToID("_Frame"), AspectId = Shader.PropertyToID("_Aspect");
         private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
         private static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
         private bool sprintOn, sneakOn;
@@ -94,6 +103,7 @@ namespace Marco.Network.Vision
             SetRim(Color.black);
             refraction.Release();
             ownBody = new Renderer[0]; bobBaselineSet = false;
+            wasInside = false; wallPassAt = Never; structureOf.Clear();
             Restore();
             interactor = null; view = null; player = null;
             hitAt = echoAt = missAt = hurtAt = nudgeAt = Never;
@@ -173,6 +183,8 @@ namespace Marco.Network.Vision
             SetRim(player.Role == PlayerRole.Seeker && alive ? FeelRules.RimColor(tHit) : Color.black);
             // 2.2 잠수 가장자리 물 굴절 — the player camera only, while diving.
             refraction.Update(view, inRound && alive && movement != null && movement.IsDiving);
+            // 2.2 벽 통과 — the local Echo body's camera entering a structure (read-only overlap test, Echo view only).
+            TickWallPass(inRound && player.HasEchoBody, now);
         }
 
         // 7.2 knock: 0.1 s, 0.45°, low-frequency noise (the old CameraNudge values).
@@ -236,9 +248,37 @@ namespace Marco.Network.Vision
         }
 
         // 4.2 술래 화면 적색 #EF6A4C 전체 플래시 — above the darkness (100) and the edge stain (50), behind the HUD (0).
+        private void TickWallPass(bool echoView, float now)
+        {
+            bool inside = false;
+            if (echoView)
+            {
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                int count = Physics.OverlapSphereNonAlloc(view.transform.position, WallPassRules.ProbeRadius, probeHits, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < count && !inside; i++)
+                {
+                    var hit = probeHits[i];
+                    if (hit == null) continue;
+                    if (!structureOf.TryGetValue(hit, out bool structure))
+                    {
+                        var part = Marco.Network.Map.MapParts.Read(hit);
+                        structureOf[hit] = structure = part != null && part.IsSoundStructure;
+                    }
+                    inside = structure;
+                }
+                LastProbeMicroseconds = (System.Diagnostics.Stopwatch.GetTimestamp() - start) * 1e6 / System.Diagnostics.Stopwatch.Frequency;
+                if (WallPassRules.Entered(wasInside, inside)) { wallPassAt = now; WallPasses++; Debug.Log("[MARCO][Feel] wall pass"); }
+            }
+            wasInside = inside;
+            InsideStructure = inside;
+            CurrentWallNoiseAlpha = echoView ? WallPassRules.Alpha(now - wallPassAt) : 0f;
+        }
+
         private void OnGUI()
         {
-            if (Event.current.type != EventType.Repaint || CurrentFlashAlpha <= .001f) return;
+            if (Event.current.type != EventType.Repaint) return;
+            DrawWallNoise();
+            if (CurrentFlashAlpha <= .001f) return;
             var saved = GUI.color; int depth = GUI.depth;
             GUI.depth = 40;
             var c = FeelRules.SeekerFlashColor; c.a = CurrentFlashAlpha;
@@ -247,6 +287,25 @@ namespace Marco.Network.Vision
             GUI.color = saved; GUI.depth = depth;
         }
 
-        private void OnDestroy() { Unbind(); if (Instance == this) Instance = null; }
+        // 2.2 벽 통과 overlay — above the darkness (100), behind the HUD (0).
+        private void DrawWallNoise()
+        {
+            if (CurrentWallNoiseAlpha <= .001f || wallNoiseFailed) return;
+            if (wallNoise == null)
+            {
+                var shader = Resources.Load<Shader>("MarcoPresentation/WallPassNoise");
+                if (shader == null) { wallNoiseFailed = true; return; }
+                wallNoise = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            }
+            wallNoise.SetFloat(AlphaId, CurrentWallNoiseAlpha);
+            wallNoise.SetFloat(FrameId, Time.frameCount % 997);
+            wallNoise.SetFloat(AspectId, Screen.width / (float)Mathf.Max(1, Screen.height));
+            var saved = GUI.matrix; int depth = GUI.depth;
+            GUI.matrix = Matrix4x4.identity; GUI.depth = 42;
+            Graphics.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture, wallNoise);
+            GUI.matrix = saved; GUI.depth = depth;
+        }
+
+        private void OnDestroy() { Unbind(); if (wallNoise != null) Destroy(wallNoise); if (Instance == this) Instance = null; }
     }
 }

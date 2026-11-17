@@ -408,6 +408,35 @@ namespace Marco.Network.Tests
             TestContext.WriteLine($"upgrade at {sent[0].elapsed:F2}s: perceived {sent[0].hearing.PerceivedRadius:F2} m, duration scale {sent[0].hearing.DurationScale:F2}");
         }
 
+        // V31 벽 통과 probe: the camera sphere inside a wall / a locker row is "inside a structure"; open air and furniture
+        // are not. Also the probe cost (OverlapSphereNonAlloc + cached MapParts lookups), reported per call.
+        [Test]
+        public void WallPassProbe_StructuresOnly_AndItsCost()
+        {
+            Physics.SyncTransforms();
+            var buffer = new Collider[16];
+            var cache = new Dictionary<Collider, bool>();
+            bool Inside(Vector3 at)
+            {
+                int n = Physics.OverlapSphereNonAlloc(at, Marco.Network.Vision.WallPassRules.ProbeRadius, buffer, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < n; i++)
+                {
+                    if (!cache.TryGetValue(buffer[i], out bool s)) { var p = Marco.Network.Map.MapParts.Read(buffer[i]); cache[buffer[i]] = s = p != null && p.IsSoundStructure; }
+                    if (s) return true;
+                }
+                return false;
+            }
+            Assert.IsTrue(Inside(new Vector3(9f, 1.6f, 11f)), "inside Wall_AID_Z9_9 (x 8.9 – 9.1)");
+            Assert.IsFalse(Inside(new Vector3(7f, 1.6f, 11f)), "open air in AID");
+            Assert.IsTrue(Inside(new Vector3(12f, 1f, 13.58f)), "between the back-to-back locker rows z13.19 / z13.97");
+            Assert.IsFalse(Inside(new Vector3(36.06f, 3.85f, 20.9f)), "inside a 긴나무의자 (furniture is not a structure)");
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < 2000; i++) Inside(new Vector3(7f + (i % 40) * .1f, 1.6f, 11f));
+            double micro = watch.Elapsed.TotalMilliseconds * 1000.0 / 2000;
+            TestContext.WriteLine($"probe cost: {micro:F2} µs per frame (2000 probes across the AID / ML wall, cached part lookups)");
+            Assert.Less(micro, 200.0);
+        }
+
         [Test]
         public void DurationScale_OpenOneWallTwoWalls()
         {

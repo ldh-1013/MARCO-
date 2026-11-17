@@ -92,6 +92,42 @@ namespace Marco.Network.Tests
             }
         }
 
+        // V31 벽 통과 노이즈 — the same edge shape: centre 70 % alpha 0, depth ≤ 15 %.
+        [TestCase(16f / 9f)]
+        [TestCase(21f / 9f)]
+        public void WallPassNoise_CentreUntouched(float aspect)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) Assert.Ignore("no graphics device (-nographics)");
+            var shader = Resources.Load<Shader>("MarcoPresentation/WallPassNoise");
+            Assert.IsNotNull(shader); Assert.IsTrue(shader.isSupported);
+            const int h = 216; int w = Mathf.RoundToInt(h * aspect);
+            foreach (float frame in new[] { 0f, 17f, 503f })
+            {
+                var material = new Material(shader);
+                material.SetFloat("_Alpha", 1f); material.SetFloat("_Frame", frame); material.SetFloat("_Aspect", aspect);
+                var target = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+                var previous = RenderTexture.active; RenderTexture.active = target;
+                GL.Clear(true, true, new Color(0, 0, 0, 0));
+                Graphics.Blit(null, target, material);
+                var read = new Texture2D(w, h, TextureFormat.RGBAFloat, false, true);
+                read.ReadPixels(new Rect(0, 0, w, h), 0, 0); read.Apply();
+                RenderTexture.active = previous; RenderTexture.ReleaseTemporary(target);
+                int lit = 0;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        if (read.GetPixel(x, y).a <= 0f) continue;
+                        lit++;
+                        float u = (x + .5f) / w, v = (y + .5f) / h;
+                        Assert.IsFalse(Mathf.Abs(u - .5f) < .35f && Mathf.Abs(v - .5f) < .35f, $"centre lit at ({u:F3}, {v:F3})");
+                        float dx = Mathf.Min(u, 1f - u) * aspect, dy = Mathf.Min(v, 1f - v);
+                        Assert.LessOrEqual(Mathf.Min(dx, dy), .15f + 1.5f / h, $"deeper than 15 % at ({u:F3}, {v:F3})");
+                    }
+                Assert.Greater(lit, 0);
+                Object.DestroyImmediate(material); Object.DestroyImmediate(read);
+            }
+        }
+
         [Test]
         public void Corners_DeeperThanEdgeMiddles()
         {
