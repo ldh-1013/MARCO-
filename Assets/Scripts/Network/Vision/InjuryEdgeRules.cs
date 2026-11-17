@@ -3,18 +3,39 @@ using UnityEngine;
 namespace Marco.Network.Vision
 {
     // V28 A-0 체력 가장자리 표시 (기획서 §3.3-1 상태 2.0 / 1.5 / 1.0, 색 §16.2). Pure curves and mask shape.
-    // [GAP 연출 고유 시작값 11-16 — 연출.md 16]: depth corner 15% / edge middle 6% of the short side, opacity 1.0 → 0.40,
-    // 1.5 → 0.22, state change 0.3 s ease-in-out, first-hit swell 0.2 s, pattern drift ≤ 0.02 UV/s, no pulsing.
+    // [GAP 연출 고유 시작값 — 연출.md 16.1]: depth corner 15% / edge middle 6% of the short side, opacity 1.0 → 0.40,
+    // 1.5 → 0.30 (11-17 후속 2), colour correction per state, state change 0.3 s ease-in-out, first-hit swell 0.2 s,
+    // pattern drift ≤ 0.02 UV/s, no pulsing.
     public static class InjuryEdgeRules
     {
         public const float CornerDepth = .15f, EdgeDepth = .06f;
-        public const float WoundedAlpha = .40f, RecoveringAlpha = .22f;
+        public const float WoundedAlpha = .40f, RecoveringAlpha = .30f;
+        // Colour correction toward a low-saturation seep (alpha blended, never additive): desaturate = how far the palette
+        // colour moves toward its own luminance, brightness = multiplier. 1.0 상처 (술래 레드) is darker and duller than
+        // 1.5 회복 중 (앰버), which must still read as amber (11-17 후속 2).
+        public const float WoundedDesaturate = .35f, WoundedBrightness = .60f;
+        public const float RecoveringDesaturate = .10f, RecoveringBrightness = .85f;
         public const float ChangeSeconds = .3f, SwellSeconds = .2f, SwellInSeconds = .04f, SwellGain = .6f;
         public const float DriftPerSecond = .01f;   // UV/s, ≤ 0.02
         public const float CentreKeepOut = .70f;    // the middle 70 % (each axis) is never touched
 
         // 2 halves = 1.0 상처, 3 = 1.5 회복 중, otherwise nothing.
         public static float TargetAlpha(int halves) => halves == 2 ? WoundedAlpha : halves == 3 ? RecoveringAlpha : 0f;
+
+        // (desaturate, brightness) for a state; 2 halves = 1.0, 3 = 1.5. Other states draw nothing (identity).
+        public static Vector2 Correction(int halves) =>
+            halves == 2 ? new Vector2(WoundedDesaturate, WoundedBrightness)
+            : halves == 3 ? new Vector2(RecoveringDesaturate, RecoveringBrightness) : new Vector2(0f, 1f);
+
+        // The stain colour for a state from its §16.2 palette colour (술래 레드 or 앰버, colour-blind variant included).
+        public static Color StainColor(Color palette, int halves)
+        {
+            var correction = Correction(halves);
+            float luminance = palette.r * .299f + palette.g * .587f + palette.b * .114f;
+            var c = Color.Lerp(palette, new Color(luminance, luminance, luminance), correction.x) * correction.y;
+            c.a = 1f;
+            return c;
+        }
 
         // Ease-in-out from `from` to `to` over ChangeSeconds since the change; frame-rate independent (time based).
         public static float Transition(float from, float to, float sinceChange)

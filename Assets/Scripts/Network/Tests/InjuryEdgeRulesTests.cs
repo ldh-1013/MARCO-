@@ -13,9 +13,28 @@ namespace Marco.Network.Tests
         public void StateOpacity()
         {
             Assert.AreEqual(.40f, InjuryEdgeRules.TargetAlpha(2), T, "1.0 상처");
-            Assert.AreEqual(.22f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중");
+            Assert.AreEqual(.30f, InjuryEdgeRules.TargetAlpha(3), T, "1.5 회복 중 (11-17 후속 2, was 0.22)");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(4), T, "2.0 정상");
             Assert.AreEqual(0f, InjuryEdgeRules.TargetAlpha(-1), T);
+        }
+
+        [Test]
+        public void ColourCorrection_PerState_AndStrengthOrder()
+        {
+            Assert.AreEqual(new Vector2(.35f, .60f), InjuryEdgeRules.Correction(2), "1.0: desaturate 35 %, brightness 60 %");
+            Assert.AreEqual(new Vector2(.10f, .85f), InjuryEdgeRules.Correction(3), "1.5: desaturate 10 %, brightness 85 %");
+            Assert.Less(InjuryEdgeRules.TargetAlpha(3), InjuryEdgeRules.TargetAlpha(2), "1.5 stays weaker than 1.0");
+            // §16.2 앰버 #FFB84D keeps its hue after the correction (r > g > b, still orange-yellow)
+            var amber = InjuryEdgeRules.StainColor(new Color32(0xFF, 0xB8, 0x4D, 0xFF), 3);
+            Assert.Greater(amber.r, amber.g); Assert.Greater(amber.g, amber.b);
+            Color.RGBToHSV(amber, out float hue, out float saturation, out float value);
+            Color.RGBToHSV(new Color32(0xFF, 0xB8, 0x4D, 0xFF), out float paletteHue, out _, out _);
+            Assert.AreEqual(paletteHue, hue, .01f, "same hue as the palette amber");
+            // brightness 85 % = the multiplier after desaturating 10 % toward the palette colour's own luminance
+            Color palette = new Color32(0xFF, 0xB8, 0x4D, 0xFF);
+            float luminance = palette.r * .299f + palette.g * .587f + palette.b * .114f;
+            Assert.AreEqual((palette.r * .9f + luminance * .1f) * .85f, amber.r, 1e-4f, "brightness 85 %");
+            Assert.AreEqual(1f, amber.a);
         }
 
         [TestCase(16f / 9f)]

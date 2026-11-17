@@ -11,8 +11,6 @@ namespace Marco.Network.Vision
     // server already sends to the owner. Drawn above the darkness mask (depth 100) and behind the HUD (depth 0).
     public sealed class InjuryEdgeOverlay : MonoBehaviour
     {
-        // Low-saturation seep, not a glowing band: the palette colour pulled toward its own luminance and darkened.
-        private const float Desaturate = .35f, Darken = .6f;
         public static readonly Color Amber = new Color32(0xFF, 0xB8, 0x4D, 0xFF);   // §16.2 상호작용 오브젝트(앰버)
         public static readonly Color AmberColorBlind = new Color32(0xC9, 0x8A, 0x2E, 0xFF);
 
@@ -33,16 +31,10 @@ namespace Marco.Network.Vision
             host.AddComponent<InjuryEdgeOverlay>();
         }
 
-        public static Color Stain(Color palette)
-        {
-            float luminance = palette.r * .299f + palette.g * .587f + palette.b * .114f;
-            var c = Color.Lerp(palette, new Color(luminance, luminance, luminance), Desaturate) * Darken;
-            c.a = 1f;
-            return c;
-        }
-
+        // Low-saturation seep, not a glowing band — correction per state in InjuryEdgeRules (연출.md 16.1).
         private static Color StateColor(int halves) => halves == 3
-            ? Stain(RippleVisualSettings.ColorBlindMode ? AmberColorBlind : Amber) : Stain(RippleVisualSettings.Seeker);
+            ? InjuryEdgeRules.StainColor(RippleVisualSettings.ColorBlindMode ? AmberColorBlind : Amber, 3)
+            : InjuryEdgeRules.StainColor(RippleVisualSettings.Seeker, 2);
 
         private void OnGUI()
         {
