@@ -17,6 +17,10 @@ namespace Marco.Network.Vision
     //   network keep running, and remote animators are kept on AlwaysAnimate so a snapshot bakes the real pose
     //   lobby, role reveal, result screen and Echo-body views are untouched (the switch condition is false there)
     // Echo bodies are already hidden from survivors by NetworkPlayer.ApplyLook (EchoBodyRules); only Alive players are touched.
+    // [11-18 V39] RippleClientFeatures.SourceSnapshot is off: nothing is hidden (characters visible at all times, pre-10-05).
+    // With RippleClientFeatures.BodyRim the same survivor view instead gives the other living bodies the §16.1 role rim
+    // (_FeelRim of MARCO/WorldSpaceCharacter, a MaterialPropertyBlock — local only, nothing sent). Depth test unchanged:
+    // walls still hide a body. Echo-body views (Echo, escapee) are untouched.
     public sealed class SurvivorBodyVisibility : MonoBehaviour
     {
         sealed class Entry
@@ -24,6 +28,7 @@ namespace Marco.Network.Vision
             public CharacterBody Character;
             public Transform Root;
             public bool Built, Hidden, Touched;
+            public Color Rim = Color.black;   // the rim colour last written (black = none)
             public readonly List<Renderer> Renderers = new(8);
         }
 
@@ -32,9 +37,12 @@ namespace Marco.Network.Vision
         static readonly List<NetworkPlayer> gone = new(4);
         static readonly List<Renderer> found = new(16);
         static readonly List<Animator> animators = new(2);
+        static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
+        static MaterialPropertyBlock rimBlock;
 
         // For the checks and the temporary logs.
         public static int HiddenPlayers { get; private set; }
+        public static int RimmedPlayers { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Install()
@@ -50,9 +58,13 @@ namespace Marco.Network.Vision
         }
 
         // The survivor view of a running round (the same round test as the direction hint, §5.4 state D).
-        public static bool Active()
+        public static bool Active() => RippleClientFeatures.SourceSnapshot && SurvivorView();
+
+        // [11-18 V39] the survivor view of a running round with the §16.1 role rim switched on.
+        public static bool RimActive() => RippleClientFeatures.BodyRim && SurvivorView();
+
+        static bool SurvivorView()
         {
-            if (!RippleClientFeatures.SourceSnapshot) return false;
             var local = NetworkPlayer.Local;
             var round = NetworkRound.Instance;
             if (local == null || round == null) return false;
@@ -62,31 +74,36 @@ namespace Marco.Network.Vision
 
         void LateUpdate()
         {
-            try { Apply(Active()); }
+            try { Apply(Active(), RimActive()); }
             catch (Exception exception) { DirectionHints.ReportFault("SurvivorBodyVisibility.LateUpdate", exception); }
         }
 
-        static void Apply(bool active)
+        static void Apply(bool active, bool rimActive)
         {
             var local = NetworkPlayer.Local;
             var all = NetworkPlayer.All;
-            int hidden = 0;
+            int hidden = 0, rimmed = 0;
             for (int i = 0; i < all.Count; i++)
             {
                 var player = all[i];
                 if (player == null) continue;
-                bool hide = active && player != local && player.Status == PlayerStatus.Alive;
+                bool other = player != local && player.Status == PlayerStatus.Alive;
+                bool hide = active && other;
+                Color rim = rimActive && other ? (player.Role == PlayerRole.Seeker ? SourceSnapshots.SeekerRim : SourceSnapshots.RunnerRim) : Color.black;
                 if (!entries.TryGetValue(player, out var entry))
                 {
-                    if (!hide) continue;
+                    if (!hide && rim == Color.black) continue;
                     entry = new Entry { Character = player.GetComponent<CharacterBody>() };
                     entries.Add(player, entry);
                 }
                 Refresh(player, entry);
                 Set(entry, hide);
+                SetRim(entry, rim);
                 if (hide) hidden++;
+                if (rim != Color.black) rimmed++;
             }
             HiddenPlayers = hidden;
+            RimmedPlayers = rimmed;
             // Despawned players: their renderers went with them; only the entry is dropped.
             gone.Clear();
             foreach (var pair in entries) if (pair.Key == null) gone.Add(pair.Key);
@@ -99,6 +116,7 @@ namespace Marco.Network.Vision
             var root = entry.Character != null ? entry.Character.BodyRoot : null;
             if (entry.Built && root == entry.Root) return;
             if (entry.Hidden) Show(entry);
+            if (entry.Rim != Color.black) SetRim(entry, Color.black);   // the old renderers (if still alive) lose the rim
             entry.Renderers.Clear();
             entry.Root = root;
             entry.Built = true;
@@ -139,6 +157,23 @@ namespace Marco.Network.Vision
             }
             entry.Hidden = true;
             entry.Touched = true;
+        }
+
+        // Written only on a change (role, round state, model rebuild); other block values are kept (Get → Set).
+        static void SetRim(Entry entry, Color rim)
+        {
+            if (entry.Rim == rim) return;
+            rimBlock ??= new MaterialPropertyBlock();
+            var list = entry.Renderers;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var renderer = list[i];
+                if (renderer == null) continue;
+                renderer.GetPropertyBlock(rimBlock);
+                rimBlock.SetColor(FeelRimId, rim);
+                renderer.SetPropertyBlock(rimBlock);
+            }
+            entry.Rim = rim;
         }
 
         static void Show(Entry entry)

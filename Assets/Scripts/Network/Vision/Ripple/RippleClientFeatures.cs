@@ -9,6 +9,11 @@ namespace Marco.Network.Vision
         public static bool DirectionHint = true;
         // §5.5-2 · §16.1 [10-05] source snapshot: other characters' real bodies are hidden on a survivor's screen and
         // shown only as the frozen silhouette of a ring-display sound they made. Off = both skipped, behaviour as before.
-        public static bool SourceSnapshot = true;
+        // [11-18 V39] off: characters are visible at all times again (pre-10-05 behaviour). On, the frozen silhouette
+        // would be drawn over the visible real body (a double image), and the Echo knock would show a fake Runner.
+        public static bool SourceSnapshot = false;
+        // [11-18 V39] §16.1 role rim on the other living characters' bodies in a survivor's view (Runner #7FE7E0,
+        // Seeker #EF6A4C), through the character shader's existing _FeelRim slot. Off = pre-10-05 look (mic light only).
+        public static bool BodyRim = true;
     }
 }
