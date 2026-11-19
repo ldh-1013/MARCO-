@@ -5,6 +5,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Marco.Core.WinCondition;
 using Marco.Network.Audio;
+using Marco.Network.Character;
 using Marco.Network.Player;
 using Marco.Network.Vision;
 using Marco.Network.Voice;
@@ -330,7 +331,7 @@ namespace Marco.Network.Round
             if (!SoundMap) return;
             if (soundCanMaterial == null)
             {
-                var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+                var shader = Shader.Find(RuntimeMarcoSurfaceMaterials.ShaderName);
                 if (shader == null) return;
                 soundCanMaterial = CreateBandageMaterial(shader, new Color(1f, .72f, .3f));
             }

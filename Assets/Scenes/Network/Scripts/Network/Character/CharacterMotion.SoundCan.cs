@@ -112,7 +112,7 @@ namespace Marco.Network.Character
                 }
                 else
                 {
-                    var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+                    var shader = Shader.Find(RuntimeMarcoSurfaceMaterials.ShaderName);
                     if (shader == null) return;
                     placementPropMaterial = new Material(shader);
                     if (placementPropMaterial.HasProperty("_BaseColor")) placementPropMaterial.SetColor("_BaseColor", new Color(1f, .72f, .3f));

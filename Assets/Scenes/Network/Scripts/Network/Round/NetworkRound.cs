@@ -1321,7 +1321,7 @@ namespace Marco.Network.Round
             if (ClickerSpawnPoints.Length == 0) return;
             if (clickerMaterial == null)
             {
-                Shader shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+                Shader shader = Shader.Find(RuntimeMarcoSurfaceMaterials.ShaderName);
                 if (shader == null) return;
                 clickerMaterial = CreateBandageMaterial(shader, new Color(0.82f, 0.9f, 1f));
             }
@@ -1362,6 +1362,7 @@ namespace Marco.Network.Round
             if (renderers.Length == 0) return true;
             if (materialOverride != null)
                 foreach (var renderer in renderers) renderer.sharedMaterial = materialOverride;
+            RuntimeMarcoSurfaceMaterials.ApplyTo(instance);
             Bounds bounds = renderers[0].bounds;
             for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
             if (bounds.size.y > 0.0001f) instance.transform.localScale *= targetHeight / bounds.size.y;
@@ -1374,10 +1375,8 @@ namespace Marco.Network.Round
 
         private void CreateBandageMaterials()
         {
-            // Bandages are created at runtime, so they cannot rely on a scene-assigned
-            // material. The unlit shader bypasses MARCO-'s world-space microphone falloff
-            // and leaves the pickups visible even when the microphone is silent.
-            var shader = Shader.Find("PoolV12/BlockoutSurface") ?? Shader.Find("MARCO/WorldSpaceTexturedSurface");
+            // [수정] Generated pickup materials use the MARCO world-space lighting shader.
+            var shader = Shader.Find(RuntimeMarcoSurfaceMaterials.ShaderName);
             if (shader == null)
             {
                 Debug.LogError("No MARCO- world-space shader is available for bandage pickups.", this);

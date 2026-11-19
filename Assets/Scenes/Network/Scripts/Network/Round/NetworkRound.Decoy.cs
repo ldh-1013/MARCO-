@@ -4,6 +4,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using Marco.Core.WinCondition;
 using Marco.Network.Audio;
+using Marco.Network.Character;
 using Marco.Network.Player;
 using Marco.Network.Vision;
 using UnityEngine;
@@ -223,8 +224,8 @@ namespace Marco.Network.Round
             if (!SoundMap) return;
             if (decoyMaterial == null)
             {
-                // Pickups need their own readable colour in darkness; this does not light the surroundings.
-                var shader = Shader.Find("Marco/WalkingFootRing") ?? Shader.Find("PoolV12/BlockoutSurface");
+                // [수정] Generated decoy materials use the MARCO world-space lighting shader.
+                var shader = Shader.Find(RuntimeMarcoSurfaceMaterials.ShaderName);
                 if (shader == null) return;
                 decoyMaterial = CreateBandageMaterial(shader, new Color(1f, .78f, .08f));
                 decoyBeakMaterial = CreateBandageMaterial(shader, new Color(1f, .32f, .03f));
