@@ -22,6 +22,10 @@ namespace Marco.Network.Vision
         private float stepDistance, ringDistance, gradeTime, stationaryTime;
         public bool Moving { get; private set; }
         public bool Fast { get; private set; }
+        // 부록 A [소리 등급] Walk 2m · Sprint 6m 발생 간격
+        public const float WalkInterval = 2f, SprintInterval = 6f;
+        // [11-22 V42b] read only: the distance walked since the last step (0 at a step) — the own animation follows it.
+        public float StepDistance => stepDistance;
         public bool Advance(Vector3 position, float deltaTime, bool eligible, bool fast, out bool ring)
         {
             ring = false;
@@ -55,7 +59,7 @@ namespace Marco.Network.Vision
             }
             stepDistance += distance;
             ringDistance += distance;
-            float interval = Fast ? 6f : 2f;
+            float interval = Fast ? SprintInterval : WalkInterval;
             bool step = stepDistance + .0001f >= interval;
             if (step) stepDistance = Mathf.Max(0, stepDistance - interval);
             if (ringDistance + .0001f >= 6f) { ringDistance = Mathf.Max(0, ringDistance - 6f); ring = true; }

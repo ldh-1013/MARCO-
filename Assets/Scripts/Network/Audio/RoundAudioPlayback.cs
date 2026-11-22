@@ -368,11 +368,19 @@ namespace Marco.Network.Audio
             public string GroundSurface = "";
             public int GroundWater;
             public int PreviousWater;
-            public int LastFootstepIndex;
-            public float FallbackStepDistance;
 
         }
         private readonly Dictionary<NetworkPlayer, StepState> steps = new();
+
+        // [11-22 V42b] 연출 2.1 발 닿음 = 판정 = SFX. The own walk's judgement phase (step distance / 2 m, 0 at a pulse),
+        // written each frame the own clock advances; CharacterMotion pulls the own walk's foot contacts onto it.
+        private static float ownWalkStepPhase = float.NaN;
+        private static int ownWalkStepFrame = -10;
+        public static bool TryOwnWalkStepPhase(out float phase, out int framesOld)
+        {
+            phase = ownWalkStepPhase; framesOld = Time.frameCount - ownWalkStepFrame;
+            return framesOld >= 0 && framesOld <= 1 && !float.IsNaN(phase);
+        }
         private readonly SoundWorld footWorld = new();
 
         private void TickFootsteps(NetworkPlayer listener)
@@ -384,8 +392,6 @@ namespace Marco.Network.Audio
                 if (!steps.TryGetValue(player, out var state))
                 {
                     var initial = new StepState { Position = position };
-                    if (player == listener && player.TryGetComponent<CharacterMotion>(out var initialMotion))
-                        initial.LastFootstepIndex = initialMotion.FootstepIndex;
                     initial.Clock.Advance(position, Time.deltaTime, false, false, out _);
                     initial.Grounded = footWorld.TryFloorNear(player, out var initialFloor, .09f);
                     if (initial.Grounded) initial.GroundSurface = footWorld.Surface(initialFloor, position);
@@ -460,6 +466,9 @@ namespace Marco.Network.Audio
                     alive && !teleported && water != 2 && (onGround || water == 1), fast, out bool ring);
                 if (Time.time < state.SuppressStepsUntil) { step = false; ring = false; }
                 bool fastGrade = state.Clock.Fast;
+                ownWalkStepPhase = alive && !teleported && water == 0 && onGround && state.Clock.Moving && !fastGrade
+                    ? state.Clock.StepDistance / MovementPulseClock.WalkInterval : float.NaN;
+                ownWalkStepFrame = Time.frameCount;
                 var rings = listener.GetComponentInChildren<WalkingFootRings>();
                 if (rings != null)
                 {
@@ -476,21 +485,10 @@ namespace Marco.Network.Audio
                     Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨 — 지속 .8은 질주 등급 0.8초와 같은 값)
                 bool groundedStep = water == 0 && alive && !teleported && onGround &&
                     Time.time >= state.SuppressStepsUntil;
-                bool footContact;
-                if (player.TryGetComponent<CharacterMotion>(out var motion) && motion.HasFootstepCycle)
-                {
-                    int index = motion.FootstepIndex;
-                    footContact = groundedStep && distance > .0001f && index > state.LastFootstepIndex;
-                    state.LastFootstepIndex = index;
-                    state.FallbackStepDistance = 0f;
-                }
-                else
-                {
-                    if (!groundedStep || !state.Clock.Moving) state.FallbackStepDistance = 0f;
-                    else state.FallbackStepDistance += distance;
-                    footContact = state.FallbackStepDistance >= 2f;
-                    if (footContact) state.FallbackStepDistance %= 2f;
-                }
+                // [11-22 V42b] 연출 2.1: the own footstep plays on the local judgement pulse (walk 2 m, sprint 6 m — the
+                // same distance clock and grade as the authority's step), not on the animation phase. Clip, volume and
+                // duration are unchanged; what others hear is the authority's step and is unchanged.
+                bool footContact = groundedStep && step;
                 if (!footContact || contactFloor == null) continue;
                 string surface = footWorld.Surface(contactFloor, position);
                 var clip = FootstepClip(surface, state);
