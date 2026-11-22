@@ -12,6 +12,8 @@ namespace Marco.Network.Player
         private float shoutEnds, shoutReady, localShoutEnds, localShoutReady, fearEnds;
         // Read-only presentation event: this client's own automatic scream (연출 8.1 white edge flash is drawn by a subscriber).
         public event System.Action LocalScreamFlash;
+        // Read-only presentation event: a Seeker's shout (not a scream) reached this client — the first delivery only, with its perceived duration (연출 8.1 red silhouette highlight).
+        public event System.Action<float> RemoteShoutHeard;
         private const float ShoutWindupSeconds = 1f, ShoutCooldownSeconds = 45f;
         private bool shoutPending, localShoutRequested;
         private readonly HashSet<int> suppressedRunners = new();
@@ -193,6 +195,7 @@ namespace Marco.Network.Player
                 try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, RecheckRules.Remaining(duration, elapsed)); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
             if (self && scream) LocalScreamFlash?.Invoke();
+            if (!self && !scream && elapsed <= 0f) RemoteShoutHeard?.Invoke(duration);
             // Keep survivor screams and seeker vocals separate, including missing assets.
             if (elapsed > 0f && pulseId >= 0 && abilityVocals.TryGetValue(pulseId, out var playing) && playing.source != null && playing.source.isPlaying)
             {
