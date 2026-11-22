@@ -49,6 +49,9 @@ namespace Marco.Network.Vision
         public static int Suppressions { get; private set; }
         public static float CurrentSwayWeight { get; private set; }
         public static int SprintExhaustions { get; private set; }
+        // V43 메아리 비행 관성 (연출 2.2): how far the drawn camera trails the real flight position now (m) — for checks and the capture CSV.
+        public static Vector3 CurrentEchoLag { get; private set; }
+        public static float CurrentEchoLagMeters => CurrentEchoLag.magnitude;
 
         private const float Never = -1000f;
         private NetworkPlayer player;
@@ -69,6 +72,9 @@ namespace Marco.Network.Vision
         private Renderer[] ownBody = new Renderer[0]; private MaterialPropertyBlock rimBlock; private bool rimOn;
         private static readonly int FeelRimId = Shader.PropertyToID("_FeelRim");
         private bool sprintOn, sneakOn;
+        // V43: the first-hit target's body rim (연출 4.5) and the Echo flight inertia (연출 2.2) — see TargetRimFlash / EchoInertia.
+        private readonly TargetRimFlash targetRim = new();
+        private readonly EchoInertia echoInertia = new();
         private float lastBreath = -1f, suppressAt = Never, swayWeight;
         private bool exhaustOn; private float exhaustFrom, exhaustChanged = Never, exhaustSeen = Never; private Material exhaustEdge; private bool exhaustEdgeFailed;
         private static readonly int ColorId = Shader.PropertyToID("_Color"), SeedId = Shader.PropertyToID("_Seed"), DriftId = Shader.PropertyToID("_Drift"),
@@ -101,10 +107,20 @@ namespace Marco.Network.Vision
             float now = Time.time;
             switch (result)
             {
-                case SwingResult.Wounded: hitAt = now; SeekerWoundHits++; Debug.Log("[MARCO][Feel] seeker hit (Wounded)"); break;
+                case SwingResult.Wounded: hitAt = now; SeekerWoundHits++; woundPending = true; Debug.Log("[MARCO][Feel] seeker hit (Wounded)"); break;
                 case SwingResult.Echoed: hitAt = now; echoAt = now; SeekerEchoHits++; Debug.Log("[MARCO][Feel] seeker hit (Echoed)"); break;
                 case SwingResult.Missed: missAt = now; SeekerMisses++; Debug.Log("[MARCO][Feel] seeker miss"); break;
             }
+        }
+
+        // 연출 4.5 첫 적중: the target is the one the client's own tag check finds (the same TryFindTagTarget the swing request used,
+        // with the 0.8 m latency margin of 부록 A [태그 판정]); a transient rim on that body only — read only, never sent.
+        // Tick runs it (it already holds the round), the confirmation only raises the flag.
+        private bool woundPending;
+        private void BeginTargetRim(float now, NetworkPlayer target)
+        {
+            if (target == null || !target.TryGetComponent<CharacterBody>(out var body) || body.BodyRoot == null) return;
+            targetRim.Begin(body.BodyRoot.GetComponentsInChildren<Renderer>(true), now);
         }
 
         // PlayerMovement.LocalScreamFlash: the server's scream message reached this client (self && scream). One event, one flash.
@@ -134,6 +150,7 @@ namespace Marco.Network.Vision
             if (shoutOwner != null) shoutOwner.LocalScreamFlash -= OnLocalScream;
             shoutOwner = null; screamAt = Never; CurrentScreamFlashAlpha = 0f;
             SetRim(Color.black);
+            targetRim.Release(); echoInertia.Reset(); CurrentEchoLag = Vector3.zero;
             refraction.Release();
             ownBody = new Renderer[0]; bobBaselineSet = false; walkBob.Reset(); walkBobWeight = 0f; walkBobKey = null; walkGaitSince = Never; CurrentBobFix = 0f;
             wasInside = false; wallPassAt = Never; structureOf.Clear(); lastEyeSet = false;
@@ -246,10 +263,18 @@ namespace Marco.Network.Vision
             fov = FeelRules.CapFov(fov);
             CurrentRotation = rotation; CurrentPosition = position; CurrentFov = fov;
             CurrentFlashAlpha = FeelRules.ShowsSeekerFlash(player.Role == PlayerRole.Seeker) ? FeelRules.FlashAlpha(tEcho) : 0f;
-            Write(Quaternion.Euler(rotation), position, fov);
+            Write(Quaternion.Euler(rotation), position, fov, inRound && player.HasEchoBody);
 
             // 15.3 술래 손끝 림 — the local Seeker's own body only (MaterialPropertyBlock on its own renderers, never sent).
             SetRim(player.Role == PlayerRole.Seeker && alive ? FeelRules.RimColor(tHit) : Color.black);
+            // 4.5 첫 적중 대상 몸 플래시 0.2 s — written while it runs, 0 again when it ends (never a standing rim).
+            if (!inRound || player.Role != PlayerRole.Seeker) { targetRim.Release(); woundPending = false; }
+            else
+            {
+                if (woundPending && round.TryFindTagTarget(player.transform, round.TagRadius + TargetRimRules.LatencyMarginMeters, out var wounded)) BeginTargetRim(now, wounded);
+                woundPending = false;
+                targetRim.Tick(now);
+            }
             // 2.2 잠수 가장자리 물 굴절 — the player camera only, while diving.
             refraction.Update(view, inRound && alive && movement != null && movement.IsDiving);
             // 2.2 벽 통과 — the local Echo body's camera entering a structure (read-only overlap test, Echo view only).
@@ -290,7 +315,7 @@ namespace Marco.Network.Vision
         }
 
         // Compose onto this frame's base: if nobody rewrote a channel since our last write, remove our old offset first.
-        private void Write(Quaternion rotation, Vector3 position, float fov)
+        private void Write(Quaternion rotation, Vector3 position, float fov, bool echoFlight)
         {
             var t = view.transform;
             Quaternion baseRotation = wrote && t.localRotation == writtenRotation ? writtenRotation * Quaternion.Inverse(lastRotation) : t.localRotation;
@@ -305,7 +330,13 @@ namespace Marco.Network.Vision
             bobBaseline = FeelRules.Baseline(bobBaseline, bobbed, Time.deltaTime);
             position = FeelRules.CapPositionWithBob(position, bobbed - bobBaseline);
             CurrentPosition = position;
-            Vector3 positionInParent = baseRotation * position + bobFix;
+            // [V43] 2.2 메아리 비행 관성: the drawn camera trails the real position (critically damped); outside the 2 cm cap, rotation untouched
+            Vector3 world = t.parent != null ? t.parent.TransformPoint(basePosition) : basePosition;
+            Vector3 drawn = echoInertia.Step(world, Time.deltaTime, echoFlight);
+            Vector3 trail = drawn - world;
+            CurrentEchoLag = echoInertia.Lag;
+            Vector3 inertia = t.parent != null ? t.parent.InverseTransformVector(trail) : trail;
+            Vector3 positionInParent = baseRotation * position + bobFix + inertia;
             t.localRotation = writtenRotation = baseRotation * rotation;
             t.localPosition = writtenPosition = basePosition + positionInParent;
             view.fieldOfView = writtenFov = Mathf.Clamp(baseFov + fov, 1f, 179f);
