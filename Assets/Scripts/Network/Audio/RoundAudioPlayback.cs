@@ -361,6 +361,7 @@ namespace Marco.Network.Audio
         {
             public Vector3 Position;
             public readonly MovementPulseClock Clock = new();
+            public readonly GradeSpeedWindow Speed = new();   // [11-22] the grade input, the frames of the last 0.3 s
             public int LastTile = -1, LastConcrete = -1;
             public bool Grounded, InAir, JumpPlayed;
             public float AirStarted, PeakHeight, SuppressStepsUntil;
@@ -451,7 +452,9 @@ namespace Marco.Network.Audio
                 }
                 // Remote regular steps use the same server event as the shared movement ring.
                 if (player != listener) continue;
-                float horizontalSpeed = distance / Mathf.Max(Time.deltaTime, .0001f);
+                // [11-22 V42b] the same 0.3 s average as the authority's movement ticks (부록 A [발소리 등급])
+                if (teleported) state.Speed.Reset();
+                float horizontalSpeed = teleported ? 0f : state.Speed.Push(distance, Time.deltaTime);
                 bool fast = MovementPulseClock.IsFastMovement(player.Role, horizontalSpeed, water == 1);
                 bool step = state.Clock.Advance(position, Time.deltaTime,
                     alive && !teleported && water != 2 && (onGround || water == 1), fast, out bool ring);

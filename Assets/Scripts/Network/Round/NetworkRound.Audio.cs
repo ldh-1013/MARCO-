@@ -27,6 +27,7 @@ namespace Marco.Network.Round
         private readonly Dictionary<int, double> healingSoundTimes = new();
         private readonly Dictionary<int, Marco.Network.Vision.MovementPulseClock> movementClocks = new();
         private readonly Dictionary<int, Vector3> movementPositions = new();
+        private readonly Dictionary<int, Marco.Network.Vision.GradeSpeedWindow> movementSpeeds = new();   // [11-22] grade input, 0.3 s
         private float nextMovementTick, movementTickAt;
         private float nextSoundTick;
         private bool soundWasRunning;
@@ -57,7 +58,7 @@ namespace Marco.Network.Round
         private void ResetAudioServer()
         {
             soundMotion.Clear();
-            movementClocks.Clear(); movementPositions.Clear(); nextMovementTick = movementTickAt = 0;
+            movementClocks.Clear(); movementPositions.Clear(); movementSpeeds.Clear(); nextMovementTick = movementTickAt = 0;
             rotatingSounds.Clear();
             nextValvePulse.Clear();
             recheck.Clear();
@@ -149,8 +150,11 @@ namespace Marco.Network.Round
                 if (!movementClocks.TryGetValue(id, out var clock))
                     movementClocks[id] = clock = new Marco.Network.Vision.MovementPulseClock();
                 Vector3 position = source.transform.position;
+                if (!movementSpeeds.TryGetValue(id, out var speeds))
+                    movementSpeeds[id] = speeds = new Marco.Network.Vision.GradeSpeedWindow();
+                // [11-22 V42b] the grade reads the 0.3 s (3 tick) average speed, not one tick (부록 A [발소리 등급])
                 float speed = movementPositions.TryGetValue(id, out var previous)
-                    ? Vector3.ProjectOnPlane(position-previous, Vector3.up).magnitude / Mathf.Max(dt,.0001f) : 0;
+                    ? speeds.Push(Vector3.ProjectOnPlane(position-previous, Vector3.up).magnitude, Mathf.Max(dt,.0001f)) : 0;
                 movementPositions[id] = position;
                 int water = soundWorld.WaterState(source, out float surface);
                 bool grounded = soundWorld.TryFloorNear(source, out var floor, .09f);
