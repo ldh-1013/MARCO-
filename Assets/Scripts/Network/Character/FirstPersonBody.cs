@@ -157,7 +157,20 @@ namespace Marco.Network.Character
 
         private void BeforeCamera(Camera camera)
         {
-            if (camera != playerCamera || !IsReady || maskApplied) return;
+            if (camera != playerCamera || maskApplied) return;
+            // [11-23 V50] 사용자 결정: an Echo body (메아리 · 탈출자 — CharacterBody.Ghost, the look this machine shows) is not drawn
+            // by its own camera at all — the flight camera (EchoInertia lag) would otherwise see its own torso. Only this camera:
+            // the same renderers are switched off for the own render and handed back right after it, so every other camera
+            // (other players' screens) keeps the existing rules. Back on a living body, the head mask below applies again.
+            if (body.Ghost != GhostLook.None && body.BodyRoot != null)
+            {
+                maskApplied = true;
+                body.BodyRoot.GetComponentsInChildren(true, ownGhostParts);
+                ownGhostEnabled.Clear();
+                foreach (var part in ownGhostParts) { ownGhostEnabled.Add(part.enabled); part.enabled = false; }
+                return;
+            }
+            if (!IsReady) return;
             maskApplied = true;
             foreach (var skin in skins) if (skin.Renderer != null) skin.Renderer.sharedMesh = skin.OwnView;
             foreach (var part in rigidHeadParts)
@@ -166,9 +179,25 @@ namespace Marco.Network.Character
 
         private void AfterCamera(Camera camera) { if (camera == playerCamera) RestoreMeshes(); }
 
+        private readonly List<Renderer> ownGhostParts = new();
+        private readonly List<bool> ownGhostEnabled = new();
+
+        // The renderers this camera's own Echo-body render switched off (none outside an Echo body).
+        public static int HiddenOwnGhostParts { get; private set; }
+
         private void RestoreMeshes()
         {
             if (!maskApplied) return;
+            if (ownGhostParts.Count > 0)
+            {
+                HiddenOwnGhostParts = ownGhostParts.Count;
+                for (int i = 0; i < ownGhostParts.Count; i++)
+                    if (ownGhostParts[i] != null && i < ownGhostEnabled.Count) ownGhostParts[i].enabled = ownGhostEnabled[i];
+                ownGhostParts.Clear(); ownGhostEnabled.Clear();
+                maskApplied = false;
+                return;
+            }
+            HiddenOwnGhostParts = 0;
             foreach (var skin in skins) if (skin.Renderer != null) skin.Renderer.sharedMesh = skin.Original;
             foreach (var part in rigidHeadParts) if (part.Renderer != null) part.Renderer.enabled = part.Enabled;
             maskApplied = false;
