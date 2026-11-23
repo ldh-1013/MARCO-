@@ -16,6 +16,10 @@ namespace Marco.Network.Player
         public event System.Action<float> RemoteShoutHeard;
         private const float ShoutWindupSeconds = 1f, ShoutCooldownSeconds = 45f;
         private bool shoutPending, localShoutRequested;
+        // [11-24 V51 C] 사용자 결정 2026-11-23: the automatic scream sounds this long after the shout fires (연출.md 16.2 [GAP 연출 고유
+        // 시작값] — startle 0.2 … 0.4 s + recognition, the middle of the requested 0.5 … 1.0 s). Server only; the target's own time.
+        public const float ScreamDelaySeconds = .7f;
+        private float screamDueAt = -1f;   // server: this Runner's pending automatic scream (−1 = none)
         private readonly HashSet<int> suppressedRunners = new();
         public int ScreamCount { get; private set; }
         public float ShoutCooldownRemaining => Mathf.Max(0, localShoutReady - Time.time);
@@ -33,7 +37,7 @@ namespace Marco.Network.Player
 
         private void ResetShoutServer()
         {
-            shoutPending = false; shoutEnds = shoutReady = 0;
+            shoutPending = false; shoutEnds = shoutReady = 0; screamDueAt = -1f;
             suppressedRunners.Clear(); ScreamCount = 0;
             ShoutStateTarget(Owner, 0, 0);
             FearTarget(Owner, 0);
@@ -63,6 +67,7 @@ namespace Marco.Network.Player
                 if (!CanShout) FinishShout(false);
                 else if (Time.time >= shoutEnds) FinishShout(true);
             }
+            if (IsServerInitialized && screamDueAt >= 0f && Time.time >= screamDueAt) FireDueScream();
             if (!IsOwner || Cursor.lockState != CursorLockMode.Locked || !ShoutRoundActive) return;
             if (player.Role == PlayerRole.Runner && Input.GetKeyDown(KeyCode.LeftControl)) SuppressShoutServer();
         }
@@ -127,10 +132,21 @@ namespace Marco.Network.Player
                     !target.TryGetComponent<PlayerMovement>(out var movement)) continue;
                 movement.FearTarget(target.Owner, 0);
                 if (movement.IsDiving || suppressedRunners.Contains(target.PlayerId)) continue;
-                movement.ScreamCount++;
-                NetworkRound.Instance?.RecordAwardNoise(target.PlayerId, AwardNoise.Scream, PulseSpec.Scream, PulseSpec.ScreamSeconds); // 기획서 8.1 · 8.2
-                movement.EmitAbilitySound(true);
+                // [11-24 V51 C] the suppression judgement is made here, at the shout (unchanged); the scream itself comes ScreamDelaySeconds later.
+                if (movement.screamDueAt < 0f) movement.screamDueAt = Time.time + ScreamDelaySeconds;
             }
+        }
+
+        // [11-24 V51 C] Server: this Runner's delayed automatic scream. Not sounded when, by then, the Runner dived, is no longer an alive
+        // Runner (tagged, escaped), or the round is over (a Runner who left took this object with it). The count, the award (Scream),
+        // the sound, the ring and the own white flash all happen now, at the Runner's position now.
+        private void FireDueScream()
+        {
+            screamDueAt = -1f;
+            if (!ShoutRoundActive || player.Status != PlayerStatus.Alive || player.Role != PlayerRole.Runner || IsDiving) return;
+            ScreamCount++;
+            NetworkRound.Instance?.RecordAwardNoise(player.PlayerId, AwardNoise.Scream, PulseSpec.Scream, PulseSpec.ScreamSeconds); // 기획서 8.1 · 8.2
+            EmitAbilitySound(true);
         }
 
         private void EmitAbilitySound(bool scream)
