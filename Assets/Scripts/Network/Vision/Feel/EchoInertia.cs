@@ -29,6 +29,27 @@ namespace Marco.Network.Vision
 
         public void Reset() { ready = false; velocity = Vector3.zero; Lag = Vector3.zero; }
 
+        // [11-24 V51 B] 기획서 3.2 · 맵설계 ⑫ "건물 밖으로 나가지 않는다": the flight position is already held in the building box
+        // (EchoBodyRules.ClampFlight, the same box); the drawn camera is held in it too, `inset` inside every face, so neither the
+        // eye above the body, the follower's trail nor the near clip plane reaches into an outer wall or above the ceiling.
+        // `inset` is the camera's own near-plane corner distance (no new value). A NaN position is returned as it was.
+        public static Vector3 ClampInside(Vector3 eye, float inset)
+        {
+            if (float.IsNaN(eye.x) || float.IsNaN(eye.y) || float.IsNaN(eye.z)) return eye;
+            inset = Mathf.Max(0f, inset);
+            return new Vector3(
+                Mathf.Clamp(eye.x, Marco.Network.Player.EchoBodyRules.FlightMinX + inset, Marco.Network.Player.EchoBodyRules.FlightMaxX - inset),
+                Mathf.Clamp(eye.y, Marco.Network.Player.EchoBodyRules.FlightMinY + inset, Marco.Network.Player.EchoBodyRules.FlightMaxY - inset),
+                Mathf.Clamp(eye.z, Marco.Network.Player.EchoBodyRules.FlightMinZ + inset, Marco.Network.Player.EchoBodyRules.FlightMaxZ - inset));
+        }
+
+        // The distance from a camera to the corners of its near plane: near × √(1 + tan²(vfov / 2) + tan²(hfov / 2)).
+        public static float NearCornerDistance(float near, float verticalFov, float aspect)
+        {
+            float tv = Mathf.Tan(Mathf.Clamp(verticalFov, 1f, 179f) * .5f * Mathf.Deg2Rad), th = tv * Mathf.Max(.01f, aspect);
+            return Mathf.Max(0f, near) * Mathf.Sqrt(1f + tv * tv + th * th);
+        }
+
         // `target` is the real eye position this frame. Returns the position to draw (= target when not active).
         public Vector3 Step(Vector3 target, float deltaTime, bool active)
         {

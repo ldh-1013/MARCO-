@@ -141,6 +141,13 @@ namespace Marco.Network.Player
             UpdateWaterPresentation();
             TickShout();
             if (IsServerInitialized) { TickServerBreath(Time.deltaTime); TickServerSprintStamina(Time.deltaTime); }
+            // [11-24 V51 B] 서버 보정 한 곳: an Echo body another machine owns is held in the flight box here too (the owner clamps itself
+            // every frame, so inside values pass untouched; a position the server somehow holds outside the building is pulled back to the edge).
+            if (IsServerInitialized && !IsOwner && player.HasEchoBody)
+            {
+                var held = EchoBodyRules.ClampFlight(transform.position);
+                if (held != transform.position) transform.position = held;
+            }
             if (!IsOwner) return;
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD

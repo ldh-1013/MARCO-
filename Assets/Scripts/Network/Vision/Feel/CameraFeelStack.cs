@@ -337,6 +337,14 @@ namespace Marco.Network.Vision
             CurrentEchoLag = echoInertia.Lag;
             Vector3 inertia = t.parent != null ? t.parent.InverseTransformVector(trail) : trail;
             Vector3 positionInParent = baseRotation * position + bobFix + inertia;
+            // [11-24 V51 B] an Echo body's drawn camera stays inside the building box its flight is held in (EchoInertia.ClampInside)
+            if (echoFlight && t.parent != null)
+            {
+                float fovNow = Mathf.Clamp(baseFov + fov, 1f, 179f);
+                Vector3 eye = t.parent.TransformPoint(basePosition + positionInParent);
+                Vector3 held = EchoInertia.ClampInside(eye, EchoInertia.NearCornerDistance(view.nearClipPlane, fovNow, view.aspect));
+                if (held != eye) positionInParent += t.parent.InverseTransformVector(held - eye);
+            }
             t.localRotation = writtenRotation = baseRotation * rotation;
             t.localPosition = writtenPosition = basePosition + positionInParent;
             view.fieldOfView = writtenFov = Mathf.Clamp(baseFov + fov, 1f, 179f);
