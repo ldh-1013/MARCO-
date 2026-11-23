@@ -55,8 +55,9 @@ namespace Marco.Network.Settings
         private RectTransform micBar;
         private bool building;
         private SettingsKeyGuide keyGuide;
-        private Resolution[] resolutions = Array.Empty<Resolution>();
-        private int resolutionIndex = -1;
+        // [11-23 V50] the monitor's resolutions as a drop-down list (SettingsResolutions), chosen directly.
+        private System.Collections.Generic.List<ResolutionChoice> resolutions = new();
+        private RectTransform resolutionList, resolutionContent;
 
         // Saving: gathered for half a second after a change, and on close.
         private bool dirty;
@@ -282,6 +283,7 @@ namespace Marco.Network.Settings
             if (capture != null) { StopCoroutine(capture); capture = null; }
             ShowConfirm(Confirm.None);
             HideTooltip();
+            ShowResolutionList(false);
             if (menuRoot != null) menuRoot.SetActive(false);
             ReleaseBlur();
             view = View.None;
@@ -432,7 +434,9 @@ namespace Marco.Network.Settings
             displayValue = SettingsUi.Stepper(page, "Display", ControlX, 14 + 3 * RowH, ControlW, 44,
                 d => Change(s => s.DisplayMode = Wrap(s.DisplayMode + 1 + d, DisplayText.Length) - 1));
             RowLabel(page, 4, "해상도");
-            resolutionValue = SettingsUi.Stepper(page, "Resolution", ControlX, 14 + 4 * RowH, ControlW, 44, StepResolution);
+            var resolutionButton = SettingsUi.Button(page, "Resolution", ControlX, 14 + 4 * RowH, ControlW, 44, "", 22, ToggleResolutionList);
+            resolutionValue = resolutionButton.GetComponentInChildren<Text>();
+            BuildResolutionList(page, ControlX, 14 + 4 * RowH + 48, ControlW);
             RowLabel(page, 5, "프레임 제한");
             frameValue = SettingsUi.Stepper(page, "Frame Limit", ControlX, 14 + 5 * RowH, ControlW, 44,
                 d => Change(s => s.FrameLimit = Wrap(s.FrameLimit + d, SettingsValues.FrameLimits.Length)));
@@ -578,6 +582,7 @@ namespace Marco.Network.Settings
                 if (tabButtons[i] != null) tabButtons[i].color = i == tab ? SettingsUi.AmberA(.55f) : SettingsUi.LightA(.24f);
             }
             HideTooltip();
+            ShowResolutionList(false);
             if (tab == 1) { RefreshMicDevice(); shownGrade = -2; }
         }
 
@@ -619,10 +624,8 @@ namespace Marco.Network.Settings
                 volumeSlider.SetValueWithoutNotify(Mathf.Round(s.MasterVolume * 100f));
                 mouseSlider.SetValueWithoutNotify(Mathf.Round(s.MouseScale * 100f));
                 invertToggle.SetIsOnWithoutNotify(s.InvertY);
-                resolutions = DistinctResolutions();
-                resolutionIndex = -1;
-                for (int i = 0; i < resolutions.Length; i++)
-                    if (resolutions[i].width == s.ResolutionWidth && resolutions[i].height == s.ResolutionHeight) resolutionIndex = i;
+                resolutions = SettingsResolutions.Current();
+                ShowResolutionList(false);
                 RefreshLabels();
             }
             finally { building = false; }
@@ -637,30 +640,59 @@ namespace Marco.Network.Settings
             mouseValue.text = s.MouseScale.ToString("0.00");
             displayValue.text = DisplayText[Mathf.Clamp(s.DisplayMode + 1, 0, DisplayText.Length - 1)];
             frameValue.text = FrameText[Mathf.Clamp(s.FrameLimit, 0, FrameText.Length - 1)];
-            resolutionValue.text = s.ResolutionWidth > 0 ? s.ResolutionWidth + " × " + s.ResolutionHeight : "그대로(" + Screen.width + " × " + Screen.height + ")";
+            resolutionValue.text = (s.ResolutionWidth > 0 ? s.ResolutionWidth + " × " + s.ResolutionHeight : "그대로(" + Screen.width + " × " + Screen.height + ")") + "  ▼";
             fpsText.gameObject.SetActive(s.ShowFps);
         }
 
-        private void StepResolution(int direction)
+        // A drop-down made of the existing flat buttons (no dropdown template asset): 4 rows visible, the wheel scrolls the rest.
+        private const float ListRowH = 40f;
+        private const int ListRows = 4;   // the list ends above the window's 기본값 복원 · 닫기 row
+
+        private void BuildResolutionList(Transform page, float x, float y, float w)
         {
-            if (resolutions.Length == 0) resolutions = DistinctResolutions();
-            if (resolutions.Length == 0) return;
-            resolutionIndex = Wrap(resolutionIndex + direction, resolutions.Length);
-            var r = resolutions[resolutionIndex];
-            Change(s => { s.ResolutionWidth = r.width; s.ResolutionHeight = r.height; });
+            resolutionList = SettingsUi.At(page, "Resolution List", x, y, w, ListRowH * ListRows);
+            SettingsUi.Fill(resolutionList, SettingsUi.BlackA(.97f), true);
+            var outline = resolutionList.gameObject.AddComponent<Outline>();
+            outline.effectColor = SettingsUi.AmberA(.6f); outline.effectDistance = new Vector2(1, -1);
+            resolutionList.gameObject.AddComponent<RectMask2D>();
+            resolutionContent = SettingsUi.At(resolutionList, "Content", 0, 0, w, 0);
+            var scroll = resolutionList.gameObject.AddComponent<ScrollRect>();
+            scroll.content = resolutionContent; scroll.viewport = resolutionList;
+            scroll.horizontal = false; scroll.movementType = ScrollRect.MovementType.Clamped; scroll.scrollSensitivity = ListRowH;
+            resolutionList.gameObject.SetActive(false);
         }
 
-        private static Resolution[] DistinctResolutions()
+        private void ToggleResolutionList() => ShowResolutionList(resolutionList != null && !resolutionList.gameObject.activeSelf);
+
+        private void ShowResolutionList(bool show)
         {
-            var all = Screen.resolutions;
-            var list = new System.Collections.Generic.List<Resolution>(all.Length);
-            foreach (var r in all)
+            if (resolutionList == null) return;
+            if (!show) { resolutionList.gameObject.SetActive(false); return; }
+            resolutions = SettingsResolutions.Current();
+            for (int i = resolutionContent.childCount - 1; i >= 0; i--) Destroy(resolutionContent.GetChild(i).gameObject);
+            var s = SettingsRuntime.Current;
+            int selected = -1;
+            float w = resolutionList.sizeDelta.x;
+            for (int i = 0; i < resolutions.Count; i++)
             {
-                bool seen = false;
-                foreach (var have in list) if (have.width == r.width && have.height == r.height) { seen = true; break; }
-                if (!seen) list.Add(r);
+                var choice = resolutions[i];
+                bool current = s != null && choice.Width == s.ResolutionWidth && choice.Height == s.ResolutionHeight;
+                if (current) selected = i;
+                var row = SettingsUi.Button(resolutionContent, "Resolution " + choice.Text, 0, i * ListRowH, w, ListRowH,
+                    choice.Text, 20, () => ChooseResolution(choice));
+                if (current) row.GetComponent<Image>().color = SettingsUi.AmberA(.55f);
             }
-            return list.ToArray();
+            resolutionContent.sizeDelta = new Vector2(w, resolutions.Count * ListRowH);
+            float hidden = Mathf.Max(0f, resolutions.Count - ListRows) * ListRowH;
+            resolutionContent.anchoredPosition = new Vector2(0, Mathf.Clamp((selected - 2) * ListRowH, 0f, hidden));
+            resolutionList.SetAsLastSibling();
+            resolutionList.gameObject.SetActive(true);
+        }
+
+        private void ChooseResolution(ResolutionChoice choice)
+        {
+            ShowResolutionList(false);
+            Change(s => { s.ResolutionWidth = choice.Width; s.ResolutionHeight = choice.Height; });
         }
 
         private static int Wrap(int value, int count) => count <= 0 ? 0 : ((value % count) + count) % count;

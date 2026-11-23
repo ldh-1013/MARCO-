@@ -140,10 +140,13 @@ namespace Marco.Network.Settings
                     2 => FullScreenMode.Windowed,
                     _ => Screen.fullScreenMode,
                 };
-                int width = Current.ResolutionWidth > 0 ? Current.ResolutionWidth : Screen.width;
-                int height = Current.ResolutionHeight > 0 ? Current.ResolutionHeight : Screen.height;
+                // [11-23 V50] full screen without a saved size uses the monitor's native size, not the window's (a small window
+                // made full screen used to be stretched and blurry); the highest refresh rate of that size.
+                SettingsResolutions.Native(out int nativeWidth, out int nativeHeight);
+                var (width, height) = SettingsResolutions.SizeFor(mode != FullScreenMode.Windowed, Current.ResolutionWidth, Current.ResolutionHeight,
+                    nativeWidth, nativeHeight, Screen.width, Screen.height);
                 if (atStart && mode == Screen.fullScreenMode && width == Screen.width && height == Screen.height) return;
-                Screen.SetResolution(width, height, mode);
+                Screen.SetResolution(width, height, mode, SettingsResolutions.RefreshFor(width, height));
             }
             catch (Exception exception) { Report("display", exception); }
         }
