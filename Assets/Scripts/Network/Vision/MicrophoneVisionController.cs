@@ -488,65 +488,108 @@ namespace Marco.Network.Vision
             clickerFlashOrigin = origin;
             if (terrainAfterglow == null)
                 terrainAfterglow = GetComponent<TerrainAfterglow>() ?? gameObject.AddComponent<TerrainAfterglow>();
-            NetworkPlayer localPlayer = NetworkPlayer.Local;
-            if (localPlayer != null && localPlayer.Role == PlayerRole.Seeker)
-                BeginClickerVisibilitySuppression(origin, sourcePlayerId);
-            else
-                RestoreClickerVisibilitySuppression();
+            // [11-23 V50] 기획서 7 · 연출 9.1 "캐릭터 · 오브젝트는 표시하지 않는다": on every screen the flash reaches, not only the
+            // Seeker's (the bodies and objects are not lit by the flash, so they stood as black shapes against the lit terrain).
+            BeginClickerVisibilitySuppression(origin, sourcePlayerId);
             UpdateClickerFlashShader();
             terrainAfterglow.CaptureFlash(origin, ClickerCameraFlashRadius, ClickerCameraFlashSeconds,
                 ClickerAfterglowSeconds, ClickerAfterglowPeakOpacity);
         }
+
+        // [11-23 V50] The concealment lasts the flash and its afterglow (0.6 s + 12 s, the existing values) on this screen only
+        // (Renderer.forceRenderingOff, local, nothing sent). A body or object the local voice light reaches stays drawn — the
+        // existing rule that the light shows bodies (the body shader's own _Marco* light, ShoutRimRules.LightVisibility) —
+        // except the Runner who used the item on the Seeker's screen during the flash itself (the rule this code had before).
+        // Echo bodies (CharacterBody.Ghost) keep their own rules (EchoBodyRules); the own body is never touched.
+        private readonly List<Renderer> clickerObjectCandidates = new();
+        private readonly List<Renderer> clickerFrameHide = new();
+        private readonly HashSet<Renderer> clickerFrameSet = new();
+        private readonly List<Renderer> clickerReleased = new();
+        public static int ClickerHiddenBodies { get; private set; }
+        public static int ClickerHiddenObjects { get; private set; }
+        public static int ClickerLitKept { get; private set; }
 
         private void BeginClickerVisibilitySuppression(Vector3 origin, int sourcePlayerId)
         {
             RestoreClickerVisibilitySuppression();
             clickerFlashOrigin = origin;
             clickerFlashSourcePlayerId = sourcePlayerId;
-            clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
+            clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds + ClickerAfterglowSeconds;
+            // Objects: the map surfaces in the flash radius that are not terrain (the flash lights only terrain), gathered once.
+            float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
+            if (clickerVisibilityProperties == null)
+                clickerVisibilityProperties = new MaterialPropertyBlock();
+            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            {
+                if (renderer == null || renderer.bounds.SqrDistance(origin) > radiusSquared) continue;
+                if (renderer.GetComponentInParent<NetworkPlayer>(true) != null) continue;
+                var material = renderer.sharedMaterial;
+                if (material == null || !material.HasProperty(ClickerTerrainId) || material.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                renderer.GetPropertyBlock(clickerVisibilityProperties);
+                if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                clickerObjectCandidates.Add(renderer);
+            }
             UpdateClickerVisibilitySuppression();
         }
 
         private void UpdateClickerVisibilitySuppression()
         {
+            if (clickerVisibilityUntil <= 0f) return;
             if (Time.unscaledTime >= clickerVisibilityUntil)
             {
                 RestoreClickerVisibilitySuppression();
                 return;
             }
 
-            float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
-            if (clickerVisibilityProperties == null)
-                clickerVisibilityProperties = new MaterialPropertyBlock();
-            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            bool inFlash = Time.unscaledTime < clickerFlashStartedAt + ClickerCameraFlashSeconds;
+            NetworkPlayer local = NetworkPlayer.Local;
+            bool seekerScreen = local != null && local.Role == PlayerRole.Seeker;
+            clickerFrameHide.Clear(); clickerFrameSet.Clear();
+            int bodies = 0, objects = 0, kept = 0;
+            foreach (NetworkPlayer player in NetworkPlayer.All)
             {
-                if (renderer == null || renderer.bounds.SqrDistance(clickerFlashOrigin) > radiusSquared)
-                    continue;
-
-                if (clickerHiddenRenderers.ContainsKey(renderer))
-                {
-                    // Keep the local concealment in force if an animated/managed renderer is
-                    // re-enabled while the short flash is still active.
-                    renderer.forceRenderingOff = true;
-                    continue;
-                }
-
-                NetworkPlayer renderedPlayer = renderer.GetComponentInParent<NetworkPlayer>(true);
-                if (renderedPlayer != null)
-                {
-                    // Hide the Runner who used the item, but leave the Seeker and other characters
-                    // visible. This suppression runs only on the local Seeker's client.
-                    if (renderedPlayer.PlayerId != clickerFlashSourcePlayerId) continue;
-                }
-                else
-                {
-                    renderer.GetPropertyBlock(clickerVisibilityProperties);
-                    if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
-                }
-
-                clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
+                if (player == null || player == local) continue;
+                var character = player.GetComponent<Character.CharacterBody>();
+                if (character != null && character.Ghost != Character.GhostLook.None) continue;
+                if (!SurvivorBodyVisibility.TryGetBody(player, out var parts)) continue;
+                bool source = seekerScreen && inFlash && player.PlayerId == clickerFlashSourcePlayerId;
+                float lit = 0f;
+                foreach (var part in parts) if (part != null) lit = Mathf.Max(lit, ClickerLightVisibility(part.bounds));
+                if (!source && lit >= ShoutRimRules.MinVisibility) { kept++; continue; }
+                bodies++;
+                foreach (var part in parts) if (part != null && clickerFrameSet.Add(part)) clickerFrameHide.Add(part);
+            }
+            foreach (var renderer in clickerObjectCandidates)
+            {
+                if (renderer == null) continue;
+                if (ClickerLightVisibility(renderer.bounds) >= ShoutRimRules.MinVisibility) { kept++; continue; }
+                objects++;
+                if (clickerFrameSet.Add(renderer)) clickerFrameHide.Add(renderer);
+            }
+            // Hand back what the light reaches now; hide (again) the rest — re-applied every frame, since an animated or managed
+            // renderer can be switched back on while the window runs.
+            clickerReleased.Clear();
+            foreach (var entry in clickerHiddenRenderers) if (entry.Key == null || !clickerFrameSet.Contains(entry.Key)) clickerReleased.Add(entry.Key);
+            foreach (var renderer in clickerReleased)
+            {
+                if (renderer != null) renderer.forceRenderingOff = clickerHiddenRenderers[renderer];
+                clickerHiddenRenderers.Remove(renderer);
+            }
+            foreach (var renderer in clickerFrameHide)
+            {
+                if (!clickerHiddenRenderers.ContainsKey(renderer)) clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
                 renderer.forceRenderingOff = true;
             }
+            ClickerHiddenBodies = bodies; ClickerHiddenObjects = objects; ClickerLitKept = kept;
+        }
+
+        // The local voice light at the point of these bounds nearest to it, as the body shader computes it.
+        private static float ClickerLightVisibility(Bounds bounds)
+        {
+            Vector4 light = Shader.GetGlobalVector(PlayerPositionId);
+            float distance = Vector3.Distance(bounds.ClosestPoint(light), light);
+            return ShoutRimRules.LightVisibility(distance, Shader.GetGlobalFloat(LightRadiusId), Shader.GetGlobalFloat(LightIntensityId),
+                Shader.GetGlobalFloat(FalloffPowerId), Shader.GetGlobalFloat(WorldModeId) > .5f);
         }
 
         private void RestoreClickerVisibilitySuppression()
@@ -554,7 +597,9 @@ namespace Marco.Network.Vision
             foreach (KeyValuePair<Renderer, bool> entry in clickerHiddenRenderers)
                 if (entry.Key != null) entry.Key.forceRenderingOff = entry.Value;
             clickerHiddenRenderers.Clear();
+            clickerObjectCandidates.Clear();
             clickerVisibilityUntil = 0f;
+            ClickerHiddenBodies = ClickerHiddenObjects = ClickerLitKept = 0;
         }
 
         private void UpdateClickerFlashShader()
