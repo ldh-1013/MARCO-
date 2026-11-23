@@ -1143,6 +1143,18 @@ namespace Marco.Network.Round
             return result;
         }
 
+        // [11-24 V51 D] 사용자 결정 2026-11-23 (기획서 5.9-1 · 3.3-1 · 부록 A [숨 게이지] 질식 페널티): one choke is one tag hit's damage —
+        // the same Hit as the Seeker's swing (2.0 → 1.0 wounded, below 2.0 → Echo), nothing else. Not a swing: no Seeker cooldown, no
+        // Seeker hit award (TrySwing keeps those). The breath code calls it once, at the moment it forces the Runner up.
+        [Server]
+        internal void ApplyChokeDamage(NetworkPlayer target)
+        {
+            if (target == null || valves == null || result.Value != RoundResult.InProgress) return;
+            if (target.Role != PlayerRole.Runner || target.Status != PlayerStatus.Alive) return;
+            var outcome = Hit(target);
+            Debug.Log($"[MARCO] P{target.PlayerId} choked: {outcome}");
+        }
+
         // Full lives → wounded, told to the target alone (other Runners learn it from the moan later).
         // Below full → Echo, which every client sees through the status SyncVar.
         private SwingResult Hit(NetworkPlayer target)
