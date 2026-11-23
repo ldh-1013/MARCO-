@@ -368,8 +368,15 @@ namespace Marco.Network.Audio
             public string GroundSurface = "";
             public int GroundWater;
             public int PreviousWater;
+            public int LastFootstepIndex;            // [11-23 V50] the own sprint SFX follows the animation's foot contacts
+            public float FallbackStepDistance;       // the pre-V42b fallback without a gait cycle (2 m)
 
         }
+
+        // [11-23 V50] read only, for the checks and the capture log: the own footstep SFX count, its grade and time.
+        public static int OwnFootstepSfx { get; private set; }
+        public static bool OwnFootstepSprint { get; private set; }
+        public static float OwnFootstepAt { get; private set; }
         private readonly Dictionary<NetworkPlayer, StepState> steps = new();
 
         // [11-22 V42b] 연출 2.1 발 닿음 = 판정 = SFX. The own walk's judgement phase (step distance / 2 m, 0 at a pulse),
@@ -392,6 +399,8 @@ namespace Marco.Network.Audio
                 if (!steps.TryGetValue(player, out var state))
                 {
                     var initial = new StepState { Position = position };
+                    if (player == listener && player.TryGetComponent<CharacterMotion>(out var initialMotion))
+                        initial.LastFootstepIndex = initialMotion.FootstepIndex;
                     initial.Clock.Advance(position, Time.deltaTime, false, false, out _);
                     initial.Grounded = footWorld.TryFloorNear(player, out var initialFloor, .09f);
                     if (initial.Grounded) initial.GroundSurface = footWorld.Surface(initialFloor, position);
@@ -485,15 +494,29 @@ namespace Marco.Network.Audio
                     Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨 — 지속 .8은 질주 등급 0.8초와 같은 값)
                 bool groundedStep = water == 0 && alive && !teleported && onGround &&
                     Time.time >= state.SuppressStepsUntil;
-                // [11-22 V42b] 연출 2.1: the own footstep plays on the local judgement pulse (walk 2 m, sprint 6 m — the
-                // same distance clock and grade as the authority's step), not on the animation phase. Clip, volume and
+                // [11-22 V42b] 연출 2.1: the own walk footstep plays on the local judgement pulse (walk 2 m — the same
+                // distance clock and grade as the authority's step), not on the animation phase. Clip, volume and
                 // duration are unchanged; what others hear is the authority's step and is unchanged.
-                bool footContact = groundedStep && step;
+                // [11-23 V50] 사용자 결정: the own SPRINT footstep goes back to the animation's foot contacts (the pre-V42b way,
+                // about 3 m apart) — one SFX per 6 m judgement felt unnatural. The judgement, the 6 m ring and what others hear
+                // are unchanged. The contact index is followed every frame, so a walk ↔ sprint change neither replays nor drops one.
+                bool hasCycle = player.TryGetComponent<CharacterMotion>(out var motion) && motion.HasFootstepCycle;
+                int footIndex = hasCycle ? motion.FootstepIndex : 0;
+                bool animationContact = hasCycle && distance > .0001f && footIndex > state.LastFootstepIndex;
+                state.LastFootstepIndex = footIndex;
+                if (!fastGrade || !groundedStep) state.FallbackStepDistance = 0f;
+                else if (!hasCycle) state.FallbackStepDistance += distance;
+                bool fallbackContact = !hasCycle && state.FallbackStepDistance >= 2f;
+                if (fallbackContact) state.FallbackStepDistance %= 2f;
+                bool footContact = fastGrade ? groundedStep && (animationContact || fallbackContact) : groundedStep && step;
                 if (!footContact || contactFloor == null) continue;
                 string surface = footWorld.Surface(contactFloor, position);
                 var clip = FootstepClip(surface, state);
                 if (clip != null)
+                {
                     Play(clip, position, .7f, fastGrade ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
+                    OwnFootstepSfx++; OwnFootstepSprint = fastGrade; OwnFootstepAt = Time.time;
+                }
             }
         }
 
