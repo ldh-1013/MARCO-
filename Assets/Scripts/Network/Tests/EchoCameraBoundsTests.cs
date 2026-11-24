@@ -19,7 +19,8 @@ namespace Marco.Network.Tests
             Assert.AreEqual(EchoBodyRules.FlightMaxY - .1f, held.y, 1e-5f);
             Assert.AreEqual(EchoBodyRules.FlightMaxZ - .1f, held.z, 1e-5f);
             held = EchoInertia.ClampInside(new Vector3(64.1f, -9f, -1f), 0f);
-            Assert.AreEqual(new Vector3(EchoBodyRules.FlightMaxX, EchoBodyRules.FlightMinY, EchoBodyRules.FlightMinZ), held);
+            // [11-25 V65] vertically the measured range of that position (직원 구역 모서리: 바닥 0)
+            Assert.AreEqual(EchoBodyRules.FlightMaxX, held.x); Assert.AreEqual(EchoBodyRules.FlightMinZ, held.z); Assert.AreEqual(0f, held.y, 1e-4f);
         }
 
         [Test]

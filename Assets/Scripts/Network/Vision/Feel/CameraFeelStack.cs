@@ -332,17 +332,28 @@ namespace Marco.Network.Vision
             CurrentPosition = position;
             // [V43] 2.2 메아리 비행 관성: the drawn camera trails the real position (critically damped); outside the 2 cm cap, rotation untouched
             Vector3 world = t.parent != null ? t.parent.TransformPoint(basePosition) : basePosition;
-            Vector3 drawn = echoInertia.Step(world, Time.deltaTime, echoFlight);
+            // [11-25 V65] the follower trails the real eye held inside the flight's measured range (the clamp below then has nothing
+            // left to cut at the end of a push, and a rest against a slab does not move the camera by a clamp step)
+            float insetNow = 0f;
+            if (echoFlight)
+            {
+                insetNow = EchoInertia.NearCornerDistance(view.nearClipPlane, Mathf.Clamp(baseFov + fov, 1f, 179f), view.aspect);
+            }
+            Vector3 followed = echoFlight ? EchoInertia.ClampInside(world, insetNow) : world;
+            Vector3 drawn = echoInertia.Step(followed, Time.deltaTime, echoFlight);
             Vector3 trail = drawn - world;
             CurrentEchoLag = echoInertia.Lag;
             Vector3 inertia = t.parent != null ? t.parent.InverseTransformVector(trail) : trail;
             Vector3 positionInParent = baseRotation * position + bobFix + inertia;
             // [11-24 V51 B] an Echo body's drawn camera stays inside the building box its flight is held in (EchoInertia.ClampInside)
+            // [11-25 V65] — and vertically inside the same measured per-position range (EchoBoundsGrid at the drawn eye)
             if (echoFlight && t.parent != null)
             {
                 float fovNow = Mathf.Clamp(baseFov + fov, 1f, 179f);
                 Vector3 eye = t.parent.TransformPoint(basePosition + positionInParent);
-                Vector3 held = EchoInertia.ClampInside(eye, EchoInertia.NearCornerDistance(view.nearClipPlane, fovNow, view.aspect));
+                float inset = EchoInertia.NearCornerDistance(view.nearClipPlane, fovNow, view.aspect);
+                Vector3 held = EchoInertia.ClampInside(eye, inset, !echoInertia.PushActive);
+                if (echoInertia.PushActive && EchoInertia.ClampInside(new Vector3(followed.x, eye.y, followed.z), inset).y == eye.y) echoInertia.EndPush();   // back inside the range of the column being flown in (the trail is still behind it horizontally)
                 if (held != eye) positionInParent += t.parent.InverseTransformVector(held - eye);
             }
             t.localRotation = writtenRotation = baseRotation * rotation;

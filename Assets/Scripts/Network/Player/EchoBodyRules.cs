@@ -82,19 +82,25 @@ namespace Marco.Network.Player
         // Where an Echo body may fly (3.2 · 맵설계.md 2.3 ⑫ · 부록 A [메아리]): inside the building, under the ceiling.
         // World = map coordinates (map x → x, map y → z, no root offset in IndoorPool_v1_2; 1층 바닥 Y 0, 수면 Y 0).
         // The outer wall's 0.3 stands outside the (0, 0)–(64, 62) outline (맵설계.md 0 · 1), so the outline is the
-        // building and a box clamp is exact. Up: the hall ceiling 9.0 everywhere (no per-zone ceiling, ⑫ "홀 9.0 포함").
-        // Down: the deepest pool floor, 수면 0 − 수심 3.5 (해석 — the spec gives no lower number).
+        // building and a box clamp is exact. The box's Y (hall ceiling 9.0, deepest pool floor −3.5) is the outer limit only:
+        // [11-25 V65] inside it the measured per-position range (EchoBoundsGrid) holds the flight — see ClampFlight.
         public const float FlightMinX = 0f, FlightMaxX = 64f, FlightMinZ = 0f, FlightMaxZ = 62f;
         public const float FlightMinY = -3.5f, FlightMaxY = 9f;
 
         // Inside points stay, outside points stop at the edge; a NaN position (or any failure) is returned as it was.
+        // [11-25 V65] Vertically the box is narrowed per position (x, z) to the measured [lowest floor, highest slab underside]
+        // (EchoBoundsGrid — 맵설계 ⑫ 위치별 천장 · 바닥 한계); the gap between floors stays inside, so flying between floors is kept.
+        // No grid / outside it: the box above. Horizontal clamp and speed are unchanged.
         public static Vector3 ClampFlight(Vector3 position)
         {
             try
             {
                 if (float.IsNaN(position.x) || float.IsNaN(position.y) || float.IsNaN(position.z)) return position;
-                return new Vector3(Mathf.Clamp(position.x, FlightMinX, FlightMaxX),
+                var held = new Vector3(Mathf.Clamp(position.x, FlightMinX, FlightMaxX),
                     Mathf.Clamp(position.y, FlightMinY, FlightMaxY), Mathf.Clamp(position.z, FlightMinZ, FlightMaxZ));
+                if (EchoBoundsGrid.TryGetVerticalRange(held.x, held.z, out float floor, out float top))
+                    held.y = Mathf.Clamp(held.y, floor, top);
+                return held;
             }
             catch (System.Exception) { return position; }
         }

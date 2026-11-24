@@ -177,9 +177,10 @@ namespace Marco.Network.Tests
             var inside = new UnityEngine.Vector3(10f, 2f, 20f);
             Assert.AreEqual(inside, EchoBodyRules.ClampFlight(inside));                                     // 안쪽: 그대로
             Assert.AreEqual(new UnityEngine.Vector3(0f, 9f, 62f), EchoBodyRules.ClampFlight(new UnityEngine.Vector3(-5f, 20f, 70f)));
-            Assert.AreEqual(new UnityEngine.Vector3(64f, -3.5f, 0f), EchoBodyRules.ClampFlight(new UnityEngine.Vector3(80f, -10f, -1f)));
-            Assert.AreEqual(new UnityEngine.Vector3(64f, 9f, 62f),
-                EchoBodyRules.ClampFlight(new UnityEngine.Vector3(float.PositiveInfinity, float.PositiveInfinity, 1e9f)));
+            // [11-25 V65] below / above: the measured range of that position (직원 구역 모서리 바닥 0, 하역장 모서리 천장 5.0)
+            var low = EchoBodyRules.ClampFlight(new UnityEngine.Vector3(80f, -10f, -1f)); Assert.AreEqual(64f, low.x); Assert.AreEqual(0f, low.z); Assert.AreEqual(0f, low.y, 1e-4f);
+            var corner = EchoBodyRules.ClampFlight(new UnityEngine.Vector3(float.PositiveInfinity, float.PositiveInfinity, 1e9f));
+            Assert.AreEqual(64f, corner.x); Assert.AreEqual(62f, corner.z); Assert.AreEqual(5f, corner.y, 1e-3f);
             var bad = EchoBodyRules.ClampFlight(new UnityEngine.Vector3(float.NaN, 30f, -9f));                // NaN: 원래 위치
             Assert.IsTrue(float.IsNaN(bad.x));
             Assert.AreEqual(30f, bad.y);

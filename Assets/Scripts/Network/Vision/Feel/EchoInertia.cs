@@ -27,20 +27,47 @@ namespace Marco.Network.Vision
         public Vector3 Lag { get; private set; }
         public Vector3 Velocity => velocity;
 
-        public void Reset() { ready = false; velocity = Vector3.zero; Lag = Vector3.zero; }
+        // [11-25 V65] True from a vertical push by the per-position range until the drawn camera is back inside that range
+        // (the camera calls EndPush then): the follower may trail the push farther than the hard cap and the camera's vertical
+        // clamp waits for it, so the camera glides down (or up) with the usual inertia instead of being cut.
+        public bool PushActive { get; private set; }
+        public void EndPush() { PushActive = false; }
+
+        public void Reset() { ready = false; velocity = Vector3.zero; Lag = Vector3.zero; PushActive = false; }
 
         // [11-24 V51 B] 기획서 3.2 · 맵설계 ⑫ "건물 밖으로 나가지 않는다": the flight position is already held in the building box
         // (EchoBodyRules.ClampFlight, the same box); the drawn camera is held in it too, `inset` inside every face, so neither the
         // eye above the body, the follower's trail nor the near clip plane reaches into an outer wall or above the ceiling.
         // `inset` is the camera's own near-plane corner distance (no new value). A NaN position is returned as it was.
-        public static Vector3 ClampInside(Vector3 eye, float inset)
+        // [11-25 V65] Vertically the same measured per-position range as the flight (EchoBoundsGrid at the drawn eye's x, z),
+        // `inset` inside it; a range thinner than two insets drops the inset (the eye stays inside the range itself).
+        // `holdVertical` false (a push is being followed, PushActive) leaves Y to the follower for those few frames.
+        public static Vector3 ClampInside(Vector3 eye, float inset, bool holdVertical = true)
         {
             if (float.IsNaN(eye.x) || float.IsNaN(eye.y) || float.IsNaN(eye.z)) return eye;
             inset = Mathf.Max(0f, inset);
-            return new Vector3(
-                Mathf.Clamp(eye.x, Marco.Network.Player.EchoBodyRules.FlightMinX + inset, Marco.Network.Player.EchoBodyRules.FlightMaxX - inset),
-                Mathf.Clamp(eye.y, Marco.Network.Player.EchoBodyRules.FlightMinY + inset, Marco.Network.Player.EchoBodyRules.FlightMaxY - inset),
-                Mathf.Clamp(eye.z, Marco.Network.Player.EchoBodyRules.FlightMinZ + inset, Marco.Network.Player.EchoBodyRules.FlightMaxZ - inset));
+            float x = Mathf.Clamp(eye.x, Marco.Network.Player.EchoBodyRules.FlightMinX + inset, Marco.Network.Player.EchoBodyRules.FlightMaxX - inset);
+            float z = Mathf.Clamp(eye.z, Marco.Network.Player.EchoBodyRules.FlightMinZ + inset, Marco.Network.Player.EchoBodyRules.FlightMaxZ - inset);
+            float lo = Marco.Network.Player.EchoBodyRules.FlightMinY + inset, hi = Marco.Network.Player.EchoBodyRules.FlightMaxY - inset;
+            if (Marco.Network.Player.EchoBoundsGrid.TryGetVerticalRange(x, z, out float floor, out float top))
+            {
+                lo = floor + inset; hi = top - inset;
+                if (hi < lo) { lo = floor; hi = top; }
+            }
+            return new Vector3(x, holdVertical ? Mathf.Clamp(eye.y, lo, hi) : eye.y, z);
+        }
+
+        // [11-25 V65] A frame's vertical jump that the per-position range made (flying from a high column into a lower one pushes
+        // the body down under that column's slab, or up onto a floor): the horizontal step is an ordinary one (not a teleport), the
+        // jump is longer than the follower's own hard cap (MaxLagMeters — no flight frame moves that far vertically) and the last
+        // real eye height lies outside the new column's range on the side the jump came from. Such a jump is followed through the
+        // inertia, not cut. (The eye reaches a column border before the body does, so the border itself is not the signal.)
+        public static bool IsBoundsPush(Vector3 from, Vector3 to)
+        {
+            float dx = to.x - from.x, dz = to.z - from.z, dy = to.y - from.y;
+            if (dx * dx + dz * dz > ResetDistanceMeters * ResetDistanceMeters) return false;
+            if (!Marco.Network.Player.EchoBoundsGrid.TryGetVerticalRange(to.x, to.z, out float floor, out float top)) return false;
+            return (dy < -MaxLagMeters && from.y > top) || (dy > MaxLagMeters && from.y < floor);
         }
 
         // The distance from a camera to the corners of its near plane: near × √(1 + tan²(vfov / 2) + tan²(hfov / 2)).
@@ -54,9 +81,15 @@ namespace Marco.Network.Vision
         public Vector3 Step(Vector3 target, float deltaTime, bool active)
         {
             if (!active || !(deltaTime > 0f) || float.IsNaN(target.x + target.y + target.z)) { Reset(); return target; }
-            if (!ready || (target - position).sqrMagnitude > ResetDistanceMeters * ResetDistanceMeters)
+            // [11-25 V65] a vertical push by the per-position range is followed through the same inertia (not cut like a teleport):
+            // the push is a step of the target, so only the horizontal part counts as this frame's target movement.
+            bool push = ready && IsBoundsPush(previousTarget, target);
+            if (push) { previousTarget.y = target.y; PushActive = true; }
+            Vector3 away = ready ? target - position : Vector3.zero;
+            if (PushActive) away.y = 0f;   // while a push is followed its vertical trail is not a teleport
+            if (!ready || away.sqrMagnitude > ResetDistanceMeters * ResetDistanceMeters)
             {
-                position = target; previousTarget = target; velocity = Vector3.zero; ready = true; Lag = Vector3.zero;
+                position = target; previousTarget = target; velocity = Vector3.zero; ready = true; Lag = Vector3.zero; PushActive = false;
                 return target;
             }
             float omega = 2f / Mathf.Max(1e-4f, SmoothSeconds * Mathf.Max(0f, FeelRules.FeelIntensity));
@@ -70,7 +103,7 @@ namespace Marco.Network.Vision
             velocity = targetVelocity + (b - omega * (a + b * deltaTime)) * decay;
             previousTarget = target;
             Vector3 lag = target - position;
-            if (lag.sqrMagnitude > MaxLagMeters * MaxLagMeters)
+            if (!PushActive && lag.sqrMagnitude > MaxLagMeters * MaxLagMeters)
             {
                 position = target - lag.normalized * MaxLagMeters;
                 lag = target - position;
