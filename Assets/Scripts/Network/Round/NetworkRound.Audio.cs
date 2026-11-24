@@ -345,7 +345,6 @@ namespace Marco.Network.Round
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
-                if (clip == EchoKnockRules.Clip && listener.PlayerId == sourceId) continue;   // §3.2: the knocker's own screen shows no knock
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
                 if (!CanTarget(listener)) continue;   // a connection that is leaving (not an observer any more)
                 if (selfOnly)
@@ -418,7 +417,8 @@ namespace Marco.Network.Round
             // §5.5-2: the source snapshot goes with the ring (the server sent -1 for none).
             if (pulseRadius > 0 && (snapshotA >= 0 || snapshotB >= 0))
                 try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, remaining); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
-            if (soundPlayback != null)
+            // [11-24 V55] the knocker's own copy of its knock (not from another player) shows the ring only — no knock sound on its own screen.
+            if (soundPlayback != null && !(clip == EchoKnockRules.Clip && !fromOther))
             {
                 if (elapsed > 0f) soundPlayback.PlayUpgrade(clip, point, volume, duration, muffled, actionId, elapsed, pulseId);
                 else soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local, 0f, pulseId);
