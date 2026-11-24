@@ -515,10 +515,13 @@ namespace Marco.Network.Vision
             clickerFlashOrigin = origin;
             clickerFlashSourcePlayerId = sourcePlayerId;
             clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds + ClickerAfterglowSeconds;
-            // Objects: the map surfaces in the flash radius that are not terrain (the flash lights only terrain), gathered once.
+            // Objects: the item visuals in the flash radius, gathered once. [11-24 V54] Not map content: V50 also hid the map's own
+            // non-terrain surfaces (benches, shoe racks, ladders, pipes — anything under a map root), which cut holes next to walls.
+            // An item visual is a world-lit surface (no terrain flag) that the round code builds at run time (IsItemVisual).
             float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
             if (clickerVisibilityProperties == null)
                 clickerVisibilityProperties = new MaterialPropertyBlock();
+            var roundRoot = Marco.Network.Round.NetworkRound.Instance != null ? Marco.Network.Round.NetworkRound.Instance.transform : null;
             foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
             {
                 if (renderer == null || renderer.bounds.SqrDistance(origin) > radiusSquared) continue;
@@ -527,9 +530,22 @@ namespace Marco.Network.Vision
                 if (material == null || !material.HasProperty(ClickerTerrainId) || material.GetFloat(ClickerTerrainId) > 0.5f) continue;
                 renderer.GetPropertyBlock(clickerVisibilityProperties);
                 if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                if (!IsItemVisual(renderer, roundRoot)) continue;
                 clickerObjectCandidates.Add(renderer);
             }
             UpdateClickerVisibilitySuppression();
+        }
+
+        // The duck / sound can views live under NetworkRound; a pickup model (찰칵이 · 붕대) carries the world-lit material copies the round
+        // code made for it (RuntimeMarcoSurfaceMaterials); a pickup without its model is the code-built cube in the "붕대 아이템" material.
+        // Map furniture, ladders, pipes and the network scene's fixtures have none of these and are never hidden.
+        private const string CodeBuiltItemMaterial = "붕대 아이템";   // NetworkRound.CreateBandageMaterial's name (no new value)
+        private static bool IsItemVisual(Renderer renderer, Transform roundRoot)
+        {
+            if (roundRoot != null && renderer.transform.IsChildOf(roundRoot)) return true;
+            if (renderer.GetComponentInParent<Character.RuntimeMarcoSurfaceMaterials>(true) != null) return true;
+            var material = renderer.sharedMaterial;
+            return material != null && material.name == CodeBuiltItemMaterial;
         }
 
         private void UpdateClickerVisibilitySuppression()
