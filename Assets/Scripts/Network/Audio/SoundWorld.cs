@@ -106,7 +106,7 @@ namespace Marco.Network.Audio
             if (part != null)
             {
                 if (part.Category == "Stair") return "MetalStairs";
-                if (part.Category == "Obstacle" && part.Zone == "ST") return "Carpet";
+                if (part.Category == "Obstacle" && part.Zone == "ST") return "Metal";
                 if (part.Category == "Obstacle" && part.DesignId is "h03" or "h05" or "h07" or "h11" or "l03" or "l04" or "l05" or "l06") return "WoodBench";
                 if (part.Category != "Floor") return "";
                 switch (part.Zone)
@@ -114,10 +114,10 @@ namespace Marco.Network.Audio
                     case "H": case "MS": case "WS": return "Tile";
                     case "AID": return position.z >= 24f ? "Carpet" : "Tile";
                     case "SZ": return position.z >= 18f ? "Concrete" : "Carpet";
-                    case "A": case "DR": case "LD": case "C": return "Concrete";
+                    case "A": case "DR": case "LD": case "C": case "ST": return "Concrete";
                     case "SC": case "ST2": case "L2": return "Metal";
-                    case "ML": case "WL": return "Mat";
-                    case "LOB": case "OF1": case "CL": case "ST": return "Carpet";
+                    case "ML": case "WL": return "Tile";
+                    case "LOB": case "OF1": case "CL": return "Carpet";
                     default: return "";
                 }
             }
