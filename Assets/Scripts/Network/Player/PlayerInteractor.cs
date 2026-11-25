@@ -19,6 +19,7 @@ namespace Marco.Network.Player
     {
         private NetworkPlayer player;
         private ValveId? workingValve;
+        internal ValveId? WorkingValve => workingValve;
         private DrainHatchId? workingDrain;
         private bool workingTreatment;
         private bool workingBandage;

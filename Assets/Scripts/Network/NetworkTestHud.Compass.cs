@@ -13,6 +13,7 @@ namespace Marco.Network
     public sealed partial class NetworkTestHud
     {
         public static readonly string[] CompassText = { "북", "북동", "동", "남동", "남", "남서", "서", "북서" };
+        private static readonly string[] CardinalArrows = { "north", "east", "south", "west" };
         private NetworkPlayer compassOwner;
         private Transform compassView;
 
@@ -31,6 +32,15 @@ namespace Marco.Network
             int octant = ((int)Mathf.Round(yaw / DirectionHintRules.ArcDegrees) % 8 + 8) % 8;
             var saved = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, DirectionHintRules.MaxAlpha);
+            var arrow = new Rect(TestHudSkin.Width * .5f - 62f, TestHudSkin.Height - 54f, 26f, 26f);
+            var matrix = GUI.matrix;
+            if ((octant & 1) == 0) InterfaceArt.Draw(arrow, CardinalArrows[octant / 2]);
+            else
+            {
+                GUIUtility.RotateAroundPivot(octant * DirectionHintRules.ArcDegrees, arrow.center);
+                InterfaceArt.Draw(arrow, "arrow");
+            }
+            GUI.matrix = matrix;
             GUI.Label(new Rect(TestHudSkin.Width * .5f - 120f, TestHudSkin.Height - 64f, 240f, 48f), CompassText[octant],
                 TestHudSkin.Text(30, FontStyle.Bold, TextAnchor.MiddleCenter));
             GUI.color = saved;

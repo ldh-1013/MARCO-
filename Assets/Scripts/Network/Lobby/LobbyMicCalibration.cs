@@ -25,6 +25,7 @@ namespace Marco.Network.Lobby
         private NetworkPlayer micOwner;
         private MicrophoneVisionController mic;
         private string device;
+        public bool HasInput => mic != null && mic.HasMicrophoneInput;
         private bool hasSaved;
         private bool lobbyWasShown;
 
@@ -49,7 +50,7 @@ namespace Marco.Network.Lobby
                 mic = local != null ? local.GetComponentInChildren<MicrophoneVisionController>(true) : null;
                 device = null;
             }
-            if (mic == null || !mic.HasMicrophoneInput) return;
+            if (!HasInput) return;
 
             if (mic.MicrophoneDevice != device)
             {
@@ -125,21 +126,21 @@ namespace Marco.Network.Lobby
         // Drawn by LobbyMenu.DrawRoom under the room panel (1000 x 700 reference canvas).
         public void Draw(Rect rect)
         {
-            if (mic == null || !mic.HasMicrophoneInput) return;
+            if (!HasInput) return;
             TestHudSkin.Fill(rect, new Color(0, 0, 0, .72f));
-            var text = new Rect(rect.x + 16, rect.y + 10, rect.width - 32, 30);
+            var text = new Rect(rect.x + 22, rect.y + 12, rect.width - 44, 54);
             var buttonA = new Rect(rect.xMax - 16 - 190, rect.yMax - 16 - 40, 190, 40);
             var buttonB = new Rect(buttonA.x - 12 - 150, buttonA.y, 150, 40);
             switch (prompt.Current)
             {
                 case MicCalibrationPrompt.State.Measuring:
                     Line(text, "가장 작은 목소리로 말해보세요", Pale);
-                    TestHudSkin.Bar(new Rect(rect.x + 16, rect.y + 48, rect.width - 32, 10), mic.CalibrationProgress, Cyan);
+                    TestHudSkin.Bar(new Rect(rect.x + 16, rect.y + 75, rect.width - 32, 10), mic.CalibrationProgress, Cyan);
                     if (RuinedUi.Button(buttonA, "건너뛰기", 22, light: true)) Skip();
                     break;
                 case MicCalibrationPrompt.State.Retry:
                     Line(text, FailureText(prompt.LastFailure), Amber);
-                    Line(new Rect(text.x, text.y + 28, text.width, 24), "시도 " + prompt.Attempts + " / " + MicCalibration.MaxAttempts, Pale, 18);
+                    Line(new Rect(text.x, text.yMax + 4, text.width, 26), "시도 " + prompt.Attempts + " / " + MicCalibration.MaxAttempts, Pale, 18);
                     if (RuinedUi.Button(buttonA, "다시 시도", 22, light: true)) Begin();
                     if (RuinedUi.Button(buttonB, "건너뛰기", 22, light: true)) Skip();
                     break;

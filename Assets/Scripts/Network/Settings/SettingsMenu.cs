@@ -372,7 +372,7 @@ namespace Marco.Network.Settings
         private void BuildEscPanel(Transform parent)
         {
             var panel = Centered(parent, "Esc Menu", 460, 440);
-            SettingsUi.Fill(panel, SettingsUi.BlackA(.82f), true);
+            SettingsUi.Skin(SettingsUi.Fill(panel, SettingsUi.BlackA(.82f), true), "paperTall", new Color(.24f, .24f, .24f));
             escPanel = panel.gameObject;
             SettingsUi.Label(panel, "Notice", 0, 18, 460, 36, Notice, 22, SettingsUi.Amber, TextAnchor.MiddleCenter);
             SettingsUi.Button(panel, "Continue", 50, 76, 360, 68, "계속하기", 26, CloseAll);
@@ -386,7 +386,7 @@ namespace Marco.Network.Settings
         {
             const float W = 1000, H = 640;
             var panel = Centered(parent, "Settings", W, H);
-            SettingsUi.Fill(panel, SettingsUi.BlackA(.86f), true);
+            SettingsUi.Skin(SettingsUi.Fill(panel, SettingsUi.BlackA(.86f), true), "paper", new Color(.24f, .24f, .24f));
             settingsPanel = panel.gameObject;
             SettingsUi.Label(panel, "Notice", 0, 10, W, 30, Notice, 20, SettingsUi.Amber, TextAnchor.MiddleCenter);
             for (int i = 0; i < 4; i++)
@@ -435,7 +435,7 @@ namespace Marco.Network.Settings
                 d => Change(s => s.DisplayMode = Wrap(s.DisplayMode + 1 + d, DisplayText.Length) - 1));
             RowLabel(page, 4, "해상도");
             var resolutionButton = SettingsUi.Button(page, "Resolution", ControlX, 14 + 4 * RowH, ControlW, 44, "", 22, ToggleResolutionList);
-            resolutionValue = resolutionButton.GetComponentInChildren<Text>();
+            resolutionValue = SettingsUi.ValueInk(resolutionButton.GetComponentInChildren<Text>());
             BuildResolutionList(page, ControlX, 14 + 4 * RowH + 48, ControlW);
             RowLabel(page, 5, "프레임 제한");
             frameValue = SettingsUi.Stepper(page, "Frame Limit", ControlX, 14 + 5 * RowH, ControlW, 44,
@@ -463,9 +463,8 @@ namespace Marco.Network.Settings
             SettingsUi.Fill(barBack, SettingsUi.LightA(.12f));
             micBar = SettingsUi.Rect(barBack, "Level", new Vector2(0, 0), new Vector2(0, 1), new Vector2(0, .5f), Vector2.zero, new Vector2(0, 0));
             SettingsUi.Fill(micBar, SettingsUi.AmberA(.85f));
-            micGradeText = ValueLabel(page, 4);
-            micGradeText.rectTransform.sizeDelta = new Vector2(230, 44);
-            micGradeText.fontSize = 20;
+            micGradeText = SettingsUi.Label(page, "Mic Level Status", ControlX, 14 + 4 * RowH + 38,
+                ControlW, 32, GradeText[0], 20, SettingsUi.Light);
         }
 
         private void BuildControls(Transform page)
@@ -680,6 +679,7 @@ namespace Marco.Network.Settings
                 if (current) selected = i;
                 var row = SettingsUi.Button(resolutionContent, "Resolution " + choice.Text, 0, i * ListRowH, w, ListRowH,
                     choice.Text, 20, () => ChooseResolution(choice));
+                SettingsUi.ValueInk(row.GetComponentInChildren<Text>());
                 if (current) row.GetComponent<Image>().color = SettingsUi.AmberA(.55f);
             }
             resolutionContent.sizeDelta = new Vector2(w, resolutions.Count * ListRowH);

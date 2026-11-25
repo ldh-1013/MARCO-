@@ -665,8 +665,17 @@ namespace Marco.Network.Vision
 
             GUI.depth = 0;
             // Hidden under the result screen (기획서 12.5).
-            if (Marco.Network.Round.NetworkRound.Instance != null && Marco.Network.Round.NetworkRound.Instance.IsResultScreenShown) return;
-            GUI.Label(new Rect(35, Screen.height - 72, 900, 25), status);
+            var round = Marco.Network.Round.NetworkRound.Instance;
+            if (Settings.SettingsMenu.IsOpen || (round != null && round.IsResultScreenShown)) return;
+            var local = NetworkPlayer.Local;
+            float top = Screen.height - 72;
+            if (round != null && round.Mode != Round.RoundMode.NotStarted && local != null &&
+                local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive)
+            {
+                float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
+                top = Screen.height - NetworkTestHud.RunnerHealthTopFromBottom * scale - 28;
+            }
+            GUI.Label(new Rect(35, top, 900, 25), status);
         }
 
         private void DrawDarknessMask(float revealRadius)

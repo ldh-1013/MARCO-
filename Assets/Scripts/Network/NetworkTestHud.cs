@@ -91,7 +91,17 @@ namespace Marco.Network
             var titleStyle = new GUIStyle(TestHudSkin.Text(72, FontStyle.Bold, TextAnchor.MiddleCenter));
             titleStyle.normal.textColor = seeker ? SeekerColor : RunnerColor;
             GUI.Label(new Rect(rect.x, rect.y + 16, rect.width, 96), title, titleStyle);
-            GUI.Label(new Rect(rect.x, rect.y + 116, rect.width, 52), detail, TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
+            if (seconds <= 3)
+            {
+                string action = round.StartPhase == RoundStartPhase.RoleReveal ? "초 뒤 시작" : "초 뒤 출발";
+                var style = TestHudSkin.Text(36, FontStyle.Bold);
+                float textWidth = style.CalcSize(new GUIContent(action)).x;
+                float x = rect.center.x - (44 + textWidth) * .5f;
+                InterfaceArt.Draw(new Rect(x, rect.y + 120, 36, 44), "count" + seconds);
+                GUI.Label(new Rect(x + 44, rect.y + 116, textWidth + 2, 52), action, style);
+            }
+            else GUI.Label(new Rect(rect.x, rect.y + 116, rect.width, 52), detail,
+                TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
         // Top center, under the round panel (기획서 12.4 탈출자 화면 · 연출.md 5): "탈출 성공" in the HUD's own
@@ -147,20 +157,42 @@ namespace Marco.Network
 
             if (hostButton) DrawHostButton(round, new Rect(inner.x, inner.yMax - buttonHeight, inner.width, buttonHeight));
 
-            GUI.Label(new Rect(inner.x, inner.y, inner.width, 52), round.Mode == RoundMode.Full
-                ? $"남은 시간  {FormatTime(round.RemainingSeconds)}"
-                : "밸브 전용 모드", center);
+            if (round.Mode == RoundMode.Full)
+            {
+                GUI.Label(new Rect(inner.center.x - 210, inner.y, 210, 52), "남은 시간", center);
+                InterfaceArt.Number(new Rect(inner.center.x, inner.y + 6, 160, 40), FormatTime(round.RemainingSeconds));
+            }
+            else GUI.Label(new Rect(inner.x, inner.y, inner.width, 52), "밸브 전용 모드", center);
             var gateStyle = new GUIStyle(TestHudSkin.Text(28, FontStyle.Bold, TextAnchor.MiddleCenter));
+            InterfaceArt.Draw(new Rect(inner.center.x - 122, inner.y + 60, 28, 28), round.GateOpen ? "gateOpen" : "gateClosed");
             gateStyle.normal.textColor = round.GateOpen ? OpenColor : SeekerColor;
             GUI.Label(new Rect(inner.x, inner.y + 56, inner.width, 36), round.GateOpen ? "게이트 열림" : "게이트 닫힘", gateStyle);
 
             if (!lastSurvivor) return rect.yMax;
             float y = inner.y + 100;
-            GUI.Label(new Rect(inner.x, y, inner.width, 36), $"최후 생존자 페이즈 · {FormatTime(round.LastSurvivorRemainingSeconds)}",
-                TestHudSkin.Text(26, FontStyle.Bold, TextAnchor.MiddleCenter));
+            InterfaceArt.Draw(new Rect(inner.center.x - 160, y, 174, 36), "last");
+            InterfaceArt.Draw(new Rect(inner.center.x + 16, y, 130, 36), "frame");
+            InterfaceArt.Number(new Rect(inner.center.x + 24, y + 6, 112, 24), FormatTime(round.LastSurvivorRemainingSeconds));
             if (round.TryGetActiveDrainHatch(out var drain))
             {
-                GUI.Label(new Rect(inner.x, y + 44, 160, 28), $"배수구 {drain}", TestHudSkin.Text(22));
+                var runner = NetworkPlayer.Local;
+                if (runner != null && runner.Role == PlayerRole.Runner && runner.Status == PlayerStatus.Alive &&
+                    Escape.DrainHatchView.TryGet(drain, out var hatch))
+                {
+                    var offset = hatch.transform.position - runner.transform.position;
+                    if (offset.x * offset.x + offset.z * offset.z > .01f)
+                    {
+                        float bearing = Mathf.Atan2(offset.x, offset.z) * Mathf.Rad2Deg - runner.transform.eulerAngles.y;
+                        var arrow = new Rect(inner.center.x - 197, y + 4, 27, 27);
+                        var matrix = GUI.matrix;
+                        GUIUtility.RotateAroundPivot(bearing, arrow.center);
+                        InterfaceArt.Draw(arrow, "drainArrow");
+                        GUI.matrix = matrix;
+                    }
+                }
+                InterfaceArt.Draw(new Rect(inner.x, y + 44, 26, 28), "drain");
+                InterfaceArt.Draw(new Rect(inner.x + 30, y + 44, 105, 28), "activeDrain");
+                InterfaceArt.Number(new Rect(inner.x + 137, y + 46, 26, 24), drain == DrainHatchId.First ? "1" : "2");
                 TestHudSkin.Bar(new Rect(inner.x + 170, y + 48, inner.width - 260, 20), round.DrainHatchProgress, RotatingColor);
                 GUI.Label(new Rect(inner.xMax - 80, y + 44, 80, 28), $"{round.DrainHatchProgress:P0}",
                     TestHudSkin.Text(22, FontStyle.Normal, TextAnchor.MiddleRight));
@@ -177,9 +209,16 @@ namespace Marco.Network
         }
 
         // Left: open valve count only (기획서 6.1-0 · 12.4 — which valves are active is never shown), then the controls reminder.
+        private static readonly string[] ValveFrames = { "progress0", "progress1", "progress2", "progress3", "progress4" };
+
         private static void DrawValves(NetworkRound round)
         {
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + RowHeight + 220);
+            float extraRow = 0;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var calibratedMic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponentInChildren<Marco.Network.Vision.MicrophoneVisionController>(true) : null;
+            if (calibratedMic != null) extraRow = 26;
+#endif
+            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + RowHeight + 220 + extraRow);
             TestHudSkin.Panel(rect);
             var inner = Inset(rect);
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), "밸브", TestHudSkin.Text(30, FontStyle.Bold));
@@ -188,7 +227,29 @@ namespace Marco.Network
             int open = round.OpenValveCount, required = round.RequiredOpenValveCount;
             var countStyle = new GUIStyle(TestHudSkin.Text(26, FontStyle.Bold));
             countStyle.normal.textColor = open >= required ? OpenColor : Color.white;
-            GUI.Label(new Rect(inner.x, y, inner.width, 32), $"열린 수  {open} / {required}", countStyle);
+            InterfaceArt.Draw(new Rect(inner.x, y, 32, 32), open >= required ? "valveOpen" : "valve");
+            GUI.Label(new Rect(inner.x + 40, y, 90, 32), "열린 수", countStyle);
+            InterfaceArt.Number(new Rect(inner.x + 132, y + 3, 100, 26), $"{open}/{required}");
+            var player = NetworkPlayer.Local;
+            if (player != null && player.Status == PlayerStatus.Alive && player.Role == PlayerRole.Runner &&
+                player.TryGetComponent(out PlayerInteractor interactor) && interactor.WorkingValve is ValveId id &&
+                round.TryGetValveState(id, out var valve))
+            {
+                var box = new Rect(inner.xMax - 40, y - 4, 40, 40);
+                string border = valve.Status switch
+                {
+                    ValveStatus.Reflowing => "reflowFrame",
+                    ValveStatus.Closed => "closedFrame",
+                    _ => ValveFrames[Mathf.RoundToInt(Mathf.Clamp01(valve.Progress) * 4)]
+                };
+                InterfaceArt.Draw(box, border);
+                string wheel = valve.Status switch
+                {
+                    ValveStatus.Reflowing => "reflow", ValveStatus.Rotating => "rotating",
+                    ValveStatus.Open => "valveOpen", _ => "valve"
+                };
+                InterfaceArt.Draw(new Rect(box.x + 5, box.y + 5, 30, 30), wheel);
+            }
             y += RowHeight;
 
             var help = TestHudSkin.Text(18);
@@ -197,12 +258,12 @@ namespace Marco.Network
             GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), $"좌클릭: 앞쪽 {round.TagRadius:0.0#}m 도망자 태그 (술래)", help);   // §3.1-2 판정 반경 — NetworkRound.TagRadius에서 읽는다
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
-            var calibratedMic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponentInChildren<Marco.Network.Vision.MicrophoneVisionController>(true) : null;
             if (calibratedMic != null)   // 부록 A [마이크 캘리브레이션]: the offset is shown on the test HUD only
                 GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), $"마이크 보정 {calibratedMic.CalibrationOffsetDb:+0.0;-0.0;0} dB (개발)", help);
 #else
             GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴", help);
 #endif
+            y += extraRow;
             GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "부상자 근처 E 홀드: 치료 (9초)", help);
             GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
@@ -278,6 +339,9 @@ namespace Marco.Network
                 TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
+        private const float HealthPanelHeight = 78;
+        internal const float RunnerHealthTopFromBottom = TestHudSkin.Margin + HealthPanelHeight + 30;
+
         private static void DrawRunnerHealth(NetworkRound round)
         {
             var player = NetworkPlayer.Local;
@@ -285,8 +349,7 @@ namespace Marco.Network
 
             int totalHalves = Mathf.Max(1, round.FullHalves);
             int currentHalves = player.HealthHalves < 0 ? totalHalves : Mathf.Clamp(player.HealthHalves, 0, totalHalves);
-            const float width = 330, height = 78;
-            var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - TestHudSkin.Margin - height - 30, width, height);
+            var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - RunnerHealthTopFromBottom, 330, HealthPanelHeight);
             TestHudSkin.Panel(panel);
 
             GUI.Label(new Rect(panel.xMax - 150, panel.y + 8, 134, 28),
@@ -294,7 +357,7 @@ namespace Marco.Network
                 TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleRight));
 
             float barX = panel.x + 16, barY = panel.y + 44, barWidth = panel.width - 32;
-            RuinedUi.Health(new Rect(barX, barY, barWidth, 18), currentHalves);
+            RuinedUi.Health(new Rect(barX, barY, barWidth, 18), currentHalves, totalHalves);
             float staminaRatio = player.TryGetComponent(out PlayerMovement movement)
                 ? movement.SprintStaminaRatio : 1f;
             RuinedUi.Stamina(new Rect(barX, panel.yMax + 10, barWidth, 12), staminaRatio);

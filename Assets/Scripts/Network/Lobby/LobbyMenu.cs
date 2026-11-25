@@ -20,7 +20,7 @@ namespace Marco.Network.Lobby
         private UnityRelayLobby relay;
         private string playerName = "";
         private string status = "";
-        private Vector2 rosterScroll;
+        private Vector2 rosterScroll, roomStatusScroll;
         private bool showJoinInput;
         private LanConnectionStatus lastStatus;
         private bool leavingOnPurpose;
@@ -165,53 +165,65 @@ namespace Marco.Network.Lobby
 
         private void DrawRoom()
         {
-            var panel = new Rect(200, 130, 600, 440);
-            TestHudSkin.Fill(panel, new Color(0, 0, 0, .72f));
-            GUILayout.BeginArea(panel);
-            GUILayout.Space(15);
+            const float width = 720, pad = 22, inner = width - 2 * pad, row = 32;
             int members = 0;
             foreach (var player in NetworkPlayer.All) if (!string.IsNullOrEmpty(player.Nickname)) members++;
-            GUILayout.BeginHorizontal();
-            RuinedUi.LayoutLabel("참가자", 90);
-            GUILayout.Label(members + "명", GUILayout.Height(28));
-            GUILayout.EndHorizontal();
-            GUILayout.Label("역할 무작위 배정 · 술래 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 도망자");
-            rosterScroll = GUILayout.BeginScrollView(rosterScroll, GUILayout.Height(210));
+            float rosterHeight = Mathf.Clamp(members, 2, 5) * row;
+            var statusText = new GUIContent(connector.UsingRelay ? relay.Status : status);
+            var caption = new GUIStyle(GUI.skin.label) { fontSize = 17, wordWrap = true };
+            float messageHeight = caption.CalcHeight(statusText, inner - 24);
+            float statusHeight = Mathf.Clamp(messageHeight, 26, 64);
+            float actionsY = 92 + rosterHeight + (connector.IsHost ? 56 : 8);
+            float panelHeight = actionsY + 56 + statusHeight + pad;
+            const float calibrationHeight = 152, gap = 12;
+            float total = panelHeight + (micCalibration.HasInput ? gap + calibrationHeight : 0);
+            var panel = new Rect((1000 - width) / 2, (700 - total) / 2, width, panelHeight);
+            TestHudSkin.Fill(panel, new Color(0, 0, 0, .72f));
+            GUI.BeginGroup(panel);
+            RuinedUi.Label(new Rect(pad, 14, 88, 32), "참가자", 22, light: true);
+            GUI.Label(new Rect(pad + 98, 17, 90, 30), members + "명", caption);
+            GUI.Label(new Rect(pad, 52, inner, 36), "역할 무작위 배정 · 술래 1명 (각자 " +
+                (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 도망자", caption);
+
+            var roster = new Rect(pad, 88, inner, rosterHeight);
+            float listWidth = inner - (members > 5 ? 24 : 0);
+            rosterScroll = GUI.BeginScrollView(roster, rosterScroll, new Rect(0, 0, listWidth, members * row));
+            float y = 0;
             foreach (var player in NetworkPlayer.All)
             {
                 if (string.IsNullOrEmpty(player.Nickname)) continue;
-                string label = (player.IsRoomHost ? "[방장] " : "[" + player.PlayerId + "] ") + player.Nickname;
-                GUILayout.Label(label, GUI.skin.box, GUILayout.Height(34));
+                string prefix = player.IsRoomHost ? "[방장] " : "[" + player.PlayerId + "] ";
+                GUI.Box(new Rect(0, y, listWidth, row - 2), prefix + player.Nickname);
+                y += row;
             }
-            GUILayout.EndScrollView();
-            GUI.enabled = CanStartGame;
-            if (RuinedUi.LayoutButton(connector.IsHost ? "게임 시작" : "방장의 시작을 기다리는 중", 40, GUILayout.Height(40))) StartGame();
-            GUI.enabled = true;
+            GUI.EndScrollView();
+
             if (connector.IsHost)
             {
-                GUILayout.Space(12);
-                if (connector.UsingRelay)
-                {
-                    GUILayout.BeginHorizontal();
-                    RuinedUi.LayoutLabel("방 코드", 90);
-                    GUILayout.Label(relay.CurrentLobbyCode, GUILayout.Width(130));
-                    if (RuinedUi.LayoutButton("코드 복사", 32, GUILayout.Width(100), GUILayout.Height(32)))
-                        GUIUtility.systemCopyBuffer = relay.CurrentLobbyCode;
-                    GUILayout.EndHorizontal();
-                }
-                else
-                {
-                    string address = connector.InviteAddress;
-                    GUILayout.BeginHorizontal();
-                    RuinedUi.LayoutLabel("초대 IP", 90); GUILayout.TextField(address);
-                    if (RuinedUi.LayoutButton("IP 복사", 32, GUILayout.Width(85), GUILayout.Height(32))) GUIUtility.systemCopyBuffer = address;
-                    GUILayout.EndHorizontal();
-                }
+                float inviteY = roster.yMax + 10;
+                bool useCode = connector.UsingRelay;
+                string invite = useCode ? relay.CurrentLobbyCode : connector.InviteAddress;
+                RuinedUi.Label(new Rect(pad, inviteY, 100, 34), useCode ? "방 코드" : "초대 IP", 20, light: true);
+                var value = new Rect(pad + 112, inviteY, inner - 246, 34);
+                if (useCode) GUI.Label(value, invite, caption);
+                else GUI.TextField(value, invite);
+                if (RuinedUi.Button(new Rect(width - pad - 120, inviteY, 120, 34),
+                    useCode ? "코드 복사" : "IP 복사", 20, light: true)) GUIUtility.systemCopyBuffer = invite;
             }
-            if (RuinedUi.LayoutButton("방 나가기", 32, GUILayout.Height(32))) Leave("방에서 나왔습니다.");
-            GUILayout.Space(15); GUILayout.Label(connector.UsingRelay ? relay.Status : status);
-            GUILayout.EndArea();
-            micCalibration.Draw(new Rect(200, 580, 600, 110));   // 5.2 ③ 마이크 보정 — under the room panel
+            GUI.enabled = CanStartGame;
+            if (RuinedUi.Button(new Rect(pad, actionsY, inner * .62f, 42),
+                connector.IsHost ? "게임 시작" : "방장의 시작을 기다리는 중", 24, light: true)) StartGame();
+            GUI.enabled = true;
+            if (RuinedUi.Button(new Rect(pad + inner * .62f, actionsY, inner * .38f, 42),
+                "방 나가기", 22, light: true)) Leave("방에서 나왔습니다.");
+
+            roomStatusScroll = GUI.BeginScrollView(new Rect(pad, actionsY + 56, inner, statusHeight),
+                roomStatusScroll, new Rect(0, 0, inner - 24, messageHeight));
+            GUI.Label(new Rect(0, 0, inner - 24, messageHeight), statusText, caption);
+            GUI.EndScrollView();
+            GUI.EndGroup();
+            if (micCalibration.HasInput)
+                micCalibration.Draw(new Rect(panel.x, panel.yMax + gap, width, calibrationHeight));
         }
 
         private void DrawEntryMenu(float scale, float offsetX)

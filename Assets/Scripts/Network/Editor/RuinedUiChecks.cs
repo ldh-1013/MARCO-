@@ -10,7 +10,7 @@ namespace Marco.Network.Editor
         {
             try
             {
-                string[] names = { "health_stamina_worn", "stamina_yellow_ruined", "lobby_labels_ruined_v3",
+                string[] names = { "interface_art", "health_stamina_worn", "stamina_yellow_ruined", "lobby_labels_ruined_v3",
                     "lobby_support_labels_ruined_v3", "aim_reticle_ruined_v3", "healing_ring_fill_ruined_v3",
                     "healing_ring_track_ruined_v3", RuinedUi.PaperAsset, "item_icons_worn", "slot_boxes_worn" };
                 foreach (string name in names)

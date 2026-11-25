@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace Marco.Network.Settings
 {
-    // Code-built uGUI pieces for the settings window: flat rectangles and text only (no images, no new assets).
+    // Code-built uGUI pieces for the settings window: shared artwork and live input widgets.
     // Colours are the 16.2 palette (black, environment #E8E8E8, amber #FFB84D for the active / key highlight).
     internal static class SettingsUi
     {
@@ -50,6 +50,17 @@ namespace Marco.Network.Settings
             return image;
         }
 
+        public static Image Skin(Image image, string key, Color tint)
+        {
+            var sprite = InterfaceArt.Get(key);
+            if (sprite != null)
+            {
+                image.sprite = sprite;
+                image.color = tint;
+            }
+            return image;
+        }
+
         public static Text Label(Transform parent, string name, float x, float y, float w, float h, string text, int size,
             Color color, TextAnchor anchor = TextAnchor.MiddleLeft, FontStyle style = FontStyle.Normal)
         {
@@ -64,6 +75,28 @@ namespace Marco.Network.Settings
             label.raycastTarget = false;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
             label.verticalOverflow = VerticalWrapMode.Overflow;
+            var art = text.Length > 1 || text == "<" || text == ">" ? InterfaceArt.Get(text) : null;
+            if (art != null)
+            {
+                float height = Mathf.Min(h, size * 1.12f);
+                float width = Mathf.Min(w, height * art.rect.width / art.rect.height);
+                float left = anchor == TextAnchor.MiddleCenter ? (w - width) * .5f : 0;
+                var face = Fill(At(rt, "Lettering", left, (h - height) * .5f, width, height), Color.white);
+                face.sprite = art;
+                face.preserveAspect = true;
+                label.enabled = false;
+            }
+            return label;
+        }
+
+        // Ivory ink and a shallow dark edge echo the printed labels at small sizes.
+        public static Text ValueInk(Text label)
+        {
+            label.fontStyle = FontStyle.Bold;
+            label.color = new Color32(232, 225, 208, 255);
+            var shadow = label.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color32(31, 26, 20, 160);
+            shadow.effectDistance = new Vector2(0, -1);
             return label;
         }
 
@@ -93,15 +126,15 @@ namespace Marco.Network.Settings
             var root = At(parent, name, x, y, w, h);
             var background = Stretch(root, "Background");
             background.offsetMin = new Vector2(0, h * .5f - 3); background.offsetMax = new Vector2(0, -(h * .5f - 3));
-            Fill(background, LightA(.18f));
+            Skin(Fill(background, LightA(.18f)), "track", Color.white);
             var fillArea = Stretch(root, "Fill Area");
             fillArea.offsetMin = new Vector2(0, h * .5f - 3); fillArea.offsetMax = new Vector2(0, -(h * .5f - 3));
             var fill = Stretch(fillArea, "Fill");
-            Fill(fill, AmberA(.85f));
+            Skin(Fill(fill, AmberA(.85f)), "fill", Color.white);
             var handleArea = Stretch(root, "Handle Slide Area");
             handleArea.offsetMin = new Vector2(8, 0); handleArea.offsetMax = new Vector2(-8, 0);
-            var handle = Rect(handleArea, "Handle", new Vector2(0, 0), new Vector2(0, 1), new Vector2(.5f, .5f), Vector2.zero, new Vector2(16, 0));
-            var handleImage = Fill(handle, Light, true);
+            var handle = Rect(handleArea, "Handle", new Vector2(0, 0), new Vector2(0, 1), new Vector2(.5f, .5f), Vector2.zero, new Vector2(24, -h * .55f));
+            var handleImage = Skin(Fill(handle, Light, true), "handle", Color.white);
             var slider = root.gameObject.AddComponent<UnityEngine.UI.Slider>();
             slider.fillRect = fill; slider.handleRect = handle; slider.targetGraphic = handleImage;
             slider.direction = UnityEngine.UI.Slider.Direction.LeftToRight;
@@ -113,12 +146,13 @@ namespace Marco.Network.Settings
         public static Toggle Toggle(Transform parent, string name, float x, float y, float size, Action<bool> changed)
         {
             var root = At(parent, name, x, y, size, size);
-            var box = Fill(root, BlackA(.6f), true);
+            var box = Skin(Fill(root, BlackA(.6f), true), "off", Color.white);
             var outline = root.gameObject.AddComponent<Outline>();
             outline.effectColor = LightA(.6f); outline.effectDistance = new Vector2(1, -1);
             var mark = Stretch(root, "Checkmark");
-            mark.offsetMin = new Vector2(6, 6); mark.offsetMax = new Vector2(-6, -6);
-            var markImage = Fill(mark, Amber);
+
+            mark.offsetMin = mark.offsetMax = Vector2.zero;
+            var markImage = Skin(Fill(mark, Amber), "on", Color.white);
             var toggle = root.gameObject.AddComponent<UnityEngine.UI.Toggle>();
             toggle.targetGraphic = box; toggle.graphic = markImage;
             if (changed != null) toggle.onValueChanged.AddListener(v => changed(v));
@@ -131,7 +165,7 @@ namespace Marco.Network.Settings
             var root = At(parent, name, x, y, w, h);
             Button(root, "Previous", 0, 0, h, h, "<", 24, () => step(-1));
             Button(root, "Next", w - h, 0, h, h, ">", 24, () => step(1));
-            return Label(root, "Value", h + 8, 0, w - 2 * h - 16, h, "", 22, Light, TextAnchor.MiddleCenter);
+            return ValueInk(Label(root, "Value", h + 8, 0, w - 2 * h - 16, h, "", 22, Light, TextAnchor.MiddleCenter));
         }
     }
 

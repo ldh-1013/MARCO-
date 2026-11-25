@@ -86,6 +86,11 @@ namespace Marco.Network
 
         public static void Label(Rect rect, string text, int size = 24, bool light = false)
         {
+            if (text == "설정" && light && Texture(InterfaceArt.Atlas) != null)
+            {
+                InterfaceArt.Draw(new Rect(rect.x, rect.center.y - size * .5f, rect.width, size), text);
+                return;
+            }
             if (!labels.TryGetValue(text, out var label) ||
                 (light && LightTexture(label.Support ? "lobby_support_labels_ruined_v3" : "lobby_labels_ruined_v3") == null))
             {
@@ -136,10 +141,21 @@ namespace Marco.Network
             Label(rect, text, 18, light: true);
         }
 
-        public static void Health(Rect rect, int halves)
+        public static void Health(Rect rect, int halves, int maximum = 4)
         {
-            int y = halves >= 4 ? 170 : halves == 3 ? 336 : 502;
-            Region(rect, "health_stamina_worn", new Rect(56, y, 1004, 64), new Vector2(2172, 724));
+            var sheet = new Vector2(2172, 724);
+            float fill = Mathf.Clamp01((float)halves / Mathf.Max(1, maximum));
+            if (fill == 1f || fill == .75f || fill == .5f)
+            {
+                int y = fill == 1f ? 170 : fill == .75f ? 336 : 502;
+                Region(rect, "health_stamina_worn", new Rect(56, y, 1004, 64), sheet);
+                return;
+            }
+            Region(rect, "health_stamina_worn", new Rect(1150, 180, 964, 47), sheet);
+            if (fill <= 0) return;
+            int sourceY = fill < .5f ? 502 : 170;
+            Region(new Rect(rect.x, rect.y, rect.width * fill, rect.height), "health_stamina_worn",
+                new Rect(56, sourceY, 1004 * fill, 64), sheet);
         }
 
         public static void Stamina(Rect rect, float fraction)
@@ -162,8 +178,8 @@ namespace Marco.Network
             if (!owned) return;
             Rect source = slot switch
             {
-                1 => new Rect(745, 120, 440, 505), 2 => new Rect(110, 95, 490, 415),
-                3 => new Rect(118, 641, 490, 490), _ => new Rect(760, 605, 335, 550)
+                1 => new Rect(745, 120, 440, 407), 2 => new Rect(110, 95, 490, 415),
+                3 => new Rect(118, 641, 490, 490), _ => new Rect(760, 545, 335, 612)
             };
             float scale = Mathf.Min((rect.width - 12) / source.width, (rect.height - 12) / source.height);
             var icon = new Rect(rect.center.x - source.width * scale / 2, rect.center.y - source.height * scale / 2,

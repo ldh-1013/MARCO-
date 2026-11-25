@@ -55,7 +55,9 @@ namespace Marco.Network
             else if (remaining == 0) { state = KnockSpentText; fraction = 0f; }
             else if (cooling > 0f) { state = KnockCooldownText; fraction = 1f - cooling / EchoKnockRules.CooldownSeconds; }
             else { state = KnockReadyText; fraction = 1f; }
-            RuinedUi.HealingRing(ring, Mathf.Clamp01(fraction));
+            if (state == KnockReadyText) InterfaceArt.Draw(ring, "ready");
+            else if (state == KnockSpentText) InterfaceArt.Draw(ring, "waiting");
+            else RuinedUi.HealingRing(ring, Mathf.Clamp01(fraction));
             float left = locked > 0f ? locked : cooling;
             GUI.Label(detail, state, TestHudSkin.Text(22));
             if (left > 0f && remaining > 0)
