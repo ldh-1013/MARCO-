@@ -383,8 +383,16 @@ namespace Marco.Network.Round
         public bool IsSoloRound => soloRound.Value;
         private const int MaximumMatchPlayers = 6;
 
-        public static bool CanStartMatch(int playerCount) =>
-            playerCount > 0 && playerCount <= MaximumMatchPlayers;
+        // [11-26 V84] 기획서 118행 "인원 최소 3 / 최대 6": a release build starts a match only with 3 or more players
+        // (TickLobby countdown, BeginRound and the rematch vote all use this one check). 1~2 player rooms are development-only.
+        public static bool CanStartMatch(int playerCount)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            return playerCount > 0 && playerCount <= MaximumMatchPlayers;
+#else
+            return playerCount >= MinimumFullRulesPlayers && playerCount <= MaximumMatchPlayers;
+#endif
+        }
 
         internal void CancelLobbyCountdown()
         {
