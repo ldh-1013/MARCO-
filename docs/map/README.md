@@ -37,3 +37,5 @@
 맵 배치(`docs/맵설계.md`의 ASCII 도면)가 바뀌면 이 자료는 모두 다시 만들어야 한다. 순서는 ① 3D 뷰어 격자 수정 → ② `도면_스크립트/`의 세 스크립트 실행 → ③ 이 README 표 갱신이다. 도면만 고치고 이 폴더를 그대로 두면 둘이 어긋난다.
 
 - **메아리 높이 격자 재측정 [11-25 V65]:** 맵 씬(`IndoorPool_v1_2`)의 천장 · 바닥 · 슬래브 콜라이더를 바꾸면 `Assets/Resources/EchoHeightGrid.asset`을 다시 베이크한다(메뉴 MARCO/Echo Height Grid/Bake, 이어서 Verify로 재현 확인, EchoHeightGridTests 통과).
+
+- **바닥 구역 이름 글자 [11-25 V76]:** 맵 씬 바닥에는 구역 이름 글자(TextMesh)를 두지 않는다. 문 · 계단 · 슬롯 · 밸브 번호 라벨(`Labels`, `GamePoints` 아래)은 남아 있다.
