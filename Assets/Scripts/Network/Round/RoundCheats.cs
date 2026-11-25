@@ -21,7 +21,7 @@ namespace Marco.Network.Round
             (KeyCode.F3, "F3   도망자 1명 탈출"),
             (KeyCode.F4, $"F4   {FastForwardSeconds:0}초 빨리감기"),
             (KeyCode.F5, "F5   최후 생존자 페이즈 시작"),
-            (KeyCode.F9, "F9   내 역할 전환: 생존자 ↔ 헌터"),
+            (KeyCode.F9, "F9   내 역할 전환: 도망자 ↔ 술래"),
         };
 
         private bool open;
@@ -52,8 +52,9 @@ namespace Marco.Network.Round
                 return;
             }
 
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // no cheat keys while the settings menu is open
             if (Input.GetKeyDown(KeyCode.Tab)) SetOpen(!open);
-            // Esc toggles the lock in PlayerMovement; keep the cursor free while the panel is up.
+            // Esc opens the settings menu (cursor stays free while it is open); keep the cursor free while the panel is up.
             if (open && Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
 
             foreach (var (key, _) in Cheats)
@@ -83,6 +84,7 @@ namespace Marco.Network.Round
         // Bottom center, clear of the HUD's top / left / right panels and the centered result.
         private void OnGUI()
         {
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;
             if (!TryGetHostRound(out var round)) return;
 
             TestHudSkin.Begin();

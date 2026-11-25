@@ -319,6 +319,39 @@ namespace Marco.Network.Editor
                         float radius = RingRadiusAt(rings, hatchView.transform.position);
                         Expect(!On("DrainWorkPulse") ? radius == 0 : radius > 0 && radius <= 12f, "S7 drain work pulse", $"ring {radius}m (12m, ×0.5 per wall/water surface)");
                     }
+                    DrainTwoDeckCount();
+                    step = 92; return true;
+                case 92: // R1 — 부록 A [사운드 차폐] 재판정 상향 [11-16]: a Shout-grade pulse heard muffled through a wall, then the
+                         // listener steps out → the next 0.25 s recheck sends it clear with the elapsed time (ring drawn mid-way).
+                    if (!Has("TickRecheck")) { results.Add("skip R1 recheck: not implemented"); step = 10; return true; }
+                    if (!Stand(new Vector3(7f, 0f, 11f), out recheckSource) || !Stand(new Vector3(11f, 0f, 11f), out var walled) ||
+                        !Stand(new Vector3(7.5f, 0f, 12.5f), out recheckOpen))
+                    { results.Add("skip R1 recheck: no AID / ML floor"); step = 10; return true; }
+                    rings.ClearPulses();
+                    player.GetComponent<PlayerMovement>().Teleport(walled);
+                    Physics.SyncTransforms();
+                    recheckSource += Vector3.up * .6f;
+                    Invoke(round, "EmitSound", "TagPulse", recheckSource, PulseSpec.Shout, 0f, PulseSpec.ShoutSeconds,
+                        -1, false, -1, -1, false, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
+                    recheckEmitted = now;
+                    until = now + .5; step = 93; return true;
+                case 93:
+                    if (now < until) return true;
+                    recheckRingBefore = RingRadiusAt(rings, recheckSource);
+                    player.GetComponent<PlayerMovement>().Teleport(recheckOpen);
+                    Physics.SyncTransforms();
+                    recheckMoved = now;
+                    until = now + .6; step = 94; return true;
+                case 94:
+                    if (now < until) return true;
+                    {
+                        float radius = RingRadiusAt(rings, recheckSource), age = RingAgeAt(rings, recheckSource);
+                        float sinceMove = (float)(now - recheckMoved), sinceEmit = (float)(now - recheckEmitted);
+                        // The ring is older than the time since the move: it started at the elapsed phase (≥ 0.5 s).
+                        Expect(recheckRingBefore == 0 && Mathf.Approximately(radius, PulseSpec.Shout) && age > sinceMove + .3f && age <= sinceEmit + .05f,
+                            "R1 recheck upgrade", $"behind the wall ring {recheckRingBefore}m → after stepping out ring {radius}m, age {age:F2}s " +
+                            $"(moved {sinceMove:F2}s ago, emitted {sinceEmit:F2}s ago)");
+                    }
                     step = 10; return true;
                 case 10: // S9 — live boundary flicker through the real client and server voice paths
                     {
@@ -358,9 +391,65 @@ namespace Marco.Network.Editor
                             $"{flickerFrame} frames: own rings {client:0.0}/s, server pulses {server:0.0}/s per speaker (≤ 7)");
                     }
                     step = 12; return true;
+                case 12: // §3.6 camping distance: horizontal (XZ) only, cumulative since the last reset (11-13)
+                    if (round.IsStartLocked(player.Role)) return true;   // the timer is paused while start-locked
+                    CampingDistanceChecks(round, player);
+                    step = 13; return true;
                 default:
                     return false;
             }
+        }
+
+        // Drives the server's own TickBreath with synthetic 0.25 s samples on a fresh motion record (no waiting).
+        static void CampingDistanceChecks(NetworkRound round, NetworkPlayer player)
+        {
+            var tick = typeof(NetworkRound).GetMethod("TickBreath", Flags);
+            var type = typeof(NetworkRound).GetNestedType("SoundMotion", BindingFlags.NonPublic);
+            if (tick == null || type == null) { results.Add("skip camping distance: TickBreath / SoundMotion not found"); return; }
+            Vector3 origin = player.transform.position;
+            object Fresh() { var m = Activator.CreateInstance(type, true); type.GetField("BreathPosition").SetValue(m, origin); return m; }
+            float Get(object m, string f) => (float)type.GetField(f).GetValue(m);
+            int Breaths(object m) => (int)type.GetField("BreathCount").GetValue(m);
+            void Sample(object m, Vector3 p) => tick.Invoke(round, new object[] { player, m, p, .25f });
+
+            // C1: two jumps in place (up 1.25 m and down, twice — 5 m of vertical path), no horizontal movement.
+            var c1 = Fresh();
+            for (int j = 0; j < 2; j++) foreach (float y in new[] { .6f, 1.25f, .6f, 0f }) Sample(c1, origin + Vector3.up * y);
+            float c1Moved = Get(c1, "BreathResetMoved"), c1Still = Get(c1, "StillSeconds");
+            int c1At = -1;
+            for (int t = 9; t <= 90 && c1At < 0; t++) { Sample(c1, origin); if (Breaths(c1) > 0) c1At = t; }
+            Expect(c1Moved < .001f && Mathf.Approximately(c1Still, 2f) && c1At == 80, "C1 camping: vertical only",
+                $"after 2 jumps moved {c1Moved:0.###}m (3D path 5m), still {c1Still:0.##}s, first breath at {c1At * .25f:0.##}s (expected 20s)");
+
+            // C2: after the first breath, 4 m horizontal keeps the timer; the 5th metre resets it.
+            var c2 = Fresh();
+            for (int t = 0; t < 80; t++) Sample(c2, origin);
+            int c2Before = Breaths(c2);
+            for (int k = 1; k <= 4; k++) Sample(c2, origin + Vector3.right * (k * 1.01f));
+            int c2After4 = Breaths(c2); float c2Still4 = Get(c2, "StillSeconds");
+            Sample(c2, origin + Vector3.right * 5.05f);
+            Expect(c2Before == 1 && c2After4 == 1 && Breaths(c2) == 0 && Get(c2, "StillSeconds") == 0f, "C2 camping: 5 m horizontal resets",
+                $"breaths {c2Before} → after 4m {c2After4} (still {c2Still4:0.##}s) → after 5m {Breaths(c2)} (still {Get(c2, "StillSeconds"):0.##}s)");
+
+            // C3: before the first breath, 3 m horizontal resets (unchanged rule).
+            var c3 = Fresh();
+            for (int t = 0; t < 10; t++) Sample(c3, origin);
+            Sample(c3, origin + Vector3.forward * 1.01f); Sample(c3, origin + Vector3.forward * 2.02f);
+            float c3Still2 = Get(c3, "StillSeconds");
+            Sample(c3, origin + Vector3.forward * 3.03f);
+            Expect(Mathf.Approximately(c3Still2, 3f) && Get(c3, "StillSeconds") == 0f && Breaths(c3) == 0, "C3 camping: 3 m before the first breath resets",
+                $"still {c3Still2:0.##}s after 2m → {Get(c3, "StillSeconds"):0.##}s after 3m");
+
+            // C5 (§3.6 · 3.3-2, 11-14): the treatment / sound-can lock does not pause the timer — still 15 s, locked, first breath at 20 s.
+            var c5 = Fresh();
+            for (int t = 0; t < 60; t++) Sample(c5, origin);
+            player.SetTreatmentLocked(true);
+            int c5At = -1;
+            try { for (int t = 61; t <= 90 && c5At < 0; t++) { Sample(c5, origin); if (Breaths(c5) > 0) c5At = t; } }
+            finally { player.SetTreatmentLocked(false); }
+            bool pauseOff = !(bool)typeof(RippleServerFeatures).GetField("BreathPauseWhenLocked", Flags).GetValue(null);
+            Expect(pauseOff ? c5At == 80 : c5At < 0, "C5 camping: locked player keeps the timer",
+                $"BreathPauseWhenLocked={!pauseOff}; locked at 15s, first breath at {(c5At < 0 ? "none" : (c5At * .25f).ToString("0.##") + "s")} (expected {(pauseOff ? "20s" : "none")})");
         }
 
         // An open floor spot at `distance` from target with a clear line to it.
@@ -368,6 +457,65 @@ namespace Marco.Network.Editor
         // height + margin above it (a prop top under a ceiling slab is no place to stand — the eye would sit inside
         // the slab), and among those the walkable floor, not a prop top more than 1 m above the lowest one.
         const float StandEyeHeight = 1.65f, StandMargin = .55f;
+        // S7b — 부록 A [사운드 차폐] 수면 경유 판정 [11-16]: drain 2 (teaching-pool sump) → the nearest teaching-pool edge on the
+        // deck (standing ear, +1.6 m). The path goes up the sump to the surface: 0 walls, 1 surface. Count only — the role
+        // (Seeker 7.2 m hears it, Survivor 6 m does not at 6.74 m) is covered by MapLockerOcclusionTests.
+        static void DrainTwoDeckCount()
+        {
+            var worldType = typeof(NetworkRound).Assembly.GetType("Marco.Network.Audio.SoundWorld");
+            var count = worldType?.GetMethod("CountHearingOccluders", Flags);
+            if (count == null) { results.Add("skip S7b drain 2 deck count: no water-path judgement"); return; }
+            if (!DrainHatchView.TryGet(DrainHatchId.Second, out var hatch) || hatch == null) { results.Add("skip S7b drain 2 deck count: no hatch"); return; }
+            var world = Activator.CreateInstance(worldType, true);
+            var tryPool = worldType.GetMethod("TryPool", Flags);
+            Vector3 source = hatch.transform.position, ear = default;
+            float best = float.MaxValue;
+            for (int i = 0; i < 16; i++)
+            {
+                var direction = new Vector3(Mathf.Cos(i * Mathf.PI / 8f), 0, Mathf.Sin(i * Mathf.PI / 8f));
+                for (float d = .05f; d < 12f && d < best; d += .05f)
+                {
+                    var point = new Vector3(source.x, 0, source.z) + direction * d;
+                    if ((bool)tryPool.Invoke(world, new object[] { point, null })) continue;
+                    point += direction * .35f;   // the standing capsule's centre just behind the edge
+                    if (Physics.Raycast(point + Vector3.up * 2.5f, Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore))
+                    { best = d; ear = floor.point + Vector3.up * 1.6f; }
+                    break;
+                }
+            }
+            if (best == float.MaxValue) { results.Add("skip S7b drain 2 deck count: no deck edge"); return; }
+            var args = new object[] { source, ear, Vector3.Distance(source, ear), 0 };
+            int walls = (int)count.Invoke(world, args), water = (int)args[3];
+            Expect(walls == 0 && water == 1, "S7b drain 2 → teaching-pool edge deck",
+                $"hatch {source:F2} → ear {ear:F2} ({Vector3.Distance(source, ear):F2}m): walls={walls} water={water} (expected 0 / 1 — up the sump, through the surface)");
+        }
+
+        static Vector3 recheckSource, recheckOpen;
+        static double recheckEmitted, recheckMoved;
+        static float recheckRingBefore;
+
+        // A standing capsule position on the floor under (x, z) at ground level (as Spot: floor + 1.05).
+        static bool Stand(Vector3 xz, out Vector3 spot)
+        {
+            spot = default;
+            if (!Physics.Raycast(new Vector3(xz.x, 2.5f, xz.z), Vector3.down, out var floor, 4f, ~0, QueryTriggerInteraction.Ignore) || floor.normal.y < .7f) return false;
+            spot = floor.point + Vector3.up * 1.05f;
+            return true;
+        }
+
+        static float RingAgeAt(WalkingFootRings rings, Vector3 point)
+        {
+            float age = -1;
+            foreach (var ring in Rings(rings))
+            {
+                var type = ring.GetType();
+                if (!(bool)type.GetField("Sound").GetValue(ring)) continue;
+                var go = (GameObject)type.GetField("Object").GetValue(ring);
+                if (Vector3.Distance(go.transform.position, point) < .3f) age = Time.time - (float)type.GetField("Started").GetValue(ring);
+            }
+            return age;
+        }
+
         static bool Spot(Vector3 target, float distance, out Vector3 spot)
         {
             var open = new List<Vector3>();

@@ -9,9 +9,17 @@ namespace Marco.Network.Player
 {
     public sealed partial class PlayerMovement
     {
-        private float shoutEnds, shoutReady, localShoutEnds, localShoutReady, fearEnds, screamFlash;
+        private float shoutEnds, shoutReady, localShoutEnds, localShoutReady, fearEnds;
+        // Read-only presentation event: this client's own automatic scream (연출 8.1 white edge flash is drawn by a subscriber).
+        public event System.Action LocalScreamFlash;
+        // Read-only presentation event: a Seeker's shout (not a scream) reached this client — the first delivery only, with its perceived duration (연출 8.1 red silhouette highlight).
+        public event System.Action<float> RemoteShoutHeard;
         private const float ShoutWindupSeconds = 1f, ShoutCooldownSeconds = 45f;
         private bool shoutPending, localShoutRequested;
+        // [11-24 V51 C] 사용자 결정 2026-11-23: the automatic scream sounds this long after the shout fires (연출.md 16.2 [GAP 연출 고유
+        // 시작값] — startle 0.2 … 0.4 s + recognition, the middle of the requested 0.5 … 1.0 s). Server only; the target's own time.
+        public const float ScreamDelaySeconds = .7f;
+        private float screamDueAt = -1f;   // server: this Runner's pending automatic scream (−1 = none)
         private readonly HashSet<int> suppressedRunners = new();
         public int ScreamCount { get; private set; }
         public float ShoutCooldownRemaining => Mathf.Max(0, localShoutReady - Time.time);
@@ -29,7 +37,7 @@ namespace Marco.Network.Player
 
         private void ResetShoutServer()
         {
-            shoutPending = false; shoutEnds = shoutReady = 0;
+            shoutPending = false; shoutEnds = shoutReady = 0; screamDueAt = -1f;
             suppressedRunners.Clear(); ScreamCount = 0;
             ShoutStateTarget(Owner, 0, 0);
             FearTarget(Owner, 0);
@@ -59,6 +67,7 @@ namespace Marco.Network.Player
                 if (!CanShout) FinishShout(false);
                 else if (Time.time >= shoutEnds) FinishShout(true);
             }
+            if (IsServerInitialized && screamDueAt >= 0f && Time.time >= screamDueAt) FireDueScream();
             if (!IsOwner || Cursor.lockState != CursorLockMode.Locked || !ShoutRoundActive) return;
             if (player.Role == PlayerRole.Runner && Input.GetKeyDown(KeyCode.LeftControl)) SuppressShoutServer();
         }
@@ -77,9 +86,9 @@ namespace Marco.Network.Player
             ShoutStateTarget(Owner, ShoutWindupSeconds, 0);
             foreach (var target in NetworkPlayer.All)
                 if (target.Status == PlayerStatus.Alive && target.Role == PlayerRole.Runner &&
-                    Vector3.Distance(transform.position, target.transform.position) <= 22f &&
+                    Vector3.Distance(transform.position, target.transform.position) <= PulseSpec.FearRadius &&
                     target.TryGetComponent<PlayerMovement>(out var movement))
-                    movement.FearTarget(target.Owner, 1f);
+                    movement.FearTarget(target.Owner, ShoutWindupSeconds);   // 부록 A [술래 외침] 억제는 선딜 1초 안 — 공포도 그 1초
         }
 
         [ServerRpc]
@@ -97,7 +106,7 @@ namespace Marco.Network.Player
             {
                 if (!seeker.TryGetComponent<PlayerMovement>(out var skill) || !skill.shoutPending ||
                     !skill.CanShout || Time.time >= skill.shoutEnds ||
-                    Vector3.Distance(transform.position, seeker.transform.position) > 22f ||
+                    Vector3.Distance(transform.position, seeker.transform.position) > PulseSpec.FearRadius ||
                     skill.suppressedRunners.Contains(player.PlayerId)) continue;
                 if (!IsDiving && !TrySpendSuppressionBreath()) return;
                 skill.suppressedRunners.Add(player.PlayerId);
@@ -119,33 +128,63 @@ namespace Marco.Network.Player
             foreach (var target in NetworkPlayer.All)
             {
                 if (target.Status != PlayerStatus.Alive || target.Role != PlayerRole.Runner ||
-                    Vector3.Distance(transform.position, target.transform.position) > 22f ||
+                    Vector3.Distance(transform.position, target.transform.position) > PulseSpec.FearRadius ||
                     !target.TryGetComponent<PlayerMovement>(out var movement)) continue;
                 movement.FearTarget(target.Owner, 0);
                 if (movement.IsDiving || suppressedRunners.Contains(target.PlayerId)) continue;
-                movement.ScreamCount++;
-                NetworkRound.Instance?.RecordAwardNoise(target.PlayerId, AwardNoise.Scream, 9f, 1f); // 기획서 8.1 · 8.2
-                movement.EmitAbilitySound(true);
+                // [11-24 V51 C] the suppression judgement is made here, at the shout (unchanged); the scream itself comes ScreamDelaySeconds later.
+                if (movement.screamDueAt < 0f) movement.screamDueAt = Time.time + ScreamDelaySeconds;
             }
+        }
+
+        // [11-24 V51 C] Server: this Runner's delayed automatic scream. Not sounded when, by then, the Runner dived, is no longer an alive
+        // Runner (tagged, escaped), or the round is over (a Runner who left took this object with it). The count, the award (Scream),
+        // the sound, the ring and the own white flash all happen now, at the Runner's position now.
+        private void FireDueScream()
+        {
+            screamDueAt = -1f;
+            if (!ShoutRoundActive || player.Status != PlayerStatus.Alive || player.Role != PlayerRole.Runner || IsDiving) return;
+            ScreamCount++;
+            NetworkRound.Instance?.RecordAwardNoise(player.PlayerId, AwardNoise.Scream, PulseSpec.Scream, PulseSpec.ScreamSeconds); // 기획서 8.1 · 8.2
+            EmitAbilitySound(true);
         }
 
         private void EmitAbilitySound(bool scream)
         {
             var round = NetworkRound.Instance;
             Vector3 origin = transform.position; origin.y = WaterEyeHeight;
-            float radius = scream ? 9f : 22f, duration = scream ? 1f : 2.5f;
+            float radius = scream ? PulseSpec.Scream : PulseSpec.Shout, duration = scream ? PulseSpec.ScreamSeconds : PulseSpec.ShoutSeconds;
+            int speaker = player.PlayerId;
+            // 부록 A [사운드 차폐] 재판정 [11-16]: listeners who do not hear it clearly are re-judged every 0.25 s, upward only.
+            var tracked = round != null ? round.BeginRecheck(origin, radius, duration) : null;
+            if (tracked != null) tracked.Send = (id, hearing, elapsed) =>
+            {
+                if (this == null || !NetworkPlayer.TryGet(id, out var listener) || listener == null) return;
+                AbilitySoundTarget(listener.Owner, hearing.Point, hearing.PerceivedRadius,
+                    PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, false, true, hearing.DurationScale), hearing.Gain,
+                    hearing.Blocked, scream, false, SourceSnapshotRules.ForListener(speaker, listener, hearing.Blocked), SourceSnapshotRules.None,
+                    elapsed, tracked.Id);
+            };
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
                 if (listener.HasEchoBody && !round.CanTarget(listener)) continue;   // 3.2-1: Echo bodies watch the map's pulses
                 if (listener == player)
-                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
-                else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
-                    out bool blocked, out float perceivedRadius))
+                {
+                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None, 0f, -1);
+                    continue;
+                }
+                bool heard = round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
+                    out bool blocked, out float perceivedRadius, out float occludedScale);
+                var state = RecheckRules.State(heard, blocked);
+                if (tracked != null && listener.Status == PlayerStatus.Alive && round.CanTarget(listener) &&
+                    RecheckRules.Tracks(false, listener.HasEchoBody, false, false, state)) tracked.Note(listener.PlayerId, state);
+                if (heard)
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
-                        listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1), gain, blocked, scream, false,
-                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
+                        PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, listener.HasEchoBody, true, occludedScale), gain, blocked, scream, false,
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None, 0f, tracked?.Id ?? -1);
             }
+            round?.CommitRecheck(tracked);
         }
 
         [TargetRpc]
@@ -160,29 +199,53 @@ namespace Marco.Network.Player
         [TargetRpc]
         private void FearTarget(NetworkConnection connection, float remaining) => fearEnds = Time.time + remaining;
 
+        // [11-16 재판정] elapsed > 0 = an upgrade of pulse pulseId: the ring starts at phase elapsed / duration and a muffled
+        // vocal of the same pulse turns clear in place (else a new one starts elapsed seconds in; skipped if the clip is shorter).
         [TargetRpc]
         private void AbilitySoundTarget(NetworkConnection connection, Vector3 point, float radius,
-            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB)
+            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB, float elapsed, int pulseId)
         {
             var round = NetworkRound.Instance;
-            if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream);
+            if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream, elapsed);
             if (!blocked && !self && (snapshotA >= 0 || snapshotB >= 0))   // §5.5-2
-                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, RecheckRules.Remaining(duration, elapsed)); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
-            if (self && scream) screamFlash = Time.time + .2f;
+            if (self && scream) LocalScreamFlash?.Invoke();
+            if (!self && !scream && elapsed <= 0f) RemoteShoutHeard?.Invoke(duration);
             // Keep survivor screams and seeker vocals separate, including missing assets.
+            if (elapsed > 0f && pulseId >= 0 && abilityVocals.TryGetValue(pulseId, out var playing) && playing.source != null && playing.source.isPlaying)
+            {
+                playing.source.transform.position = point;
+                playing.source.volume = gain;
+                Marco.Network.Audio.RoundAudioPlayback.Follow(playing.filter, blocked);
+                return;
+            }
             var clip = Resources.Load<AudioClip>(scream ? "MarcoSound/Scream" : "MarcoSound/Shout");
-            if (clip == null) return;
+            if (clip == null || elapsed >= clip.length) return;
             var root = new GameObject("Ability vocal"); root.transform.position = point;
             var source = root.AddComponent<AudioSource>();
             source.clip = clip; source.spatialBlend = self ? 0 : 1; source.volume = gain;
             source.dopplerLevel = 0; source.maxDistance = 200;
             source.rolloffMode = AudioRolloffMode.Custom;
             source.SetCustomCurve(AudioSourceCurveType.CustomRolloff, AnimationCurve.Constant(0, 1, 1));
-            if (blocked) root.AddComponent<AudioLowPassFilter>().cutoffFrequency = 1000;
+            // Wall muffling (1,000 Hz) and the listener's own dive (650 Hz) — same values as every round sound (11-14).
+            var filter = root.AddComponent<AudioLowPassFilter>();
+            Marco.Network.Audio.RoundAudioPlayback.Follow(filter, blocked);
             // Audio finishes naturally; pulse lifetime is controlled independently above.
-            source.Play(); Destroy(root, clip.length + .1f);
+            if (elapsed > 0f) source.time = elapsed;
+            source.Play(); Destroy(root, clip.length - Mathf.Max(0f, elapsed) + .1f);
+            if (pulseId >= 0)
+            {
+                abilityVocalSweep.Clear();
+                foreach (var pair in abilityVocals) if (pair.Value.source == null) abilityVocalSweep.Add(pair.Key);
+                foreach (int stale in abilityVocalSweep) abilityVocals.Remove(stale);
+                abilityVocals[pulseId] = (source, filter);
+            }
         }
+
+        // Client: this speaker's vocals by pulse id, so a recheck upgrade turns the muffled one clear in place.
+        private readonly System.Collections.Generic.Dictionary<int, (AudioSource source, AudioLowPassFilter filter)> abilityVocals = new();
+        private readonly System.Collections.Generic.List<int> abilityVocalSweep = new();
 
         private void OnGUI()
         {
@@ -190,14 +253,6 @@ namespace Marco.Network.Player
             string message = player.Role == PlayerRole.Runner && fearEnds > Time.time
                 ? "[Left Ctrl] 숨 참기 · 숨 4.5 소모" : "";
             if (message.Length > 0) GUI.Box(new Rect(Screen.width / 2f - 160, Screen.height - 170, 320, 30), message);
-            if (screamFlash > Time.time)
-            {
-                var previous = GUI.color;
-                GUI.color = new Color(1, 1, 1, (screamFlash - Time.time) * 2);
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, 8), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(0, Screen.height - 8, Screen.width, 8), Texture2D.whiteTexture);
-                GUI.color = previous;
-            }
         }
     }
 }

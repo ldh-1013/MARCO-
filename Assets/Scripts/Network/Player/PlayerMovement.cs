@@ -16,6 +16,8 @@ namespace Marco.Network.Player
         [SerializeField, Min(0.1f)] private float jumpHeight = 1.25f;
         [SerializeField, Min(0.1f)] private float gravity = 22f;
         [SerializeField] private float mouseSensitivity = 2.2f;
+        // 부록 A [붕대] 이속 −75% → × 0.25 (현재 속도 기준).
+        public const float BandageMoveScale = .25f;
         [SerializeField] private Transform cameraPivot;
         [SerializeField, Min(0.5f)] private float crouchedHeight = 1.1f;
         [SerializeField, Min(0.05f)] private float crouchCameraDrop = 0.35f;
@@ -45,6 +47,7 @@ namespace Marco.Network.Player
         public bool IsCrouching => crouching;
         public float SprintStaminaRatio => Mathf.Clamp01(sprintStamina /
             Mathf.Max(0.01f, MovementConfig.RunnerSprintStaminaSeconds));
+        public bool IsSprintExhausted => sprintExhaustionRemaining > 0f;
         private WinConditionConfig MovementConfig => NetworkRound.Instance != null
             ? NetworkRound.Instance.MovementConfig : FallbackMovementConfig;
 
@@ -138,14 +141,24 @@ namespace Marco.Network.Player
             UpdateWaterPresentation();
             TickShout();
             if (IsServerInitialized) { TickServerBreath(Time.deltaTime); TickServerSprintStamina(Time.deltaTime); }
+            // [11-24 V51 B] 서버 보정 한 곳: an Echo body another machine owns is held in the flight box here too (the owner clamps itself
+            // every frame, so inside values pass untouched; a position the server somehow holds outside the building is pulled back to the edge).
+            if (IsServerInitialized && !IsOwner && player.HasEchoBody)
+            {
+                var held = EchoBodyRules.ClampFlight(transform.position);
+                if (held != transform.position) transform.position = held;
+            }
             if (!IsOwner) return;
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            // Development only: free / lock the cursor without the menu (Esc is the settings menu, SettingsMenu).
+            if (Input.GetKeyDown(KeyCode.F6) && !Marco.Network.Settings.SettingsMenu.IsOpen)
                 Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? CursorLockMode.None : CursorLockMode.Locked;
+#endif
             // Clicking the HUD must not relock: locking recenters the cursor, so the IMGUI button
-            // never sees its mouse-up and the click is lost. An open cheat panel keeps it free too.
+            // never sees its mouse-up and the click is lost. An open cheat panel or settings menu keeps it free too.
             if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0) &&
-                !TestHudSkin.IsPointerOver && !TestHudSkin.HoldsCursor)
+                !TestHudSkin.IsPointerOver && !TestHudSkin.HoldsCursor && !Marco.Network.Settings.SettingsMenu.IsOpen)
                 Cursor.lockState = CursorLockMode.Locked;
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
@@ -155,8 +168,10 @@ namespace Marco.Network.Player
                 player.IsPlacingSoundCan ? Mathf.Max(0f, SoundCanConfig.PlacementLookDown - pitch) : 0f, Time.deltaTime * 120f);
             if (locked && !tagBlackout)
             {
-                transform.Rotate(0, Input.GetAxis("Mouse X") * mouseSensitivity, 0);
-                pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * mouseSensitivity, -70, 85);
+                // 12.6 마우스 감도 · Y축 반전 (local settings; scale 1 and no inversion are the old input exactly).
+                float sensitivity = mouseSensitivity * Marco.Network.Settings.SettingsRuntime.MouseScale;
+                transform.Rotate(0, Input.GetAxis("Mouse X") * sensitivity, 0);
+                pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * (Marco.Network.Settings.SettingsRuntime.InvertY ? -sensitivity : sensitivity), -70, 85);
             }
             if (cameraPivot != null) cameraPivot.localRotation = Quaternion.Euler(Mathf.Clamp(pitch + placementLookDown, -70, 85), 0, 0);
 
@@ -196,12 +211,8 @@ namespace Marco.Network.Player
             // Role reveal / Seeker hold at round start (기획서 부록 A [라운드 시작]): looking around stays free.
             bool startLocked = NetworkRound.Instance != null && NetworkRound.Instance.IsStartLocked(player.Role);
             bool canCrouchRole = !IsSwimming && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
-            if (locked && canCrouchRole && !player.IsTreatmentLocked && !startLocked && Input.GetKeyDown(KeyCode.C))
-            {
-                ApplyCrouchPresentation(!crouching);
-                SetCrouchServer(crouching);
-            }
-            else if (crouching && !canCrouchRole)
+            // No player crouch key any more (C removed); only forced crouching (sound can, treatment) remains.
+            if (crouching && !canCrouchRole)
             {
                 ApplyCrouchPresentation(false);
                 SetCrouchServer(false);
@@ -219,7 +230,10 @@ namespace Marco.Network.Player
                     ref sprintRecoveryDelayRemaining, false, Time.deltaTime);
                 return;
             }
-            bool wantsSprint = moving && !player.IsTreatmentLocked && !startLocked && !crouching &&
+            // 7절 · 부록 A [붕대]: 사용 중 이동 −75%(현재 속도 기준, 곱연산), 질주는 취소 사유라 사용 중에는 질주 속도가 되지 않는다.
+            // Derived every frame from the server-confirmed bandage action (never cached).
+            bool bandaging = player.HasHealingAction && player.HealingActionIsBandage;
+            bool wantsSprint = moving && !bandaging && !player.IsTreatmentLocked && !startLocked && !crouching &&
                 player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive && Input.GetKey(KeyCode.LeftShift);
             ReportSprintIntent(wantsSprint);
             IsSprinting = StepSprintStamina(ref sprintStamina, ref sprintExhaustionRemaining,
@@ -261,6 +275,7 @@ namespace Marco.Network.Player
                     : (IsSprinting ? MovementConfig.RunnerSprintSpeed : MovementConfig.RunnerWalkSpeed) * healthMultiplier;
                 if (!swimming && sprintExhaustionRemaining > 0f)
                     speed *= MovementConfig.RunnerSprintExhaustionSpeedMultiplier;
+                if (!swimming && bandaging) speed *= BandageMoveScale;
             }
             if (SwimPenaltyRemaining > 0f) speed *= .8f;
             Vector3 velocity = input * speed + Vector3.up * verticalVelocity;

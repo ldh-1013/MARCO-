@@ -48,7 +48,7 @@ namespace Marco.Network.Player
                 round.Result == RoundResult.InProgress && !GetComponent<PlayerMovement>().IsSwimming;
             if (player.IsPlacingSoundCan || player.SoundCanStage == SoundCanStage.Placing)
             {
-                if (!eligible || Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.Escape)) CancelSoundCanCapture();
+                if (!eligible || Input.GetKeyDown(KeyCode.G)) CancelSoundCanCapture();
                 return;
             }
             if (player.SoundCanStage == SoundCanStage.Recording)

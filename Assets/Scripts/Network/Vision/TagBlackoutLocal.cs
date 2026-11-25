@@ -58,7 +58,11 @@ namespace Marco.Network.Vision
             try
             {
                 if (Event.current == null || Event.current.type != EventType.Repaint) return;
-                float alpha = EchoBodyRules.TagBlackoutCover(Elapsed(player), out float shade);
+                float elapsed = Elapsed(player);
+                float alpha = EchoBodyRules.TagBlackoutCover(elapsed, out float shade);
+                // 연출.md 7.1 소나 시야 페이드 인 (VB B-3): the last 0.5 s opens ease-out instead of linearly (same start, same end)
+                if (alpha > 0f && elapsed >= EchoBodyRules.TagBlackoutSeconds)
+                    alpha = EchoFeelRules.RevealCover(elapsed - EchoBodyRules.TagBlackoutSeconds);
                 if (alpha <= 0f) return;
                 var saved = GUI.color;
                 GUI.color = new Color(shade, shade, shade, alpha);

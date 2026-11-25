@@ -22,6 +22,7 @@ namespace Marco.Network.Player
         private DrainHatchId? workingDrain;
         private bool workingTreatment;
         private bool workingBandage;
+        private bool patientCancelSent;
         private int selectedItemSlot = 1;
         private bool aimingDecoy;
         private DecoyTrajectoryPreview decoyPreview;
@@ -37,6 +38,8 @@ namespace Marco.Network.Player
         public float SwingCooldownRemaining => Mathf.Max(0, nextSwingTime - Time.time);
         public float SwingCooldownFraction => Mathf.Clamp01(SwingCooldownRemaining / Mathf.Max(0.01f, swingCooldownDuration));
         public bool SwingPending => swingPending;
+        // 연출 15.3 · 4.2: the server confirmed this owner's swing (Missed / Wounded / Echoed). Presentation only.
+        public event System.Action<SwingResult> LocalSwingConfirmed;
         // Owner only: the server just turned down an underwater valve (B · E) because we were not diving.
         public bool ShowsValveDiveHint => Time.time < valveDiveHintUntil;
         public int SelectedItemSlot => selectedItemSlot;
@@ -91,9 +94,12 @@ namespace Marco.Network.Player
                 else if (Input.GetKeyDown(KeyCode.Alpha4)) selectedItemSlot = 4;
             }
 
+            if (!player.HasHealingAction) patientCancelSent = false;
+            bool inWater = GetComponent<PlayerMovement>().IsSwimming;
             if (workingBandage)
             {
-                if (!Input.GetKey(KeyCode.G) || !locked)
+                // 7절 · 부록 A [붕대]: 질주하면 취소. 8절 "수중 붕대 불가" → 사용 중 물에 들어가도 취소(스펙 해석, 11-14).
+                if (!Input.GetKey(KeyCode.G) || !locked || Input.GetKey(KeyCode.LeftShift) || inWater)
                 {
                     CancelHealingServer();
                     workingBandage = false;
@@ -101,7 +107,7 @@ namespace Marco.Network.Player
             }
             else if (locked && selectedItemSlot == 1 && Input.GetKeyDown(KeyCode.G) && !workingTreatment &&
                      workingValve == null && workingDrain == null && player.Role == PlayerRole.Runner &&
-                     player.Status == PlayerStatus.Alive)
+                     player.Status == PlayerStatus.Alive && !inWater && !Input.GetKey(KeyCode.LeftShift))
             {
                 BeginBandageServer();
                 workingBandage = true;
@@ -134,6 +140,17 @@ namespace Marco.Network.Player
                 {
                     CancelHealingServer();
                     workingTreatment = false;
+                }
+            }
+            // 3.3-2 · 부록 A [동료 치료]: 대상(환자)이 이동 키를 누르면 치료가 취소된다. The lock stays — the press cancels,
+            // and movement starts the frame the server releases the lock (11-14). Once per treatment.
+            else if (player.HasHealingAction && !player.HealingActionIsBandage && player.IsTreatmentLocked)
+            {
+                if (!patientCancelSent && locked && (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
+                    Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D)))
+                {
+                    CancelHealingServer();
+                    patientCancelSent = true;
                 }
             }
             else if (Input.GetKeyDown(KeyCode.E) && held && player.Status == PlayerStatus.Alive && !player.IsPlacingSoundCan)
@@ -387,6 +404,7 @@ namespace Marco.Network.Player
             nextSwingTime = Time.time + swingCooldownDuration;
             if (result == SwingResult.Missed) round.PlaySeekerSwingAudio();
             else round.PlaySeekerAttackAudio();
+            LocalSwingConfirmed?.Invoke(result);
         }
     }
 }

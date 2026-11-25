@@ -49,6 +49,8 @@ namespace Marco.Network.Player
         private CharacterController controller;
         private Camera sceneCamera;
         private Escape.EscapeeTransition escapeTransition;
+        // [11-23 V44] 연출 4.2 · 15.4: keeps another player's living body for the Echo-transition fade on this screen (local only).
+        private Vision.EchoTransitionFade echoFade;
 
         public int PlayerId => OwnerId;
         public PlayerRole Role => role.Value;
@@ -100,6 +102,7 @@ namespace Marco.Network.Player
             body = GetComponentInChildren<Renderer>();
             character = GetComponent<CharacterBody>();
             controller = GetComponent<CharacterController>();
+            echoFade = GetComponent<Vision.EchoTransitionFade>() ?? gameObject.AddComponent<Vision.EchoTransitionFade>();
             role.OnChange += (_, _, _) => ApplyLook();
             status.OnChange += (previous, next, _) => OnStatusChanged(previous, next);
             crouching.OnChange += (_, _, _) => ApplyCrouchState();
@@ -115,7 +118,7 @@ namespace Marco.Network.Player
                 if (EchoBodyRules.HasEscapeFade(previous, next)) escapeTransition.Begin();
                 else if (!EchoBodyRules.HasEchoBody(next)) escapeTransition.Cancel();
             }
-            if (this != Local) ApplyLook();
+            if (this != Local) { echoFade?.OnStatus(previous, next, Local); ApplyLook(); }
             else RefreshLooks();
         }
 
@@ -284,7 +287,7 @@ namespace Marco.Network.Player
 
         // The status this machine shows for the player: the owner keeps its living body under the escape fade.
         private PlayerStatus ShownStatus =>
-            escapeTransition != null && escapeTransition.HoldsLivingBody ? PlayerStatus.Alive : status.Value;
+            (escapeTransition != null && escapeTransition.HoldsLivingBody) || (echoFade != null && echoFade.Holds) ? PlayerStatus.Alive : status.Value;
 
         private void ApplyLook()
         {
@@ -296,6 +299,7 @@ namespace Marco.Network.Player
             // A registered model replaces the capsule; the capsule stays as the fallback.
             var ghost = EchoBodyRules.LookOf(shown);
             bool modelShown = character != null && character.Show(role.Value, visible, ghost);
+            if (character != null) character.SetSelfGlow(EchoBodyRules.HasSelfGlow(shown, IsOwner));   // 3.2-2, local only
             body.enabled = visible && !modelShown;
             body.material.color = ghost switch
             {

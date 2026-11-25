@@ -21,6 +21,7 @@ namespace Marco.Network.Audio
             public float Until, Started, Gain;
             public bool Muffled;
             public int LoopKey = -1, ActionId = -1;
+            public int PulseId = -1;   // [11-16 재판정] the server's pulse id (−1 = none)
         }
         private readonly List<Voice> voices = new();
         private readonly Dictionary<string, AudioClip> clips = new();
@@ -28,6 +29,9 @@ namespace Marco.Network.Audio
         private double quietSince = double.NaN, fadeStartedAt = -1;
         private float droneFadeStart, droneEnvelope;
         private const float SeekerDroneMaxVolume = .15f;
+        // 기획서 17 · 부록 A [술래 드론]: 40-70 Hz, >= 80 Hz at -24 dB or lower. The original SeekerDrone.mp3 is kept;
+        // SeekerDroneLP.wav is its offline zero-phase low-pass (68 -> 76 Hz, 11-14).
+        private const string SeekerDroneClip = "SeekerDroneLP";
 
         public void NotifyOtherSound()
         {
@@ -96,7 +100,7 @@ namespace Marco.Network.Audio
             }
             if (seekerDrone == null)
             {
-                var clip = Clip("SeekerDrone");
+                var clip = Clip(SeekerDroneClip);
                 if (clip == null) return;
                 seekerDrone = CreateSource("SeekerDrone", true);
                 seekerDrone.clip = clip;
@@ -111,10 +115,10 @@ namespace Marco.Network.Audio
         {
             if (clips.TryGetValue(name, out var result)) return result;
             result = Resources.Load<AudioClip>("MarcoSound/" + name);
-            if (result != null && (name is "SeekerDrone" or "SurfaceSwim" or "DiveAmbience" or "ValveUnderwater"))
+            if (result != null && (name is SeekerDroneClip or "SurfaceSwim" or "DiveAmbience" or "ValveUnderwater"))
             {
                 var original = result;
-                result = name == "SeekerDrone" ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
+                result = name == SeekerDroneClip ? LoopClip.PrepareDrone(original) : LoopClip.Prepare(original, .2f);
                 if (result != original) ownedLoops.Add(result);
             }
             if (result != null && (name is "Carpet" or "Mat" or "Metal" or "MetalStairs" or "WoodBench" || IsBreathClip(name)))
@@ -147,9 +151,12 @@ namespace Marco.Network.Audio
         }
 
         public void Play(string name, Vector3 point, float volume, float duration, int loopKey,
-            bool muffled, int actionId, bool local = false, float startTime = 0)
+            bool muffled, int actionId, bool local = false, float startTime = 0, int pulseId = -1)
         {
             if (name == Marco.Network.Round.PulseSpec.NoAudio) return; // ring-only pulse (D9): explicitly silent
+            // §5.1 구분 불가 그룹 · 11-14: a knock plays one of the moan clips, picked here the way the server picks a moan
+            // ("Moan_" + 0..1). Local choice, never synced; everything after this line is the moan's path.
+            if (name == Marco.Network.Round.EchoKnockRules.Clip) name = "Moan_" + Random.Range(0, 2);
             var clip = Clip(name);
             if (clip == null) return;
             // The stair recording is hotter than the other footstep clips.
@@ -164,7 +171,7 @@ namespace Marco.Network.Audio
                 var source = CreateSource("SFX " + name, local);
                 if (loopKey >= 200000) source.volume = 0f;
                 voice = new Voice { Source = source, Filter = source.gameObject.AddComponent<AudioLowPassFilter>(),
-                    LoopKey = loopKey, ActionId = actionId };
+                    LoopKey = loopKey, ActionId = actionId, PulseId = pulseId };
                 voices.Add(voice);
                 source.clip = clip;
                 source.loop = loopKey >= 0;
@@ -185,12 +192,93 @@ namespace Marco.Network.Audio
             }
         }
 
-        private static void ApplyVoiceFilter(Voice voice)
+        // 부록 A [사운드 차폐] 재판정 상향 [11-16]: the server re-judged this listener upward elapsed seconds into the pulse.
+        // A playing sound of the same pulse turns clear in place (position · volume · filter); otherwise the clip starts elapsed
+        // seconds in, and is skipped when the clip is already over. duration is the listener's full perceived duration.
+        public void PlayUpgrade(string name, Vector3 point, float volume, float duration, bool muffled, int actionId, float elapsed, int pulseId)
         {
-            var local = NetworkPlayer.Local;
-            bool diving = local != null && local.GetComponent<PlayerMovement>() is { IsDiving: true };
-            voice.Filter.enabled = voice.Muffled || diving;
-            voice.Filter.cutoffFrequency = diving ? 650f : 1000f;
+            if (name == Marco.Network.Round.PulseSpec.NoAudio) return;
+            if (pulseId >= 0)
+                foreach (var voice in voices)
+                {
+                    if (voice.PulseId != pulseId || voice.Source == null || !voice.Source.isPlaying) continue;
+                    voice.Source.transform.position = point;
+                    voice.Source.volume = Mathf.Clamp01(volume); voice.Gain = voice.Source.volume;
+                    voice.Muffled = muffled;
+                    ApplyVoiceFilter(voice);
+                    float left = voice.Source.clip != null ? voice.Source.clip.length - voice.Source.time : 0f;
+                    voice.Until = Time.time + Mathf.Max(0f, Mathf.Min(duration - elapsed, left));
+                    return;
+                }
+            if (name == Marco.Network.Round.EchoKnockRules.Clip) name = "Moan_" + Random.Range(0, 2);
+            var clip = Clip(name);
+            if (clip == null || elapsed >= clip.length || duration - elapsed <= 0f || voices.Count >= 48) return;
+            if (name == "MetalStairs") volume *= .55f;
+            var source = CreateSource("SFX " + name, false);
+            var added = new Voice { Source = source, Filter = source.gameObject.AddComponent<AudioLowPassFilter>(), ActionId = actionId, PulseId = pulseId };
+            voices.Add(added);
+            source.clip = clip; source.loop = false;
+            source.transform.position = point;
+            source.volume = Mathf.Clamp01(volume);
+            added.Muffled = muffled;
+            ApplyVoiceFilter(added);
+            added.Until = Time.time + Mathf.Min(duration - elapsed, clip.length - elapsed);
+            added.Started = Time.time; added.Gain = source.volume;
+            source.time = elapsed;
+            source.Play();
+        }
+
+        private static void ApplyVoiceFilter(Voice voice) => ApplyMuffle(voice.Filter, voice.Muffled);
+
+        // 기획서 17 "잠수 시 로우패스 먹먹함" (수영_잠수_구현메모: 650 Hz) · 벽 뒤 먹먹함 1,000 Hz — the same two values
+        // for every round sound effect, including the ones played outside this component (11-14). Voice chat is not one.
+        public const float DiveCutoff = 650f, MuffledCutoff = 1000f;
+
+        // 연출 10 · 기획서 6.2-1 잔여 30초 "심박 템포 상승": applied to the existing heartbeat only (the Runner's own, a
+        // Seeker within 8 m or a dive running out of breath) — no new heartbeat (스펙 해석, 11-14). Starting value.
+        public const float EndHeartbeatTempo = 1.25f;
+
+        public static bool EndHeartbeatPhase(NetworkRound round) =>
+            round != null && round.Mode == RoundMode.Full && round.Result == RoundResult.InProgress &&
+            round.RemainingSeconds > 0f && round.RemainingSeconds <= round.MovementConfig.SuddenDeathExitPulseRemainingSeconds;
+
+        public static bool LocalDiving
+        {
+            get
+            {
+                var local = NetworkPlayer.Local;
+                return local != null && local.GetComponent<PlayerMovement>() is { IsDiving: true };
+            }
+        }
+
+        public static void ApplyMuffle(AudioLowPassFilter filter, bool muffled)
+        {
+            if (filter == null) return;
+            bool diving = LocalDiving;
+            filter.enabled = muffled || diving;
+            filter.cutoffFrequency = diving ? DiveCutoff : MuffledCutoff;
+        }
+
+        // One-shot sources made elsewhere (Seeker shout · forced scream): followed every frame until they are destroyed,
+        // so a dive that starts or ends during the clip changes the filter too.
+        private static readonly List<(AudioLowPassFilter filter, bool muffled)> followed = new();
+
+        public static void Follow(AudioLowPassFilter filter, bool muffled)
+        {
+            ApplyMuffle(filter, muffled);
+            if (filter == null) return;
+            // A recheck upgrade (11-16) re-follows the same filter clear: one entry per filter.
+            for (int i = followed.Count - 1; i >= 0; i--) if (followed[i].filter == filter) followed.RemoveAt(i);
+            followed.Add((filter, muffled));
+        }
+
+        private static void UpdateFollowed()
+        {
+            for (int i = followed.Count - 1; i >= 0; i--)
+            {
+                if (followed[i].filter == null) followed.RemoveAt(i);
+                else ApplyMuffle(followed[i].filter, followed[i].muffled);
+            }
         }
 
         public void Stop(int key, bool healing)
@@ -235,6 +323,7 @@ namespace Marco.Network.Audio
 
         private void LateUpdate()
         {
+            UpdateFollowed();
             if (Round == null || !Round.IsClientInitialized || Round.Mode == RoundMode.NotStarted ||
                 Round.Result != RoundResult.InProgress || NetworkPlayer.Local == null)
             {
@@ -263,7 +352,8 @@ namespace Marco.Network.Audio
             if (breathWarning) heart = Mathf.Max(heart, swim.BreathSeconds <= 1f ? .65f : .4f);
             Bed(ref heartbeat, "Heartbeat", heart, 1f);
             Bed(ref diveAmbience, "DiveAmbience", alive && swim != null && swim.IsDiving ? .16f : 0f, .4f);
-            if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f : 1f;
+            if (heartbeat != null) heartbeat.pitch = breathWarning && swim.BreathSeconds <= 1f ? 1.6f
+                : EndHeartbeatPhase(Round) ? EndHeartbeatTempo : 1f;
             TickSeekerDrone(alive && local.Role == PlayerRole.Seeker && Round.StartPhase == RoundStartPhase.Released);
         }
 
@@ -271,17 +361,33 @@ namespace Marco.Network.Audio
         {
             public Vector3 Position;
             public readonly MovementPulseClock Clock = new();
+            public readonly GradeSpeedWindow Speed = new();   // [11-22] the grade input, the frames of the last 0.3 s
             public int LastTile = -1, LastConcrete = -1;
             public bool Grounded, InAir, JumpPlayed;
             public float AirStarted, PeakHeight, SuppressStepsUntil;
             public string GroundSurface = "";
             public int GroundWater;
             public int PreviousWater;
-            public int LastFootstepIndex;
-            public float FallbackStepDistance;
+            public int LastFootstepIndex;            // [11-23 V50] the own sprint SFX follows the animation's foot contacts
+            public float FallbackStepDistance;       // the pre-V42b fallback without a gait cycle (2 m)
 
         }
+
+        // [11-23 V50] read only, for the checks and the capture log: the own footstep SFX count, its grade and time.
+        public static int OwnFootstepSfx { get; private set; }
+        public static bool OwnFootstepSprint { get; private set; }
+        public static float OwnFootstepAt { get; private set; }
         private readonly Dictionary<NetworkPlayer, StepState> steps = new();
+
+        // [11-22 V42b] 연출 2.1 발 닿음 = 판정 = SFX. The own walk's judgement phase (step distance / 2 m, 0 at a pulse),
+        // written each frame the own clock advances; CharacterMotion pulls the own walk's foot contacts onto it.
+        private static float ownWalkStepPhase = float.NaN;
+        private static int ownWalkStepFrame = -10;
+        public static bool TryOwnWalkStepPhase(out float phase, out int framesOld)
+        {
+            phase = ownWalkStepPhase; framesOld = Time.frameCount - ownWalkStepFrame;
+            return framesOld >= 0 && framesOld <= 1 && !float.IsNaN(phase);
+        }
         private readonly SoundWorld footWorld = new();
 
         private void TickFootsteps(NetworkPlayer listener)
@@ -316,7 +422,7 @@ namespace Marco.Network.Audio
                 if (enteredWater)
                 {
                     var impact = new Vector3(position.x, waterLevel, position.z);
-                    if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))
+                    if (footWorld.Hear(impact, listener, 6f, out var splashPoint, out float splashGain, out bool splashBlocked))   // [GAP] 기획서에 없는 구현 시작값(점프 · 착지 SoundType 미정 — 기획서 708행)
                     {
                         float strength = Mathf.Clamp(.5f + Mathf.Max(0, -offset.y) / Mathf.Max(Time.deltaTime, .001f) * .08f, .5f, 1f);
                         if (player != listener && splashGain > 0) NotifyOtherSound();
@@ -361,12 +467,17 @@ namespace Marco.Network.Audio
                 }
                 // Remote regular steps use the same server event as the shared movement ring.
                 if (player != listener) continue;
-                float horizontalSpeed = distance / Mathf.Max(Time.deltaTime, .0001f);
+                // [11-22 V42b] the same 0.3 s average as the authority's movement ticks (부록 A [발소리 등급])
+                if (teleported) state.Speed.Reset();
+                float horizontalSpeed = teleported ? 0f : state.Speed.Push(distance, Time.deltaTime);
                 bool fast = MovementPulseClock.IsFastMovement(player.Role, horizontalSpeed, water == 1);
                 bool step = state.Clock.Advance(position, Time.deltaTime,
                     alive && !teleported && water != 2 && (onGround || water == 1), fast, out bool ring);
                 if (Time.time < state.SuppressStepsUntil) { step = false; ring = false; }
                 bool fastGrade = state.Clock.Fast;
+                ownWalkStepPhase = alive && !teleported && water == 0 && onGround && state.Clock.Moving && !fastGrade
+                    ? state.Clock.StepDistance / MovementPulseClock.WalkInterval : float.NaN;
+                ownWalkStepFrame = Time.frameCount;
                 var rings = listener.GetComponentInChildren<WalkingFootRings>();
                 if (rings != null)
                 {
@@ -380,29 +491,32 @@ namespace Marco.Network.Audio
                     }
                 }
                 if (water == 1 && step)
-                    Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);
+                    Play("SurfaceSwim", new Vector3(position.x, waterLevel, position.z), .55f, .8f, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨 — 지속 .8은 질주 등급 0.8초와 같은 값)
                 bool groundedStep = water == 0 && alive && !teleported && onGround &&
                     Time.time >= state.SuppressStepsUntil;
-                bool footContact;
-                if (player.TryGetComponent<CharacterMotion>(out var motion) && motion.HasFootstepCycle)
-                {
-                    int index = motion.FootstepIndex;
-                    footContact = groundedStep && distance > .0001f && index > state.LastFootstepIndex;
-                    state.LastFootstepIndex = index;
-                    state.FallbackStepDistance = 0f;
-                }
-                else
-                {
-                    if (!groundedStep || !state.Clock.Moving) state.FallbackStepDistance = 0f;
-                    else state.FallbackStepDistance += distance;
-                    footContact = state.FallbackStepDistance >= 2f;
-                    if (footContact) state.FallbackStepDistance %= 2f;
-                }
+                // [11-22 V42b] 연출 2.1: the own walk footstep plays on the local judgement pulse (walk 2 m — the same
+                // distance clock and grade as the authority's step), not on the animation phase. Clip, volume and
+                // duration are unchanged; what others hear is the authority's step and is unchanged.
+                // [11-23 V50] 사용자 결정: the own SPRINT footstep goes back to the animation's foot contacts (the pre-V42b way,
+                // about 3 m apart) — one SFX per 6 m judgement felt unnatural. The judgement, the 6 m ring and what others hear
+                // are unchanged. The contact index is followed every frame, so a walk ↔ sprint change neither replays nor drops one.
+                bool hasCycle = player.TryGetComponent<CharacterMotion>(out var motion) && motion.HasFootstepCycle;
+                int footIndex = hasCycle ? motion.FootstepIndex : 0;
+                bool animationContact = hasCycle && distance > .0001f && footIndex > state.LastFootstepIndex;
+                state.LastFootstepIndex = footIndex;
+                if (!fastGrade || !groundedStep) state.FallbackStepDistance = 0f;
+                else if (!hasCycle) state.FallbackStepDistance += distance;
+                bool fallbackContact = !hasCycle && state.FallbackStepDistance >= 2f;
+                if (fallbackContact) state.FallbackStepDistance %= 2f;
+                bool footContact = fastGrade ? groundedStep && (animationContact || fallbackContact) : groundedStep && step;
                 if (!footContact || contactFloor == null) continue;
                 string surface = footWorld.Surface(contactFloor, position);
                 var clip = FootstepClip(surface, state);
                 if (clip != null)
-                    Play(clip, position, .7f, fastGrade ? .8f : .4f, -1, false, -1);
+                {
+                    Play(clip, position, .7f, fastGrade ? PulseSpec.SprintSeconds : PulseSpec.WalkSeconds, -1, false, -1);   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
+                    OwnFootstepSfx++; OwnFootstepSprint = fastGrade; OwnFootstepAt = Time.time;
+                }
             }
         }
 
@@ -413,7 +527,7 @@ namespace Marco.Network.Audio
             bool wet = water == 1;
             string name = wet ? "SurfaceSwim" : FootstepClip(surface, state);
             if (name == null) return;
-            float radius = landing ? 6f : 3f;
+            float radius = landing ? 6f : 3f;   // [GAP] 기획서에 없는 구현 시작값(점프 · 착지 SoundType 미정 — 기획서 708행)
             if (!footWorld.Hear(position, listener, radius, out var point, out float gain, out bool blocked)) return;
             if (player != listener && gain > 0) NotifyOtherSound();
             var rings = listener.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>();
@@ -426,7 +540,7 @@ namespace Marco.Network.Audio
             }
 
             int previousVoices = voices.Count;
-            Play(name, point, (landing ? .9f : .7f) * gain, wet ? .4f : .38f, -1, blocked, -1, false, wet ? .08f : 0f);
+            Play(name, point, (landing ? .9f : .7f) * gain, wet ? .4f : .38f, -1, blocked, -1, false, wet ? .08f : 0f);   // [GAP] 기획서에 없는 구현 시작값(클립 길이 — 의미 불분명)
             // Useful distinction in the hierarchy without changing the clip or adding an asset.
             if (voices.Count > previousVoices) voices[voices.Count-1].Source.name = (landing ? "Landing " : "Jump ") + player.PlayerId;
         }

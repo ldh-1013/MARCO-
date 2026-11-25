@@ -171,6 +171,7 @@ namespace Marco.Network.Player
                     serverForcedSurface = true;
                     serverPenaltyUntil = Time.time + 3f;
                     NetworkRound.Instance?.EmitDrowningSound(player, waterSurface);
+                    NetworkRound.Instance?.ApplyChokeDamage(player);   // [11-24 V51 D] 질식 1회 = 태그 적중 1회와 같은 피해
                 }
             }
             else

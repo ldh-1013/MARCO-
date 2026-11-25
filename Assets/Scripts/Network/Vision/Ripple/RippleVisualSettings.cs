@@ -16,7 +16,7 @@ namespace Marco.Network.Vision
         public const float SprintRingRadius = 5f, SprintRingSeconds = .4f;
         // 부록 A [소리 등급]: Talk 1.2s (rubber-duck landing ring, D8), Shout 22m · 2.5s (drowning, exits).
         public const float TalkSeconds = 1.2f;
-        public const float ShoutRadius = 22f, ShoutSeconds = 2.5f;
+        public const float ShoutRadius = Marco.Network.Round.PulseSpec.Shout, ShoutSeconds = Marco.Network.Round.PulseSpec.ShoutSeconds;
         // 부록 A [본인 링 표시]: own ring on the own screen keeps its radius; alpha 35% (floor 30%), width 50%.
         public static float SelfAlpha = .35f;
         public const float SelfAlphaFloor = .30f;
@@ -109,6 +109,8 @@ namespace Marco.Network.Vision
         public static float WallRevealFade(float radius) => Mathf.Max(1.5f, radius * .15f);
         // Afterglow (§16.4 · 부록 A [잔상]): own ring-display rings leave their wall-floor lines, 15% → 0% over 12 s.
         public const float AfterglowAlpha = .15f, AfterglowSeconds = 12f;
+        // 메아리 소나 링의 잔류 시작 투명도 — [GAP] 기획서에 없음 — 잔상(16.4) 15%를 차용, 11-16 (EchoSonarRules).
+        public const float EchoResidualAlpha = AfterglowAlpha;
         // 연출 튜닝값: the afterglow fades in while the ring itself fades out, so there is no pop.
         public const float AfterglowFadeIn = .3f;
         public const int AfterglowCap = 12;

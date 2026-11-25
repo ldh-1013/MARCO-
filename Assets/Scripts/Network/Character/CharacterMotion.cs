@@ -45,9 +45,16 @@ namespace Marco.Network.Character
         public bool FootstepRunning => Speed > runSpeed + 0.05f;
         private float WalkPeriod => Mathf.Max(.01f, Mathf.Min(asset.walkCycleDuration, sources[1].length));
         private float RunPeriod => asset.runClip != null ? Mathf.Max(.01f,sources[2].length) : WalkPeriod;
+        // [11-22 V42b] 연출 2.1: the walk stride is the judgement step (2 m). The walk clip covers 6 m per cycle at 5 m/s
+        // (walkCycleDuration 1.2 s, two foot contacts), so it plays 1.5× (4 m per cycle). The run gait is unchanged.
+        public const float WalkStrideScale = 1.5f;
+        // [11-22 V42b] the own walk pulls its foot contacts (half-cycle phase 0) onto the local judgement pulse by speeding up
+        // or slowing down the clip, never stepping it: rate × (1 + clamp(gain × phase error, ±limit)), error in half cycles.
+        // [GAP 연출 고유 시작값 — 연출.md 16.2]: gain 2, limit 0.4 (about 0.2 s to settle at 5 m/s).
+        public const float StepLockGain = 2f, StepLockLimit = .4f;
         // Scale visible strides with actual movement, including slow stairs/crouching.
         private float GaitPlaybackRate => Mathf.Clamp(Speed /
-            (FootstepRunning && asset.runClip != null ? runSpeed * 1.5f : runSpeed), .15f, 1.6f);
+            (FootstepRunning ? (asset.runClip != null ? runSpeed * 1.5f : runSpeed) : runSpeed / WalkStrideScale), .15f, 1.6f);
         public float GaitPhase => (float)(gaitCycles - System.Math.Floor(gaitCycles));
         // One monotonic phase drives both visible feet and sound. Changing gait cannot jump indices.
         public int FootstepIndex => HasFootstepCycle ? (int)System.Math.Floor(gaitCycles * 2d) : 0;
@@ -146,7 +153,20 @@ namespace Marco.Network.Character
             walkWeight = Mathf.MoveTowards(walkWeight, moving && swimWeight < .01f ? 1 : 0, dt * 10);
             runWeight = Mathf.MoveTowards(runWeight, moving && FootstepRunning ? 1 : 0, dt * 8);
             clock += dt;
-            if (moving) gaitCycles += dt * GaitPlaybackRate / (FootstepRunning ? RunPeriod : WalkPeriod);
+            if (moving)
+            {
+                double advance = dt * GaitPlaybackRate / (FootstepRunning ? RunPeriod : WalkPeriod);
+                if (!FootstepRunning && player != null && player == NetworkPlayer.Local &&
+                    Marco.Network.Audio.RoundAudioPlayback.TryOwnWalkStepPhase(out float target, out int framesOld))
+                {
+                    // a target from the previous frame is moved on by this frame's distance (half cycle = one 2 m step)
+                    target += framesOld * Speed * dt / Marco.Network.Vision.MovementPulseClock.WalkInterval;
+                    float half = (float)(gaitCycles * 2d - System.Math.Floor(gaitCycles * 2d));
+                    float error = Mathf.Repeat(target - half + .5f, 1f) - .5f;
+                    advance *= 1f + Mathf.Clamp(StepLockGain * error, -StepLockLimit, StepLockLimit);
+                }
+                gaitCycles += advance;
+            }
             clips[0].SetTime(Mathf.Repeat(clock, Mathf.Max(.01f, sources[0].length)));
             // The fallback run reuses the same complete walk window, not the entire multi-cycle FBX.
             clips[1].SetTime(GaitPhase * WalkPeriod);

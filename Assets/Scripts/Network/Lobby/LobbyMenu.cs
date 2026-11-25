@@ -29,12 +29,16 @@ namespace Marco.Network.Lobby
         private string relayJoinInput = "";
         private LobbyIntro intro;
         private LobbyCctvBackdrop backdrop;
+        private LobbyMicCalibration micCalibration;
         public bool ShowsBackdrop => IsOpen && (intro == null || !intro.IsPlaying);
 
         private bool Joined => connector.Status == LanConnectionStatus.Connected;
         private static bool GameStarted => NetworkRound.Instance != null && NetworkRound.Instance.Mode != RoundMode.NotStarted;
         // Lobby screens are up whenever the round has not started for this player.
         public bool IsOpen => !Joined || !GameStarted;
+        // In a room, before the round (the room panel is up); visible = and not hidden by the intro.
+        public bool InRoomLobby => Joined && !GameStarted;
+        public bool RoomLobbyVisible => InRoomLobby && (intro == null || !intro.IsPlaying);
 
         private void Awake()
         {
@@ -44,6 +48,8 @@ namespace Marco.Network.Lobby
             if (intro == null) intro = gameObject.AddComponent<LobbyIntro>();
             backdrop = GetComponent<LobbyCctvBackdrop>();
             if (backdrop == null) backdrop = gameObject.AddComponent<LobbyCctvBackdrop>();
+            micCalibration = GetComponent<LobbyMicCalibration>();
+            if (micCalibration == null) micCalibration = gameObject.AddComponent<LobbyMicCalibration>();
         }
 
         private void Update()
@@ -56,7 +62,7 @@ namespace Marco.Network.Lobby
 
             // Tell the server our nickname once our player exists (the prototype's NAME message).
             var local = NetworkPlayer.Local;
-            if (local != null && local != nicknameSentFor)
+            if (local != null && local != nicknameSentFor && local.IsClientInitialized)   // not while leaving (the RPC would be dropped)
             {
                 nicknameSentFor = local;
                 local.SetNicknameServer(playerName);
@@ -114,6 +120,7 @@ namespace Marco.Network.Lobby
 
         private void OnGUI()
         {
+            if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // the settings window (uGUI) is on top
             if (intro != null && intro.IsPlaying) return;
             if (!IsOpen)
             {
@@ -168,7 +175,7 @@ namespace Marco.Network.Lobby
             RuinedUi.LayoutLabel("참가자", 90);
             GUILayout.Label(members + "명", GUILayout.Height(28));
             GUILayout.EndHorizontal();
-            GUILayout.Label("역할 무작위 배정 · 헌터 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 서바이버");
+            GUILayout.Label("역할 무작위 배정 · 술래 1명 (각자 " + (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 도망자");
             rosterScroll = GUILayout.BeginScrollView(rosterScroll, GUILayout.Height(210));
             foreach (var player in NetworkPlayer.All)
             {
@@ -204,6 +211,7 @@ namespace Marco.Network.Lobby
             if (RuinedUi.LayoutButton("방 나가기", 32, GUILayout.Height(32))) Leave("방에서 나왔습니다.");
             GUILayout.Space(15); GUILayout.Label(connector.UsingRelay ? relay.Status : status);
             GUILayout.EndArea();
+            micCalibration.Draw(new Rect(200, 580, 600, 110));   // 5.2 ③ 마이크 보정 — under the room panel
         }
 
         private void DrawEntryMenu(float scale, float offsetX)
@@ -237,6 +245,7 @@ namespace Marco.Network.Lobby
                 showJoinInput = true;
                 relay.RefreshRooms();
             }
+            if (RuinedUi.Button(new Rect(menuX, menuY + 160, 330, 65), "설정", menuFontSize, light: true)) Marco.Network.Settings.SettingsMenu.OpenSettingsFromMenu();
             if (showJoinInput) DrawRoomBrowser(scale, offsetX, canConnect);
             if (connector.Status == LanConnectionStatus.Connecting) status = "방에 연결 중…";
             GUI.enabled = true;

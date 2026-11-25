@@ -19,13 +19,8 @@ namespace Marco.Network.Voice
     [Serializable]
     public sealed class VoiceRouting
     {
-        [SerializeField] private float whisperRadius = 4f;
-        [SerializeField] private float talkRadius = 9f;
-        [SerializeField] private float shoutRadius = 22f;
-        // 기획서 5.7: the Seeker hears 1.2× farther.
-        [SerializeField] private float seekerHearingMultiplier = 1.2f;
-        // 기획서 5.6: each wall between them halves the radius.
-        [SerializeField, Range(0, 1)] private float wallAttenuation = 0.5f;
+        // Grade radii and the Seeker's ×1.2 (부록 A [소리 등급] · 기획서 5.7) come from PulseSpec — one place.
+        // 기획서 5.6: each wall between them halves the radius (PulseSpec.WallOcclusion).
         // What counts as a wall. Everything until the map gets a SoundBlocking layer
         // (walls and locker rows only); until then furniture blocks voice too.
         [SerializeField] private LayerMask occluders = ~0;
@@ -55,18 +50,18 @@ namespace Marco.Network.Voice
 
             radius = grade switch
             {
-                VoiceGrade.Whisper => whisperRadius,
-                VoiceGrade.Talk => talkRadius,
-                _ => shoutRadius,
+                VoiceGrade.Whisper => Round.PulseSpec.Whisper,
+                VoiceGrade.Talk => Round.PulseSpec.Talk,
+                _ => Round.PulseSpec.Shout,
             };
-            if (listener.Role == PlayerRole.Seeker) radius *= seekerHearingMultiplier;
+            if (listener.Role == PlayerRole.Seeker) radius *= Round.PulseSpec.SeekerHearing;
             Vector3 from = speaker.transform.position, to = listener.transform.position;
             if (speaker.TryGetComponent<PlayerMovement>(out var speakerMovement)) from.y = speakerMovement.WaterEyeHeight;
             if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) to.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(from, to);
             if (distance > radius) return false;
-            radius *= Mathf.Pow(wallAttenuation, CountWalls(from, to, distance));
-            radius *= Mathf.Pow(.5f, waterWorld.WaterSurfaceCrossings(from, to));
+            radius *= Mathf.Pow(Round.PulseSpec.WallOcclusion, CountWalls(from, to, distance));
+            radius *= Mathf.Pow(Round.PulseSpec.WaterOcclusion, waterWorld.WaterSurfaceCrossings(from, to));
             return distance <= radius;
         }
 

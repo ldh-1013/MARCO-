@@ -47,7 +47,7 @@ namespace Marco.Network.Round
         private const float TeammateTreatmentSeconds = 9f;
         private const float HealingProgressSyncSeconds = 0.1f;
         private const float ClickerRespawnSeconds = 120f;
-        private const float ClickerVisibilityRadius = 6f;
+        private const float ClickerVisibilityRadius = ClickerSpec.Radius;   // 부록 A [아이템]
         private const float ClickerPickupRange = 1.5f;
         // One each in the four diagram regions: lobby, 2F lobby, dock, main pool hall.
         private static readonly Vector3[] ClickerSpawnPoints =
@@ -92,9 +92,13 @@ namespace Marco.Network.Round
         [SerializeField] private float interactRange = 2f;
         [Header("Tag (기획서 3.1-2 · 부록 A [태그 판정])")]
         // [수정] Client attack range is derived from the base range and multiplier.
-        [SerializeField] private float tagBaseRadius = 1.2f;
+        [SerializeField] private float tagBaseRadius = 1.6f;
         // [추가] Keep the hunter attack range adjustable without changing the character scale.
-        [SerializeField] private float tagRangeMultiplier = 3f;
+        [SerializeField] private float tagRangeMultiplier = 1f;
+        // Server re-check allowance on top of TagRadius (기획서 3.1-2 · 부록 A [태그 판정]): movement is owner-authoritative,
+        // so a sprinting Runner (7.5 m/s × 100 ms round trip ≈ 0.75 m) has moved on by the time the swing arrives.
+        // Kept as "radius + allowance" so changing the radius keeps the same latency margin.
+        [SerializeField] private float tagServerTolerance = .8f;
         // Half of the horizontal cone in front of the Seeker.
         [SerializeField] private float tagHalfAngle = 45f;
         [SerializeField] private float tagHitCooldown = 2.5f;
@@ -493,13 +497,12 @@ namespace Marco.Network.Round
             SyncStartPhase();
         }
 
-        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). Server-side world-origin
-        // pulses go through the pulse delivery path (14.2), which the sound/ripple part (남경) has not
-        // built yet — like LogValveSoundSink, only log here and connect it when that path exists.
+        // Both exits, Shout grade 22 m, every 5 s from 0:30 left (기획서 6.2-1). With ExitPulseJudged the pulses go
+        // through the judged EmitSound path (EmitExitPulsesJudged); otherwise the temporary ring RPC below draws them.
         private void EmitExitPulses()
         {
             foreach (var exit in ExitView.All)
-                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
+                Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m)");
             if (RippleServerFeatures.ExitPulseJudged) EmitExitPulsesJudged();
             else ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
         }
@@ -514,7 +517,7 @@ namespace Marco.Network.Round
         {
             bool shouldPlay = IsEndDronePhase;
             if (suddenDeathDroneSource != null && shouldPlay)
-                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
             if (shouldPlay == suddenDeathDronePlaying) return;
             suddenDeathDronePlaying = shouldPlay;
 
@@ -530,11 +533,11 @@ namespace Marco.Network.Round
                 suddenDeathDroneSource.loop = true;
                 suddenDeathDroneSource.spatialBlend = 0f; // map-wide ambience
                 suddenDeathDroneSource.clip = suddenDeathDroneClip;
-                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;
+                if (SoundMap) suddenDeathDroneSource.volume = 0.2f;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
             }
             if (shouldPlay)
             {
-                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;
+                suddenDeathDroneSource.volume = (SoundMap ? .2f : 1f) * EndDroneBlend;   // [GAP] 기획서에 없는 구현 시작값(사운드맵 모드 드론 볼륨)
                 suddenDeathDroneSource.Play();
             }
             else suddenDeathDroneSource.Stop();
@@ -844,8 +847,10 @@ namespace Marco.Network.Round
                 flashOrigin = sourceController.bounds.center;
             foreach (NetworkPlayer listener in NetworkPlayer.All)
             {
-                if (listener == null || listener.Status == PlayerStatus.Escaped || listener.Status == PlayerStatus.Spectating ||
-                    (listener.transform.position - source.transform.position).sqrMagnitude > ClickerVisibilityRadius * ClickerVisibilityRadius)
+                if (listener == null) continue;
+                bool within = (listener.transform.position - source.transform.position).sqrMagnitude <= ClickerVisibilityRadius * ClickerVisibilityRadius;
+                // 7절 [11-16]: structures (walls, storey slabs, locker rows) block the flash; furniture and props do not.
+                if (!ClickerSightRules.Receives(listener == source, listener.Status, within, within && HasClearClickerPath(source, listener)))
                     continue;
                 // Nearby players all receive the terrain flash; entity concealment is applied only
                 // on the Seeker's client and only to this source Runner plus nearby props.
@@ -853,23 +858,12 @@ namespace Marco.Network.Round
             }
         }
 
-        private static bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
+        // 7절 · 부록 A [아이템] [11-16]: the same structure test as sound occlusion (SoundWorld.HasClearSight), at +0.6 m.
+        private bool HasClearClickerPath(NetworkPlayer source, NetworkPlayer listener)
         {
             if (source == listener) return true;
-            Vector3 from = source.transform.position + Vector3.up * 0.6f;
-            Vector3 to = listener.transform.position + Vector3.up * 0.6f;
-            Vector3 delta = to - from;
-            float distance = delta.magnitude;
-            if (distance <= 0.05f) return true;
-
-            RaycastHit[] hits = Physics.RaycastAll(from, delta / distance, distance,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (RaycastHit hit in hits)
-            {
-                if (hit.collider == null || hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
-                return false;
-            }
-            return true;
+            soundWorld ??= new Marco.Network.Audio.SoundWorld();
+            return soundWorld.HasClearSight(source.transform.position + Vector3.up * 0.6f, listener.transform.position + Vector3.up * 0.6f);
         }
 
         [TargetRpc]
@@ -905,7 +899,8 @@ namespace Marco.Network.Round
         {
             if (!startSchedule.HasInGameStarted) return false;
             if (valves == null || result.Value != RoundResult.InProgress || healingChannels.ContainsKey(healerId) ||
-                !TryGetAliveRunner(healerId, out var healer) || healer.IsTreatmentLocked)
+                !TryGetAliveRunner(healerId, out var healer) || healer.IsTreatmentLocked ||
+                healer.GetComponent<PlayerMovement>().IsSwimming)   // 3.3-2 · 8절: 수중 치료 불가 (11-14)
                 return false;
 
             NetworkPlayer patient = null;
@@ -915,7 +910,7 @@ namespace Marco.Network.Round
                 if (candidate == healer || candidate.Role != PlayerRole.Runner ||
                     candidate.Status != PlayerStatus.Alive || !candidate.NeedsTreatment ||
                     candidate.IsTreatmentLocked || healingChannels.ContainsKey(candidate.PlayerId) ||
-                    !HasMissingLives(candidate.PlayerId)) continue;
+                    !HasMissingLives(candidate.PlayerId) || candidate.GetComponent<PlayerMovement>().IsSwimming) continue;
                 float distance = (candidate.transform.position - healer.transform.position).sqrMagnitude;
                 if (distance > best || !HasClearTreatmentPath(healer, candidate)) continue;
                 best = distance;
@@ -928,7 +923,15 @@ namespace Marco.Network.Round
         }
 
         [Server]
-        public void CancelHealingAction(int playerId) => EndHealingChannel(playerId, cancelled: true);
+        public void CancelHealingAction(int playerId)
+        {
+            if (healingChannels.ContainsKey(playerId)) { EndHealingChannel(playerId, cancelled: true); return; }
+            // 3.3-2: the patient's movement key also cancels a teammate treatment (11-14) — same cancel as the healer's.
+            int healer = -1;
+            foreach (var pair in healingChannels)
+                if (!pair.Value.IsBandage && pair.Value.PatientId == playerId) { healer = pair.Key; break; }
+            if (healer >= 0) EndHealingChannel(healer, cancelled: true);
+        }
 
         private bool HasMissingLives(int playerId)
         {
@@ -1122,7 +1125,8 @@ namespace Marco.Network.Round
                 patientMotion.StopTreatment();
         }
 
-        // [수정] Client and server both use TagRadius; server still re-picks the target from its own state.
+        // The client predicts with TagRadius (targetInReach); the server re-picks the target from its own state,
+        // allowing up to TagRadius + tagServerTolerance for latency (기획서 3.1-2).
         [Server]
         public SwingResult TrySwing(int seekerId, Transform seeker, bool targetInReach)
         {
@@ -1131,12 +1135,24 @@ namespace Marco.Network.Round
             if (nextTagTimes.TryGetValue(seekerId, out float next) && Time.time < next) return SwingResult.Rejected;
 
             NetworkPlayer target = null;
-            var result = targetInReach && TryFindTagTarget(seeker, TagRadius, out target)
+            var result = targetInReach && TryFindTagTarget(seeker, TagRadius + tagServerTolerance, out target)
                 ? Hit(target) : SwingResult.Missed;
             nextTagTimes[seekerId] = Time.time + (result == SwingResult.Missed ? tagMissCooldown : tagHitCooldown);
             if (result != SwingResult.Missed) Debug.Log($"[MARCO] P{seekerId} hit P{target.PlayerId}: {result}");
             if (result != SwingResult.Missed) AwardSeekerHit();
             return result;
+        }
+
+        // [11-24 V51 D] 사용자 결정 2026-11-23 (기획서 5.9-1 · 3.3-1 · 부록 A [숨 게이지] 질식 페널티): one choke is one tag hit's damage —
+        // the same Hit as the Seeker's swing (2.0 → 1.0 wounded, below 2.0 → Echo), nothing else. Not a swing: no Seeker cooldown, no
+        // Seeker hit award (TrySwing keeps those). The breath code calls it once, at the moment it forces the Runner up.
+        [Server]
+        internal void ApplyChokeDamage(NetworkPlayer target)
+        {
+            if (target == null || valves == null || result.Value != RoundResult.InProgress) return;
+            if (target.Role != PlayerRole.Runner || target.Status != PlayerStatus.Alive) return;
+            var outcome = Hit(target);
+            Debug.Log($"[MARCO] P{target.PlayerId} choked: {outcome}");
         }
 
         // Full lives → wounded, told to the target alone (other Runners learn it from the moan later).
@@ -1190,7 +1206,7 @@ namespace Marco.Network.Round
         }
 
         // Nearest alive Runner body surface within range (3D) and the horizontal ±tagHalfAngle cone, with
-        // no wall in between. Both client and server call it with TagRadius.
+        // no wall in between. The client calls it with TagRadius, the server with TagRadius + tagServerTolerance.
         public bool TryFindTagTarget(Transform seeker, float range, out NetworkPlayer target)
         {
             Physics.SyncTransforms();
@@ -1207,17 +1223,8 @@ namespace Marco.Network.Round
                 if (body == null || !body.enabled) continue;
                 var offset = body.ClosestPoint(origin) - origin;
                 if (offset.sqrMagnitude > best || Vector3.Angle(forward, Vector3.ProjectOnPlane(offset, Vector3.up)) > tagHalfAngle) continue;
-                bool blocked = false;
-                float distance = offset.magnitude;
-                if (distance > 0.001f)
-                    foreach (var blocker in Physics.RaycastAll(origin, offset / distance, distance,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    {
-                        if (blocker.transform.IsChildOf(seeker) || blocker.transform.IsChildOf(player.transform)) continue;
-                        blocked = true;
-                        break;
-                    }
-                if (blocked) continue;
+                // 부록 A [태그 판정] [11-16]: only tagBlocker map parts stop a tag (TagBlockRules); bodies are ignored.
+                if (TagBlockRules.PathBlocked(origin, origin + offset, seeker, player.transform)) continue;
                 best = offset.sqrMagnitude;
                 target = player;
             }

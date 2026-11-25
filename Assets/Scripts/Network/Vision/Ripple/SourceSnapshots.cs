@@ -122,12 +122,15 @@ namespace Marco.Network.Vision
             if (snapshotB >= 0 && snapshotB != snapshotA) Show(snapshotB, duration);
         }
 
-        // §5.5-2 메아리 노크: a Runner-coloured silhouette in the Runner idle pose at the knock point. Built, not called yet.
+        // §5.5-2 메아리 노크: a Runner-coloured silhouette in the Runner idle pose at the knock point.
+        // [11-18 V39] not drawn: a knock shows the ring only, the same as a talk ring (the server still sends FakeRunner;
+        // the RPC and its ring are unchanged). KnockSilhouette = true brings the old silhouette back with SourceSnapshot.
+        public static bool KnockSilhouette = false;
         public static void ShowFakeRunner(Vector3 point, float yaw, float duration)
         {
             try
             {
-                if (!(duration > 0f) || !SurvivorBodyVisibility.Active() || !Ready() || !FakeRunnerReady()) return;
+                if (!KnockSilhouette || !(duration > 0f) || !SurvivorBodyVisibility.Active() || !Ready() || !FakeRunnerReady()) return;
                 Ensure();
                 var slot = Take(FakeRunnerId);
                 var pose = Matrix4x4.TRS(point, Quaternion.Euler(0f, yaw, 0f), Vector3.one);
@@ -261,7 +264,7 @@ namespace Marco.Network.Vision
                 float alpha = RippleVisualSettings.MaxAlpha * Mathf.Clamp01(age / RippleVisualSettings.FadeInSeconds) *
                     Mathf.Pow(1f - Mathf.Clamp01(t), RippleVisualSettings.FadePower);
                 var c = slot.Color;
-                block.SetColor(ColorId, new Color(c.r, c.g, c.b, alpha));
+                block.SetColor(ColorId, new Color(c.r, c.g, c.b, Mathf.Clamp01(alpha * Marco.Network.Settings.SettingsRuntime.RippleAlphaScale)));
                 block.SetFloat(ShapeId, 7f);
                 for (int p = 0; p < slot.Parts.Count; p++)
                 {

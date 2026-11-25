@@ -2249,8 +2249,9 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 2063974576}
   _networkObjectCache: {fileID: 0}
   interactRange: 2
-  tagBaseRadius: 1.2
-  tagRangeMultiplier: 3
+  tagBaseRadius: 1.6
+  tagRangeMultiplier: 1
+  tagServerTolerance: 0.8
   tagHalfAngle: 45
   tagHitCooldown: 2.5
   tagMissCooldown: 1.5

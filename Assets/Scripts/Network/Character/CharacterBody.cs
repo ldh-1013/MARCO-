@@ -24,6 +24,10 @@ namespace Marco.Network.Character
 
         private static Material marcoMinusCharacterTemplate;
 
+        // 3.2-2 "본인의 몸이 약하게 발광(16.2 역할별 림라이트 재사용)": emission = the look's rim colour × this.
+        // [GAP] "약하게"의 수치는 기획서에 없다 — 구현 시작값(부록 A 미등록, 플레이 테스트로 조정).
+        private const float SelfGlowStrength = .35f;
+
         private readonly List<Material> runtimeMaterials = new();
         private GameObject model;
         private GhostLook ghost;
@@ -35,6 +39,20 @@ namespace Marco.Network.Character
         public CharacterAsset Definition { get; private set; }
         public Transform BodyRoot => model == null ? null : model.transform;
         public Animator BodyAnimator { get; private set; }
+
+        // Local presentation only: the owner's own ghost body glows faintly in its rim colour (3.2-2). Re-applied after
+        // every rebuild; turning it off restores the plain ghost material.
+        public void SetSelfGlow(bool on)
+        {
+            Color glow = on && ghost != GhostLook.None ? GhostTintOf(ghost) * SelfGlowStrength : Color.black;
+            glow.a = 1f;
+            foreach (var material in runtimeMaterials)
+            {
+                if (material == null || !material.name.EndsWith(" (ghost)") || !material.HasProperty("_EmissionColor")) continue;
+                if (on && ghost != GhostLook.None) material.EnableKeyword("_EMISSION"); else material.DisableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", glow);
+            }
+        }
 
         // Fired after the model is replaced (or removed) so motion and first-person view can rebind.
         public event Action Rebuilt;

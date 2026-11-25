@@ -194,8 +194,8 @@ namespace Marco.Network.Round
                     !soundWorld.Hear(can.Position, listener, SoundCanConfig.PulseRadius,
                         out var point, out _, out bool blocked) || blocked) continue;
                 bool seeker = listener.Role == PlayerRole.Seeker;
-                SoundCanPulseTarget(listener.Owner, point, SoundCanConfig.PulseRadius * (seeker ? 1.2f : 1f),
-                    SoundCanConfig.PulseSeconds * (seeker ? 1.5f : 1f));
+                SoundCanPulseTarget(listener.Owner, point, SoundCanConfig.PulseRadius * (seeker ? PulseSpec.SeekerHearing : 1f),
+                    SoundCanConfig.PulseSeconds * (seeker ? PulseSpec.SeekerDuration : 1f));
             }
             return true;
         }

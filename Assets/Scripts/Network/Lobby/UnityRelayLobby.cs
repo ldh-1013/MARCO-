@@ -138,7 +138,15 @@ namespace Marco.Network.Lobby
                 Status = "Unity 서비스 초기화 중…";
                 await UnityServices.InitializeAsync();
                 if (!AuthenticationService.Instance.IsSignedIn)
+                {
+                    // [11-25 V61] same-PC testing: "-profile <name>" signs in under that Authentication profile (before sign-in only —
+                    // SwitchProfile throws once signed in). No argument: the default profile, exactly as before.
+                    var profile = AuthProfileArgs.Parse(Environment.GetCommandLineArgs(), out string profileName);
+                    if (profile == AuthProfileArgs.Result.Valid) AuthenticationService.Instance.SwitchProfile(profileName);
+                    else if (profile == AuthProfileArgs.Result.Invalid) Debug.Log("[Unity Auth] -profile 값 무시(영문 · 숫자 · - · _ , 30자 이내): " + profileName);
                     await AuthenticationService.Instance.SignInAnonymouslyAsync();
+                    if (profile == AuthProfileArgs.Result.Valid) Debug.Log("[Unity Auth] 프로필 " + profileName + " · 플레이어 ID " + AuthenticationService.Instance.PlayerId);
+                }
                 Ready = true;
                 Status = "Unity Relay 준비됨";
             }

@@ -98,7 +98,7 @@ namespace Marco.Network.Round
         // ring stays hidden (§5.4) but the muffled sound and the direction hint arrive, so there is no silent escape.
         private void EmitDrainWorkSound(Vector3 point)
         {
-            RippleSafe("DrainWorkSound", () => EmitSound("ValveUnderwater", point, PulseSpec.DrainWork, .5f, PulseSpec.DrainWorkPeriod,
+            RippleSafe("DrainWorkSound", () => EmitSound("ValveUnderwater", point, PulseSpec.DrainWork, .5f, PulseSpec.DrainWorkPeriod,   // [GAP] 기획서에 없는 구현 시작값(재생 볼륨)
                 underwater: true, forcePulse: true));
         }
 

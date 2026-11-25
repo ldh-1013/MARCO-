@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Marco.Core.WinCondition;
+using Marco.Network.Map;
 using Marco.Network.Player;
 using Marco.Network.Valves;
 using Marco.Network.Round;
@@ -10,35 +11,20 @@ namespace Marco.Network.Audio
     // Read existing map metadata without a reference from Marco.Network to Assembly-CSharp.
     internal sealed class SoundWorld
     {
-        private readonly Dictionary<Collider, Part> parts = new();
+        private readonly Dictionary<Collider, MapPart> parts = new();
         private readonly HashSet<MonoBehaviour> walls = new();
-        private sealed class Part
-        {
-            public string Category, Zone, DesignId;
-            public MonoBehaviour Component;
-            public bool Occluder;
-        }
-
-        private Part Metadata(Collider collider)
+        private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> spanParts = new();
+        private readonly Dictionary<MonoBehaviour, (float enter, float exit, bool slab)> pathParts = new();
+        private readonly List<PathLeg> legs = new(2);
+        private readonly List<OccluderSpan> spans = new();
+        private readonly RaycastHit[] backHits = new RaycastHit[64];
+        // The map part on a collider (Marco.Network.Map.MapParts — shared with clicker sight), cached per collider.
+        private MapPart Metadata(Collider collider)
         {
             if (parts.TryGetValue(collider, out var cached)) return cached;
-            foreach (var component in collider.GetComponentsInParent<MonoBehaviour>(true))
-            {
-                if (component == null || component.GetType().Name != "PoolV12Part") continue;
-                var type = component.GetType();
-                var part = new Part
-                {
-                    Category = type.GetField("category")?.GetValue(component) as string,
-                    Zone = type.GetField("zone")?.GetValue(component) as string,
-                    DesignId = type.GetField("designId")?.GetValue(component) as string,
-                    Occluder = type.GetField("soundOccluder")?.GetValue(component) is bool flag && flag,
-                    Component = component
-                };
-                parts[collider] = part;
-                return part;
-            }
-            parts[collider] = null;
-            return null;
+            var part = MapParts.Read(collider);
+            parts[collider] = part;
+            return part;
         }
 
         private readonly List<Bounds> pools = new();
@@ -207,7 +193,7 @@ namespace Marco.Network.Audio
                 var hit = hits[i];
                 if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
                 var part = Metadata(hit.collider);
-                if (part != null && (part.Occluder || part.Category == "Wall" || part.Category == "Floor" || part.Category == "Ceiling"))
+                if (part != null && part.IsSoundStructure)
                     reach = Mathf.Min(reach, hit.distance);
             }
             return reach;
@@ -232,10 +218,16 @@ namespace Marco.Network.Audio
             HearResolved(origin, listener, radius, out playbackPoint, out gain, out muffled, out _);
 
         public bool HearResolved(Vector3 origin, NetworkPlayer listener, float radius,
-            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius)
+            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius) =>
+            HearResolved(origin, listener, radius, out playbackPoint, out gain, out muffled, out perceivedRadius, out _);
+
+        // durationScale: §5.6 perceivedDuration factor for this listener (PulseSpec.OccludedDurationScale) — 1 when unoccluded.
+        public bool HearResolved(Vector3 origin, NetworkPlayer listener, float radius,
+            out Vector3 playbackPoint, out float gain, out bool muffled, out float perceivedRadius, out float durationScale)
         {
             perceivedRadius = radius;
             playbackPoint = origin;
+            durationScale = 1f;
             if (listener.HasEchoBody)
             {
                 gain = 1;
@@ -247,50 +239,151 @@ namespace Marco.Network.Audio
             Vector3 end = listener.transform.position;
             if (listener.TryGetComponent<PlayerMovement>(out var listenerMovement)) end.y = listenerMovement.WaterEyeHeight;
             float distance = Vector3.Distance(origin, end);
-            if (listener.Role == PlayerRole.Seeker) radius *= 1.2f;
+            if (listener.Role == PlayerRole.Seeker) radius *= Marco.Network.Round.PulseSpec.SeekerHearing;
             if (distance >= radius) return false;
-            walls.Clear();
-            if (distance > 0.05f)
-            {
-                var hits = Physics.RaycastNonAlloc(origin, (end - origin) / distance, visualHits,
-                    distance, ~0, QueryTriggerInteraction.Ignore);
-                var buffer = visualHits;
-                if (hits == buffer.Length)
-                {
-                    buffer = Physics.RaycastAll(origin, (end - origin) / distance, distance,
-                        ~0, QueryTriggerInteraction.Ignore);
-                    hits = buffer.Length;
-                }
-                for (int i = 0; i < hits; i++)
-                {
-                    var hit = buffer[i];
-                    if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
-                    var part = Metadata(hit.collider);
-                    if (part != null && (part.Occluder || part.Category == "Wall" ||
-                        part.Category == "Floor" || part.Category == "Ceiling")) walls.Add(part.Component);
-                }
-            }
-            int wallCount = 0;
-            foreach (var wall in walls)
-            {
-                string category = wall.GetType().GetField("category")?.GetValue(wall) as string;
-                wallCount += category == "Floor" || category == "Ceiling" ? 2 : 1;
-            }
-            int waterCrossings = WaterSurfaceCrossings(origin, end);
-            radius *= Mathf.Pow(0.5f, wallCount + waterCrossings);
+            int wallCount = CountHearingOccluders(origin, end, distance, out int waterCrossings);
+            radius *= Mathf.Pow(PulseSpec.WallOcclusion, wallCount) * Mathf.Pow(PulseSpec.WaterOcclusion, waterCrossings);
             if (distance >= radius) return false;
             perceivedRadius = radius;
-            muffled = walls.Count + waterCrossings > 0;
+            durationScale = PulseSpec.OccludedDurationScale(wallCount, waterCrossings, false);
+            muffled = wallCount + waterCrossings > 0;
             if (muffled)
             {
                 // Do not send exact position/distance through an occluding wall.
                 Vector3 direction = origin - end;
                 float angle = Mathf.Round(Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg / 45f) * 45f;
                 playbackPoint = end + Quaternion.Euler(0, angle, 0) * Vector3.forward * 2f;
-                gain = 0.5f;
+                gain = PulseSpec.OccludedVolume;
             }
             else gain = Mathf.Clamp01(1f - distance / Mathf.Max(radius, 0.01f));
             return true;
+        }
+
+        // 7절 · 부록 A [아이템] 섬광 대상 [11-16]: no sound-occlusion structure between the two points — the same count as
+        // sound (touching parts merged, an end on a surface not counted); furniture and props never block.
+        public bool HasClearSight(Vector3 from, Vector3 to) => CountOccluders(from, to, Vector3.Distance(from, to)) == 0;
+
+        // 부록 A [사운드 차폐] 차폐 셈 단위 [11-16]: each occluder part (차폐 파트 or Wall / Floor / Ceiling) gets one span on the
+        // line — enter = nearest forward hit, exit = length - nearest backward hit (an end inside the part: 0 or the length) —
+        // and OccluderSpans merges touching / overlapping ones (gap <= PulseSpec.OccluderMergeGap).
+        private int CountOccluders(Vector3 origin, Vector3 end, float distance)
+        {
+            legs.Clear();
+            legs.Add(new PathLeg(origin, end));
+            return CountOccluders(legs, distance);
+        }
+
+        // 부록 A [사운드 차폐] 수면 경유 판정 [11-16]: source and listener on opposite sides of the water surface → the path runs
+        // straight up from the underwater end to the surface, then to the other end (WaterPathRules), and the surface counts
+        // once. Same side, or an underwater end with a structure above it before the surface: the straight line as before.
+        // Under water = inside a pool's area and below its surface (the same test as WaterSurfaceCrossings).
+        private int CountHearingOccluders(Vector3 origin, Vector3 end, float distance, out int waterCrossings)
+        {
+            bool originUnder = Underwater(origin, out float originSurface), endUnder = Underwater(end, out float endSurface);
+            if (originUnder != endUnder)
+            {
+                Vector3 under = originUnder ? origin : end;
+                float surface = originUnder ? originSurface : endSurface;
+                if (!StructureAbove(under, surface))
+                {
+                    WaterPathRules.Build(origin, originUnder, end, endUnder, surface, legs);
+                    waterCrossings = 1;
+                    return CountOccluders(legs, distance);
+                }
+            }
+            waterCrossings = WaterSurfaceCrossings(origin, end);
+            return CountOccluders(origin, end, distance);
+        }
+
+        private bool Underwater(Vector3 point, out float surface)
+        {
+            surface = 0f;
+            if (!TryPool(point, out var pool)) return false;
+            surface = pool.center.y;
+            return point.y < surface;
+        }
+
+        // A sound structure between an underwater point and the surface straight above it (the water above is covered).
+        // A structure the point lies on (within EndOnSurface) does not count, like an end on a surface.
+        internal bool StructureAbove(Vector3 under, float surface)
+        {
+            float height = surface - under.y;
+            if (height <= EndOnSurface) return false;
+            foreach (var hit in Physics.RaycastAll(under, Vector3.up, height, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.distance <= EndOnSurface || hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                var part = Metadata(hit.collider);
+                if (part != null && part.IsSoundStructure) return true;
+            }
+            return false;
+        }
+
+        // 부록 A [사운드 차폐] 차폐 셈 단위 [11-16] over a path of legs joined end to end (one leg = the straight line). Each part's
+        // span is placed by path length; a part met on several legs is one span. The 5 cm end rule applies only at the path's
+        // two real ends, never at a joint (the surface point).
+        private int CountOccluders(List<PathLeg> path, float straightDistance)
+        {
+            walls.Clear();
+            spans.Clear();
+            pathParts.Clear();
+            if (straightDistance <= 0.05f) return 0;
+            float offset = 0f;
+            for (int k = 0; k < path.Count; k++)
+            {
+                Vector3 from = path[k].From, to = path[k].To;
+                float length = Vector3.Distance(from, to);
+                if (length <= 1e-4f) continue;
+                spanParts.Clear();
+                Vector3 direction = (to - from) / length;
+                CollectSpanHits(from, direction, length, visualHits, true);
+                CollectSpanHits(to, -direction, length, backHits, false);
+                bool first = k == 0, last = k == path.Count - 1;
+                foreach (var pair in spanParts)
+                {
+                    bool fromInside = float.IsPositiveInfinity(pair.Value.enter), toInside = float.IsNegativeInfinity(pair.Value.exit);
+                    float enter = fromInside ? 0f : pair.Value.enter;
+                    float exit = toInside ? length : pair.Value.exit;
+                    // An end lying on the part's surface (e.g. a drain hatch on the pool floor) is hit from one side only, over a
+                    // few centimetres: that is not "inside the part" and the part is not between the two ends.
+                    if (first && fromInside && exit <= EndOnSurface || last && toInside && enter >= length - EndOnSurface) continue;
+                    float pathEnter = offset + enter, pathExit = offset + Mathf.Max(enter, exit);
+                    if (pathParts.TryGetValue(pair.Key, out var seen))
+                        pathParts[pair.Key] = (Mathf.Min(seen.enter, pathEnter), Mathf.Max(seen.exit, pathExit), seen.slab);
+                    else pathParts[pair.Key] = (pathEnter, pathExit, pair.Value.slab);
+                }
+                offset += length;
+            }
+            foreach (var pair in pathParts)
+            {
+                walls.Add(pair.Key);
+                spans.Add(new OccluderSpan(pair.Value.enter, pair.Value.exit, pair.Value.slab));
+            }
+            return OccluderSpans.Count(spans, PulseSpec.OccluderMergeGap);
+        }
+
+        // An end within this distance of a part's surface counts as on the surface (the same 5 cm as the minimum line length).
+        private const float EndOnSurface = .05f;
+
+        private void CollectSpanHits(Vector3 from, Vector3 direction, float distance, RaycastHit[] buffer, bool forward)
+        {
+            int hits = Physics.RaycastNonAlloc(from, direction, buffer, distance, ~0, QueryTriggerInteraction.Ignore);
+            if (hits == buffer.Length)
+            {
+                buffer = Physics.RaycastAll(from, direction, distance, ~0, QueryTriggerInteraction.Ignore);
+                hits = buffer.Length;
+            }
+            for (int i = 0; i < hits; i++)
+            {
+                var hit = buffer[i];
+                if (hit.collider.GetComponentInParent<NetworkPlayer>() != null) continue;
+                var part = Metadata(hit.collider);
+                if (part == null || !part.IsSoundStructure) continue;
+                if (!spanParts.TryGetValue(part.Component, out var span))
+                    span = (float.PositiveInfinity, float.NegativeInfinity, part.IsSlab);
+                if (forward) span.enter = Mathf.Min(span.enter, hit.distance);
+                else span.exit = Mathf.Max(span.exit, distance - hit.distance);
+                spanParts[part.Component] = span;
+            }
         }
     }
 }

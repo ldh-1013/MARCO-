@@ -33,6 +33,7 @@ namespace Marco.Network
 
         private void OnGUI()
         {
+            if (Settings.SettingsMenu.IsOpen) return;   // IMGUI draws over uGUI: stay out of the settings window
             if (connector.Status != LanConnectionStatus.Connected) return;
             var round = NetworkRound.Instance;
             if (round == null || round.Mode == RoundMode.NotStarted) return;
@@ -40,7 +41,7 @@ namespace Marco.Network
             TestHudSkin.Begin();
             // The eliminated Echo's 3.0 s tag blackout covers the 3D view first; the HUD below stays on top of it.
             Marco.Network.Vision.TagBlackoutLocal.Draw(NetworkPlayer.Local, TestHudSkin.Width, TestHudSkin.Height);
-            DrawRunnerInjury(round);
+            DrawEndEdgePulse(round);
             DrawSeekerReticle(round);
             var local = NetworkPlayer.Local;
             if (local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive &&
@@ -193,10 +194,17 @@ namespace Marco.Network
             var help = TestHudSkin.Text(18);
             GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
             GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
-            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), "좌클릭: 앞쪽 1.2m 도망자 태그 (술래)", help);
-            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 커서 풀기/잠그기", help);
+            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), $"좌클릭: 앞쪽 {round.TagRadius:0.0#}m 도망자 태그 (술래)", help);   // §3.1-2 판정 반경 — NetworkRound.TagRadius에서 읽는다
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
+            var calibratedMic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponentInChildren<Marco.Network.Vision.MicrophoneVisionController>(true) : null;
+            if (calibratedMic != null)   // 부록 A [마이크 캘리브레이션]: the offset is shown on the test HUD only
+                GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), $"마이크 보정 {calibratedMic.CalibrationOffsetDb:+0.0;-0.0;0} dB (개발)", help);
+#else
+            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴", help);
+#endif
             GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
-            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "C: 웅크리기 · 부상자 근처 E 홀드: 치료 (9초)", help);
+            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "부상자 근처 E 홀드: 치료 (9초)", help);
             GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
             GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
         }
@@ -340,7 +348,7 @@ namespace Marco.Network
                     SoundCanStage.Empty => "G: 목소리 3초 녹음",
                     SoundCanStage.Recording => $"녹음 {player.SoundCanRecordingProgress * 3f:F1}/3초 · G: 취소",
                     SoundCanStage.Recorded => "G: 앞쪽 바닥에 설치", SoundCanStage.Placed => "G: 설치한 소리통 원격 재생",
-                    SoundCanStage.Placing => $"소리통 설치 {player.SoundCanRecordingProgress:P0} · G/Esc: 취소",
+                    SoundCanStage.Placing => $"소리통 설치 {player.SoundCanRecordingProgress:P0} · G: 취소",
                     SoundCanStage.Playing => "녹음된 목소리 재생 중", _ => "E: 소리통 줍기"
                 }
             };

@@ -93,23 +93,31 @@ namespace Marco.Network
             GUI.depth = oldDepth;
         }
 
-        private void DrawRunnerInjury(NetworkRound round)
+        // [11-16 V28 A-0] The Runner injury edges moved to Marco.Network.Vision.InjuryEdgeOverlay (screen-space stain).
+
+        // 연출 10 · 기획서 6.2-1 잔여 1분: 술래 화면에만 적색 가장자리 미세 맥동. The docs give no period or strength —
+        // starting values, tuned in play tests (11-14). Reuses the injury edge texture; colour §16.2 술래 레드 #FF3B4D.
+        internal const float EndEdgePulsePeriodSeconds = 1.6f, EndEdgePulseMaxAlpha = .18f;
+
+        internal static bool EndEdgePulseActive(NetworkRound round, NetworkPlayer player) =>
+            round != null && player != null && player.Role == PlayerRole.Seeker && player.Status == PlayerStatus.Alive &&
+            round.Mode == RoundMode.Full && round.Result == RoundResult.InProgress && round.RemainingSeconds > 0f &&
+            round.RemainingSeconds <= round.MovementConfig.SuddenDeathSeekerBoostRemainingSeconds;
+
+        internal static float EndEdgePulseAlpha(float time) =>
+            EndEdgePulseMaxAlpha * (.5f - .5f * Mathf.Cos(time * Mathf.PI * 2f / EndEdgePulsePeriodSeconds));
+
+        private void DrawEndEdgePulse(NetworkRound round)
         {
-            var player = NetworkPlayer.Local;
-            if (Event.current.type != EventType.Repaint || player == null || player.Role != PlayerRole.Runner ||
-                player.Status != PlayerStatus.Alive || player.HealthHalves <= 0 || player.HealthHalves >= round.FullHalves) return;
+            if (Event.current.type != EventType.Repaint || !EndEdgePulseActive(round, NetworkPlayer.Local)) return;
             if (injuryEdges == null) CreateInjuryEdges();
-            bool wounded = player.HealthHalves <= 2;
-            float pulse = 1 + Mathf.Sin(Time.time * Mathf.PI * 2 * (wounded ? 1.1f : 0.8f)) * (wounded ? 0.08f : 0.04f);
-            float sinceHit = Time.time - player.LastInjuryTime;
-            float flash = player.LastInjuryTime >= 0 && sinceHit >= 0 ? 0.22f * (1 - Mathf.Clamp01(sinceHit / 0.45f)) : 0;
-            Color tint = wounded ? new Color(0.9f, 0.08f, 0.025f) : new Color(1f, 0.38f, 0.045f);
-            tint.a = Mathf.Clamp01((wounded ? 0.55f : 0.32f) * pulse + flash);
+            Color tint = RippleVisualSettings.SeekerColor;
+            tint.a = EndEdgePulseAlpha(Time.time);
             Matrix4x4 oldMatrix = GUI.matrix;
             Color oldColor = GUI.color;
             int oldDepth = GUI.depth;
             GUI.matrix = Matrix4x4.identity;
-            GUI.depth = 50; // Above darkness (100), behind the normal HUD (0).
+            GUI.depth = 50; // same layer as the injury edges: above darkness, behind the normal HUD
             GUI.color = tint;
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), injuryEdges);
             GUI.matrix = oldMatrix;

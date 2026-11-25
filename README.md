@@ -5,7 +5,7 @@
 
 - 엔진: Unity 6000.5.4f1(고정) · 렌더링: URP · 네트워크: FishNet + Unity Relay/Lobby (`docs/UnityRelay_설정.md` 참조)
 - 팀: 6명 (프로그래머 4 · 디자이너 1 · 기획 1)
-- 현재 단계: **기획 확정(기획서 v0.6) → 본 구현 시작**
+- 현재 단계: **기획서 v0.6 · 본 구현 진행 중**(아래 "현황")
 
 ---
 
@@ -76,6 +76,29 @@ FishNet과 Unity Multiplayer Services 패키지는 프로젝트에 포함되어 
 
 상세는 기획서 §5.9-1(숨 게이지) · §6.1-1(수중 밸브) · §5.6(차폐)을 볼 것.
 (예전 우선순위 정리인 `02-구현검증노트.md`는 레포에서 사라졌다.)
+
+---
+
+## 현황 (2026-11-15 기준)
+
+**브랜치.** `main`(`e4c580e`)에는 아래 작업 브랜치가 아직 병합되지 않았다. 브랜치는 차례로 이어 쌓여 있다 —
+`feat/settings-menu` → `feat/healing-fixes` → `feat/seeker-scale-walls` → `feat/echo-glow-reflow-docs`(가장 최신, 앞 브랜치의 커밋을 모두 포함).
+
+**구현된 기능(코드가 있는 것).**
+
+| 영역 | 내용 | 주요 위치 |
+|---|---|---|
+| 네트워크 · 로비 | FishNet 호스트/클라이언트, Unity Relay/Lobby, 역할 무작위 배정 | `Network/Lobby/` · `Network/Roles/RoleAssigner.cs` |
+| 이동 · 1인칭 | 걷기 · 질주 · 수영 · 잠수 · 1인칭 몸 | `Network/Player/PlayerMovement*.cs` · `Network/Character/` |
+| 밸브 · 게이트 · 탈출 | 밸브 상태기계 · 역류 · 재작업 · 게이트 · 출구 · 배수구 · 최후 생존자 페이즈 · 종반 압박 | `Core/WinCondition/` · `Network/Round/` |
+| 태그 · 목숨 | 좌클릭 스윙 · 판정 · 서버 재검증 · 상처/메아리 전환 · 붕대 · 동료 치료 | `Network/Round/NetworkRound.cs` · `Network/Player/PlayerInteractor.cs` |
+| 소리 · 파문 | 목소리 등급 · 발소리 · 차폐 · 파문 링 · 발생원 스냅샷 · 방향 힌트 · 잔상 · 술래 드론 · 외침/비명 | `Network/Audio/` · `Network/Vision/` · `Network/Voice/` |
+| 아이템 | 붕대 · 찰칵이(줍기 · 사용 · 리스폰 · 섬광 · 잔상) · 고무오리 · 소리통 | `Network/Round/NetworkRound*.cs` · `Network/Vision/MicrophoneVisionController.cs` |
+| 메아리 · 탈출자 | 메아리 몸 · 노크 · 소나 · 목소리 시야 · 나침반 · 자기 실루엣 발광 | `Network/Player/EchoBodyRules.cs` · `Network/NetworkTestHud*.cs` |
+| 결과 화면 · 설정 | 결과 포디움 · 어워드 · Esc 메뉴 · 설정 창 | `Network/Round/ResultPodium/` · `Network/Settings/` |
+
+**아직 없는 것.** 술래 방향 게이지(§3.4) · 술래 로테이션 · 정식 HUD(지금은 테스트 HUD) · 타이틀 / 마이크 권한 모달 · 로비 준비 · 3초 카운트다운. 음성 활동 게이트(`RippleServerFeatures.VoiceActivityGate`)는 꺼져 있다.
+**시간이 남으면 진행**: 20초 오프닝 가이드 · 솔로 연습장(11-15 결정).
 
 ---
 

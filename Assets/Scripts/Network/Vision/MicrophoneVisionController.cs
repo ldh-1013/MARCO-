@@ -19,7 +19,7 @@ namespace Marco.Network.Vision
         private const int VoiceHangoverFrames = 8; // Bridge brief level dips without transmitting indefinitely.
         private const int VoicePreRollFrames = 2; // Keep the first 40 ms of speech before VAD confirms it.
         private const float ClickerCameraFlashSeconds = 0.6f;
-        private const float ClickerCameraFlashRadius = 6f;
+        private const float ClickerCameraFlashRadius = ClickerSpec.Radius;   // 부록 A [아이템]
         private const float ClickerAfterglowSeconds = 12f;
         private const float ClickerAfterglowPeakOpacity = 0.15f;
         private static readonly int ClickerTerrainId = Shader.PropertyToID("_MarcoClickerTerrain");
@@ -39,7 +39,64 @@ namespace Marco.Network.Vision
         public event Action<float[], VoiceGrade> VoiceSamplesReady;
         // Consumed synchronously; this buffer is reused. No callback is raised while muted.
         public event Action<float[]> MicrophoneSamplesReady;
+        // Read only, for the settings window's level meter: the last frame's dBFS and its level (0 silence … 3 shout).
+        public (float dbfs, int level) LastMeter { get; private set; } = (float.NegativeInfinity, 0);
         public bool HasMicrophoneInput => microphoneClip != null && !string.IsNullOrEmpty(microphoneDevice) && Microphone.IsRecording(microphoneDevice);
+
+        // 5.2 ③ · 부록 A [마이크 캘리브레이션]: personal offset on the −30 / −15 grade boundaries only (0 = the fixed
+        // thresholds). Not applied to the −50 voice floor or to the vision radius below. Saving it is the lobby's job.
+        private float calibrationOffsetDb;
+        private MicCalibrationSession calibration;
+        private Action<MicCalibration.Result, bool> calibrationDone;
+        private Action calibrationCancelled;
+        private bool calibrationMuted;
+        public float CalibrationOffsetDb => calibrationOffsetDb;
+        public bool IsCalibrating => calibration != null;
+        public string MicrophoneDevice => microphoneDevice;
+        // 0 … 1 through the current prompt (150 frames or 3 s, whichever is further along); 0 when not measuring.
+        public float CalibrationProgress => calibration != null ? calibration.Progress(Time.unscaledTime) : 0f;
+        public void SetCalibrationOffset(float offsetDb) => calibrationOffsetDb = float.IsNaN(offsetDb) ? 0f : MicCalibration.ClampOffset(offsetDb);
+        // The level this controller gives a frame of this loudness (0 silence … 3 shout).
+        public int GradeLevel(float dbfs) => MicCalibration.Grade(dbfs, calibrationOffsetDb, silenceDb);
+
+        // One 3 s prompt: every processed frame is also recorded until 150 frames or 3 s, then onComplete gets the
+        // result once, with whether Left Alt (mute) was held during it. The frame keeps its normal outputs (voice,
+        // rings, meter) — measuring only watches them. Cut short (this controller disabled): onCancelled instead.
+        public void BeginCalibration(Action<MicCalibration.Result, bool> onComplete, Action onCancelled = null)
+        {
+            calibration = new MicCalibrationSession(Time.unscaledTime);
+            calibrationDone = onComplete;
+            calibrationCancelled = onCancelled;
+            calibrationMuted = false;
+        }
+
+        // Stops the prompt without reporting anything (the caller cancelled it).
+        public void CancelCalibration()
+        {
+            calibration = null;
+            calibrationDone = null;
+            calibrationCancelled = null;
+        }
+
+        private void FinishCalibrationIfDue()
+        {
+            if (calibration == null) return;
+            if (Input.GetKey(KeyCode.LeftAlt)) calibrationMuted = true;
+            if (!calibration.IsDue(Time.unscaledTime)) return;
+            var result = calibration.Complete();
+            var done = calibrationDone;
+            bool muted = calibrationMuted;
+            CancelCalibration();
+            done?.Invoke(result, muted);
+        }
+
+        private void AbortCalibration()
+        {
+            if (calibration == null) return;
+            var cancelled = calibrationCancelled;
+            CancelCalibration();
+            cancelled?.Invoke();
+        }
 
         [Header("Brightness implementation")]
         [SerializeField] private BrightnessMode brightnessMode = BrightnessMode.MarcoMinus;
@@ -188,6 +245,8 @@ namespace Marco.Network.Vision
             microphoneDevice = Microphone.devices[0]; microphoneClip = Microphone.Start(microphoneDevice, true, 1, SampleRate);
             if (microphoneClip != null)
                 microphoneReadBuffer = new float[FrameSamples * Mathf.Max(1, microphoneClip.channels)];
+            // 부록 A [마이크 캘리브레이션] 저장: this device's saved offset (none: 0 — the lobby asks for a prompt).
+            SetCalibrationOffset(MicCalibrationStore.ForPlayerPrefs().Load(microphoneDevice) ?? 0f);
         }
 
         private void Update()
@@ -233,6 +292,7 @@ namespace Marco.Network.Vision
                 if (brightnessMode == BrightnessMode.MarcoPlus && Time.unscaledTime > revealUntil)
                     targetRadius = 0;
             }
+            FinishCalibrationIfDue();
             radius = Mathf.MoveTowards(radius, targetRadius, Time.unscaledDeltaTime * closeSpeed);
             if (worldLightingOwner == this)
             {
@@ -254,6 +314,7 @@ namespace Marco.Network.Vision
 
         private void OnDisable()
         {
+            AbortCalibration();   // a prompt cut short reports a cancel, not a result (it does not use an attempt)
             clickerFlashActive = false;
             clickerFlashStartedAt = float.NegativeInfinity;
             clickerFlashUntil = 0f;
@@ -279,7 +340,9 @@ namespace Marco.Network.Vision
             MicrophoneSamplesReady?.Invoke(sampleBuffer);
             double squares = 0; for (var i = 0; i < sampleBuffer.Length; i++) squares += sampleBuffer[i] * sampleBuffer[i];
             var dbfs = 20f * Mathf.Log10(Mathf.Max(Mathf.Sqrt((float)(squares / sampleBuffer.Length)), 0.000001f));
-            var level = dbfs >= -15f ? 3 : dbfs >= -30f ? 2 : dbfs >= silenceDb ? 1 : 0;
+            calibration?.Add(dbfs, MicCalibration.IsClippedFrame(microphoneReadBuffer, FrameSamples * channels));
+            var level = GradeLevel(dbfs);   // 5.2 ⑥ — boundaries moved by the calibration offset (0 until the lobby sets one)
+            LastMeter = (dbfs, level);
             consecutiveVoiceFrames = level == 0 ? 0 : consecutiveVoiceFrames + 1;
             bool recognizedVoice = level > 0 && consecutiveVoiceFrames >= RequiredConsecutiveFrames;
             VoiceGrade voiceGrade = level == 3 ? VoiceGrade.Shout : level == 2 ? VoiceGrade.Talk : VoiceGrade.Whisper;
@@ -425,65 +488,124 @@ namespace Marco.Network.Vision
             clickerFlashOrigin = origin;
             if (terrainAfterglow == null)
                 terrainAfterglow = GetComponent<TerrainAfterglow>() ?? gameObject.AddComponent<TerrainAfterglow>();
-            NetworkPlayer localPlayer = NetworkPlayer.Local;
-            if (localPlayer != null && localPlayer.Role == PlayerRole.Seeker)
-                BeginClickerVisibilitySuppression(origin, sourcePlayerId);
-            else
-                RestoreClickerVisibilitySuppression();
+            // [11-23 V50] 기획서 7 · 연출 9.1 "캐릭터 · 오브젝트는 표시하지 않는다": on every screen the flash reaches, not only the
+            // Seeker's (the bodies and objects are not lit by the flash, so they stood as black shapes against the lit terrain).
+            BeginClickerVisibilitySuppression(origin, sourcePlayerId);
             UpdateClickerFlashShader();
             terrainAfterglow.CaptureFlash(origin, ClickerCameraFlashRadius, ClickerCameraFlashSeconds,
                 ClickerAfterglowSeconds, ClickerAfterglowPeakOpacity);
         }
+
+        // [11-23 V50] The concealment lasts the flash and its afterglow (0.6 s + 12 s, the existing values) on this screen only
+        // (Renderer.forceRenderingOff, local, nothing sent). A body or object the local voice light reaches stays drawn — the
+        // existing rule that the light shows bodies (the body shader's own _Marco* light, ShoutRimRules.LightVisibility) —
+        // except the Runner who used the item on the Seeker's screen during the flash itself (the rule this code had before).
+        // Echo bodies (CharacterBody.Ghost) keep their own rules (EchoBodyRules); the own body is never touched.
+        private readonly List<Renderer> clickerObjectCandidates = new();
+        private readonly List<Renderer> clickerFrameHide = new();
+        private readonly HashSet<Renderer> clickerFrameSet = new();
+        private readonly List<Renderer> clickerReleased = new();
+        public static int ClickerHiddenBodies { get; private set; }
+        public static int ClickerHiddenObjects { get; private set; }
+        public static int ClickerLitKept { get; private set; }
 
         private void BeginClickerVisibilitySuppression(Vector3 origin, int sourcePlayerId)
         {
             RestoreClickerVisibilitySuppression();
             clickerFlashOrigin = origin;
             clickerFlashSourcePlayerId = sourcePlayerId;
-            clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds;
+            clickerVisibilityUntil = Time.unscaledTime + ClickerCameraFlashSeconds + ClickerAfterglowSeconds;
+            // Objects: the item visuals in the flash radius, gathered once. [11-24 V54] Not map content: V50 also hid the map's own
+            // non-terrain surfaces (benches, shoe racks, ladders, pipes — anything under a map root), which cut holes next to walls.
+            // An item visual is a world-lit surface (no terrain flag) that the round code builds at run time (IsItemVisual).
+            float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
+            if (clickerVisibilityProperties == null)
+                clickerVisibilityProperties = new MaterialPropertyBlock();
+            var roundRoot = Marco.Network.Round.NetworkRound.Instance != null ? Marco.Network.Round.NetworkRound.Instance.transform : null;
+            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            {
+                if (renderer == null || renderer.bounds.SqrDistance(origin) > radiusSquared) continue;
+                if (renderer.GetComponentInParent<NetworkPlayer>(true) != null) continue;
+                var material = renderer.sharedMaterial;
+                if (material == null || !material.HasProperty(ClickerTerrainId) || material.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                renderer.GetPropertyBlock(clickerVisibilityProperties);
+                if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
+                if (!IsItemVisual(renderer, roundRoot)) continue;
+                clickerObjectCandidates.Add(renderer);
+            }
             UpdateClickerVisibilitySuppression();
+        }
+
+        // The duck / sound can views live under NetworkRound; a pickup model (찰칵이 · 붕대) carries the world-lit material copies the round
+        // code made for it (RuntimeMarcoSurfaceMaterials); a pickup without its model is the code-built cube in the "붕대 아이템" material.
+        // Map furniture, ladders, pipes and the network scene's fixtures have none of these and are never hidden.
+        private const string CodeBuiltItemMaterial = "붕대 아이템";   // NetworkRound.CreateBandageMaterial's name (no new value)
+        private static bool IsItemVisual(Renderer renderer, Transform roundRoot)
+        {
+            if (roundRoot != null && renderer.transform.IsChildOf(roundRoot)) return true;
+            if (renderer.GetComponentInParent<Character.RuntimeMarcoSurfaceMaterials>(true) != null) return true;
+            var material = renderer.sharedMaterial;
+            return material != null && material.name == CodeBuiltItemMaterial;
         }
 
         private void UpdateClickerVisibilitySuppression()
         {
+            if (clickerVisibilityUntil <= 0f) return;
             if (Time.unscaledTime >= clickerVisibilityUntil)
             {
                 RestoreClickerVisibilitySuppression();
                 return;
             }
 
-            float radiusSquared = ClickerCameraFlashRadius * ClickerCameraFlashRadius;
-            if (clickerVisibilityProperties == null)
-                clickerVisibilityProperties = new MaterialPropertyBlock();
-            foreach (Renderer renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+            bool inFlash = Time.unscaledTime < clickerFlashStartedAt + ClickerCameraFlashSeconds;
+            NetworkPlayer local = NetworkPlayer.Local;
+            bool seekerScreen = local != null && local.Role == PlayerRole.Seeker;
+            clickerFrameHide.Clear(); clickerFrameSet.Clear();
+            int bodies = 0, objects = 0, kept = 0;
+            foreach (NetworkPlayer player in NetworkPlayer.All)
             {
-                if (renderer == null || renderer.bounds.SqrDistance(clickerFlashOrigin) > radiusSquared)
-                    continue;
-
-                if (clickerHiddenRenderers.ContainsKey(renderer))
-                {
-                    // Keep the local concealment in force if an animated/managed renderer is
-                    // re-enabled while the short flash is still active.
-                    renderer.forceRenderingOff = true;
-                    continue;
-                }
-
-                NetworkPlayer renderedPlayer = renderer.GetComponentInParent<NetworkPlayer>(true);
-                if (renderedPlayer != null)
-                {
-                    // Hide the Runner who used the item, but leave the Seeker and other characters
-                    // visible. This suppression runs only on the local Seeker's client.
-                    if (renderedPlayer.PlayerId != clickerFlashSourcePlayerId) continue;
-                }
-                else
-                {
-                    renderer.GetPropertyBlock(clickerVisibilityProperties);
-                    if (clickerVisibilityProperties.GetFloat(ClickerTerrainId) > 0.5f) continue;
-                }
-
-                clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
+                if (player == null || player == local) continue;
+                var character = player.GetComponent<Character.CharacterBody>();
+                if (character != null && character.Ghost != Character.GhostLook.None) continue;
+                if (!SurvivorBodyVisibility.TryGetBody(player, out var parts)) continue;
+                bool source = seekerScreen && inFlash && player.PlayerId == clickerFlashSourcePlayerId;
+                float lit = 0f;
+                foreach (var part in parts) if (part != null) lit = Mathf.Max(lit, ClickerLightVisibility(part.bounds));
+                if (!source && lit >= ShoutRimRules.MinVisibility) { kept++; continue; }
+                bodies++;
+                foreach (var part in parts) if (part != null && clickerFrameSet.Add(part)) clickerFrameHide.Add(part);
+            }
+            foreach (var renderer in clickerObjectCandidates)
+            {
+                if (renderer == null) continue;
+                if (ClickerLightVisibility(renderer.bounds) >= ShoutRimRules.MinVisibility) { kept++; continue; }
+                objects++;
+                if (clickerFrameSet.Add(renderer)) clickerFrameHide.Add(renderer);
+            }
+            // Hand back what the light reaches now; hide (again) the rest — re-applied every frame, since an animated or managed
+            // renderer can be switched back on while the window runs.
+            clickerReleased.Clear();
+            foreach (var entry in clickerHiddenRenderers) if (entry.Key == null || !clickerFrameSet.Contains(entry.Key)) clickerReleased.Add(entry.Key);
+            foreach (var renderer in clickerReleased)
+            {
+                if (renderer != null) renderer.forceRenderingOff = clickerHiddenRenderers[renderer];
+                clickerHiddenRenderers.Remove(renderer);
+            }
+            foreach (var renderer in clickerFrameHide)
+            {
+                if (!clickerHiddenRenderers.ContainsKey(renderer)) clickerHiddenRenderers.Add(renderer, renderer.forceRenderingOff);
                 renderer.forceRenderingOff = true;
             }
+            ClickerHiddenBodies = bodies; ClickerHiddenObjects = objects; ClickerLitKept = kept;
+        }
+
+        // The local voice light at the point of these bounds nearest to it, as the body shader computes it.
+        private static float ClickerLightVisibility(Bounds bounds)
+        {
+            Vector4 light = Shader.GetGlobalVector(PlayerPositionId);
+            float distance = Vector3.Distance(bounds.ClosestPoint(light), light);
+            return ShoutRimRules.LightVisibility(distance, Shader.GetGlobalFloat(LightRadiusId), Shader.GetGlobalFloat(LightIntensityId),
+                Shader.GetGlobalFloat(FalloffPowerId), Shader.GetGlobalFloat(WorldModeId) > .5f);
         }
 
         private void RestoreClickerVisibilitySuppression()
@@ -491,7 +613,9 @@ namespace Marco.Network.Vision
             foreach (KeyValuePair<Renderer, bool> entry in clickerHiddenRenderers)
                 if (entry.Key != null) entry.Key.forceRenderingOff = entry.Value;
             clickerHiddenRenderers.Clear();
+            clickerObjectCandidates.Clear();
             clickerVisibilityUntil = 0f;
+            ClickerHiddenBodies = ClickerHiddenObjects = ClickerLitKept = 0;
         }
 
         private void UpdateClickerFlashShader()

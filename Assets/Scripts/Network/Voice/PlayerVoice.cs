@@ -44,9 +44,9 @@ namespace Marco.Network.Voice
 
         private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
         {
-            VoiceGrade.Whisper => (4f, .6f),
-            VoiceGrade.Talk => (9f, 1.2f),
-            _ => (22f, 2.5f)
+            VoiceGrade.Whisper => (Round.PulseSpec.Whisper, Round.PulseSpec.WhisperSeconds),
+            VoiceGrade.Talk => (Round.PulseSpec.Talk, Round.PulseSpec.TalkSeconds),
+            _ => (Round.PulseSpec.Shout, Round.PulseSpec.ShoutSeconds)
         };
 
         internal Vector3 VoiceOrigin()
@@ -122,8 +122,8 @@ namespace Marco.Network.Voice
                 {
                     if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
-                        out bool blocked, out float radius)) continue;
-                    float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
+                        out bool blocked, out float radius, out float occludedScale)) continue;
+                    float life = Round.PulseSpec.ListenerSeconds(duration, listener.Role == PlayerRole.Seeker, listener.HasEchoBody, true, occludedScale);   // §5.6 · §5.7
                     if (pulse && !blocked)
                         VoicePulseTarget(listener.Owner, point, radius, life,
                             SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
