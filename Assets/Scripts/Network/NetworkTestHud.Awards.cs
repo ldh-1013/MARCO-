@@ -36,8 +36,8 @@ namespace Marco.Network
         {
             var saved = GUI.color;
             GUI.color = new Color(1, 1, 1, alpha);
-            TestHudSkin.Panel(rect);
-            GUI.Label(rect, LureNoticeText, TestHudSkin.Text(44, FontStyle.Bold, TextAnchor.MiddleCenter));
+            TestHudSkin.GamePanel(rect);
+            Lobby.RoomLettering.Draw(rect, LureNoticeText, 38, centered: true);
             GUI.color = saved;
         }
     }

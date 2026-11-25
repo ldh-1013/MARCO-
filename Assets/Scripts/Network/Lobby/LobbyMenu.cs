@@ -6,7 +6,7 @@ namespace Marco.Network.Lobby
 {
     // The prototype lobby (RoomSessionPrototype's OnGUI) on top of the FishNet session: nickname,
     // Create room (Unity Relay), Join (room code or public room list),
-    // and the host's 게임 시작, which starts the round. Until then it covers the whole game screen.
+    // and a shared ready countdown. Until the round starts it covers the game screen.
     // In game, an unlocked cursor shows 계속하기 / 게임 나가기 · 로비로.
     [RequireComponent(typeof(LanConnector), typeof(UnityRelayLobby))]
     public sealed class LobbyMenu : MonoBehaviour
@@ -56,7 +56,11 @@ namespace Marco.Network.Lobby
         {
             if (IsOpen && Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
             // The host pressed 게임 시작: hand the cursor straight to the game.
-            if (wasOpen && !IsOpen) Cursor.lockState = CursorLockMode.Locked;
+            if (wasOpen && !IsOpen)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                if (connector.IsHost) relay.LockLobbyForGame();
+            }
             wasOpen = IsOpen;
             TrackConnection();
 
@@ -101,23 +105,6 @@ namespace Marco.Network.Lobby
             Cursor.lockState = CursorLockMode.None;
         }
 
-        private bool CanStartGame
-        {
-            get
-            {
-                if (!Joined || !connector.IsHost || GameStarted || NetworkRound.Instance == null) return false;
-                foreach (var player in NetworkPlayer.All) if (string.IsNullOrEmpty(player.Nickname)) return false;
-                return true;
-            }
-        }
-
-        private void StartGame()
-        {
-            if (!CanStartGame) return;
-            relay.LockLobbyForGame();
-            NetworkRound.Instance.StartRound();
-        }
-
         private void OnGUI()
         {
             if (Marco.Network.Settings.SettingsMenu.IsOpen) return;   // the settings window (uGUI) is on top
@@ -154,8 +141,8 @@ namespace Marco.Network.Lobby
             // The result screen frees the cursor for its own vote button; leaving goes through the vote.
             if (NetworkRound.Instance != null && NetworkRound.Instance.IsResultScreenShown) return;
             TestHudSkin.Begin();
-            var rect = new Rect(TestHudSkin.Width - 300, TestHudSkin.Height - 170, 276, 146);
-            TestHudSkin.Panel(rect);
+            var rect = new Rect(TestHudSkin.Width - 300, TestHudSkin.Height - 372, 276, 146);
+            TestHudSkin.GamePanel(rect);
             GUI.depth = -10;
             if (RuinedUi.Button(new Rect(rect.x + 16, rect.y + 16, rect.width - 32, 52), "계속하기", 22, light: true))
                 Cursor.lockState = CursorLockMode.Locked;
@@ -163,37 +150,89 @@ namespace Marco.Network.Lobby
                 Leave("게임에서 나왔습니다.");
         }
 
+        internal static void RoomPanel(Rect rect)
+        {
+            var texture = RuinedUi.Texture(InterfaceArt.Atlas);
+            if (texture == null) TestHudSkin.Fill(rect, new Color(.09f, .09f, .085f, .98f * GUI.color.a));
+            else RuinedUi.Region(rect, InterfaceArt.Atlas, InterfaceArt.Regions["paper"],
+                new Vector2(texture.width, texture.height), new Color(.24f, .235f, .22f));
+        }
+
+        internal static bool RoomButton(Rect rect, string label, int size, bool primary = false, bool useLettering = false)
+        {
+            string key = "button/" + label;
+            if (RoomArt.Has(key))
+            {
+                bool pressed = GUI.Button(rect, GUIContent.none, GUIStyle.none);
+                Color saved = GUI.color;
+                if (!GUI.enabled) GUI.color *= new Color(.68f, .68f, .68f);
+                else if (rect.Contains(Event.current.mousePosition)) GUI.color *= new Color(1f, .91f, .73f);
+                RoomArt.Draw(rect, key);
+                GUI.color = saved;
+                return pressed;
+            }
+            Color face = primary && GUI.enabled ? new Color(.44f, .33f, .15f) : new Color(.12f, .12f, .11f);
+            TestHudSkin.Fill(rect, face);
+            TestHudSkin.Fill(new Rect(rect.x, rect.yMax - 2, rect.width, 2),
+                primary && GUI.enabled ? new Color(.9f, .71f, .39f) : new Color(.43f, .41f, .36f));
+            if (!useLettering) return RuinedUi.Button(rect, label, size, light: true);
+            bool clicked = GUI.Button(rect, GUIContent.none, GUIStyle.none);
+            Color tint = rect.Contains(Event.current.mousePosition) ? new Color(1, .86f, .56f) : Color.white;
+            RoomLettering.Draw(rect, label, size, tint, centered: true);
+            return clicked;
+        }
+
         private void DrawRoom()
         {
             const float width = 720, pad = 22, inner = width - 2 * pad, row = 32;
-            int members = 0;
-            foreach (var player in NetworkPlayer.All) if (!string.IsNullOrEmpty(player.Nickname)) members++;
+            int members = 0, ready = 0;
+            foreach (var player in NetworkPlayer.All)
+            {
+                if (string.IsNullOrEmpty(player.Nickname)) continue;
+                members++;
+                if (player.LobbyReady) ready++;
+            }
+            var local = NetworkPlayer.Local;
+            int countdown = NetworkRound.Instance != null ? NetworkRound.Instance.LobbyCountdown : 0;
             float rosterHeight = Mathf.Clamp(members, 2, 5) * row;
-            var statusText = new GUIContent(connector.UsingRelay ? relay.Status : status);
+            string message = connector.UsingRelay ? relay.Status : status;
+
+            var statusText = new GUIContent(message);
             var caption = new GUIStyle(GUI.skin.label) { fontSize = 17, wordWrap = true };
             float messageHeight = caption.CalcHeight(statusText, inner - 24);
             float statusHeight = Mathf.Clamp(messageHeight, 26, 64);
-            float actionsY = 92 + rosterHeight + (connector.IsHost ? 56 : 8);
+            float actionsY = 138 + rosterHeight + (connector.IsHost ? 56 : 8);
             float panelHeight = actionsY + 56 + statusHeight + pad;
             const float calibrationHeight = 152, gap = 12;
             float total = panelHeight + (micCalibration.HasInput ? gap + calibrationHeight : 0);
             var panel = new Rect((1000 - width) / 2, (700 - total) / 2, width, panelHeight);
-            TestHudSkin.Fill(panel, new Color(0, 0, 0, .72f));
+            RoomArt.Draw(panel, "panel/대기방");
             GUI.BeginGroup(panel);
-            RuinedUi.Label(new Rect(pad, 14, 88, 32), "참가자", 22, light: true);
-            GUI.Label(new Rect(pad + 98, 17, 90, 30), members + "명", caption);
-            GUI.Label(new Rect(pad, 52, inner, 36), "역할 무작위 배정 · 술래 1명 (각자 " +
-                (100f / Mathf.Max(1, members)).ToString("0.#") + "% 확률), 나머지는 도망자", caption);
+            RoomArt.Draw(new Rect(pad, 12, inner, 40), "label/대기방", 36);
+            RoomArt.Draw(new Rect(pad, 54, inner, 1), "list/구분선");
+            RoomArt.Draw(new Rect(pad, 60, 88, 32), "label/참가자", 26);
+            RoomLettering.Draw(new Rect(pad + 98, 63, 90, 30), members + "명", 22);
+            string roleHint = members == 1 ? "혼자 시작하면 도망자로 참가합니다" : "역할 무작위 배정 · 술래 1명";
+            RoomLettering.Draw(new Rect(pad, 98, inner - 152, 36), roleHint, 18);
+            RoomLettering.Draw(new Rect(width - pad - 145, 98, 145, 36), $"준비 {ready}/{members}", 22, centered: true);
 
-            var roster = new Rect(pad, 88, inner, rosterHeight);
+            var roster = new Rect(pad, 134, inner, rosterHeight);
+            RoomArt.Draw(roster, "list/명단 배경");
             float listWidth = inner - (members > 5 ? 24 : 0);
             rosterScroll = GUI.BeginScrollView(roster, rosterScroll, new Rect(0, 0, listWidth, members * row));
             float y = 0;
             foreach (var player in NetworkPlayer.All)
             {
                 if (string.IsNullOrEmpty(player.Nickname)) continue;
-                string prefix = player.IsRoomHost ? "[방장] " : "[" + player.PlayerId + "] ";
-                GUI.Box(new Rect(0, y, listWidth, row - 2), prefix + player.Nickname);
+                var strip = new Rect(0, y + 2, listWidth, row - 4);
+                RoomArt.Draw(strip, player.IsRoomHost ? "list/방장 행" : "list/참가자 행");
+                var badge = new Rect(12, y, 60, row);
+                if (player.IsRoomHost) RoomArt.Draw(badge, "label/방장", 20);
+                else RoomLettering.Draw(badge, "#" + player.PlayerId, 17);
+                RoomLettering.Draw(new Rect(84, y, listWidth - 210, row), player.Nickname, 19);
+                if (player.LobbyReady)
+                    RoomLettering.Draw(new Rect(listWidth - 104, y, 92, row), "준비 완료", 17,
+                        new Color(.55f, .94f, .85f), centered: true);
                 y += row;
             }
             GUI.EndScrollView();
@@ -203,23 +242,28 @@ namespace Marco.Network.Lobby
                 float inviteY = roster.yMax + 10;
                 bool useCode = connector.UsingRelay;
                 string invite = useCode ? relay.CurrentLobbyCode : connector.InviteAddress;
-                RuinedUi.Label(new Rect(pad, inviteY, 100, 34), useCode ? "방 코드" : "초대 IP", 20, light: true);
+                RoomArt.Draw(new Rect(pad, inviteY, 100, 34), useCode ? "label/방 코드" : "label/초대 IP", 24);
                 var value = new Rect(pad + 112, inviteY, inner - 246, 34);
-                if (useCode) GUI.Label(value, invite, caption);
-                else GUI.TextField(value, invite);
-                if (RuinedUi.Button(new Rect(width - pad - 120, inviteY, 120, 34),
-                    useCode ? "코드 복사" : "IP 복사", 20, light: true)) GUIUtility.systemCopyBuffer = invite;
+                RoomLettering.Draw(value, invite, useCode ? 26 : 22);
+                if (RoomButton(new Rect(width - pad - 120, inviteY, 120, 34),
+                    useCode ? "코드 복사" : "IP 복사", 20)) GUIUtility.systemCopyBuffer = invite;
             }
-            GUI.enabled = CanStartGame;
-            if (RuinedUi.Button(new Rect(pad, actionsY, inner * .62f, 42),
-                connector.IsHost ? "게임 시작" : "방장의 시작을 기다리는 중", 24, light: true)) StartGame();
+            var readyButton = new Rect(pad, actionsY, inner * .62f - 5, 42);
+            GUI.enabled = local != null && local.IsClientInitialized && !string.IsNullOrEmpty(local.Nickname);
+            bool localReady = local != null && local.LobbyReady;
+            if (RoomButton(readyButton, localReady ? "준비 취소" : "준비", 24, primary: !localReady, useLettering: true))
+                local.SetLobbyReadyServer(!localReady);
+            if (countdown > 0)
+                InterfaceArt.Draw(new Rect(readyButton.xMax - 57, readyButton.y + 5, 36, 32), "count" + countdown);
             GUI.enabled = true;
-            if (RuinedUi.Button(new Rect(pad + inner * .62f, actionsY, inner * .38f, 42),
-                "방 나가기", 22, light: true)) Leave("방에서 나왔습니다.");
+            if (RoomButton(new Rect(pad + inner * .62f + 5, actionsY, inner * .38f - 5, 42),
+                "방 나가기", 22)) Leave("방에서 나왔습니다.");
 
             roomStatusScroll = GUI.BeginScrollView(new Rect(pad, actionsY + 56, inner, statusHeight),
                 roomStatusScroll, new Rect(0, 0, inner - 24, messageHeight));
-            GUI.Label(new Rect(0, 0, inner - 24, messageHeight), statusText, caption);
+            var messageRect = new Rect(0, 0, inner - 24, messageHeight);
+            if (statusText.text.IndexOf('\n') < 0 && caption.CalcSize(statusText).x <= messageRect.width) RoomLettering.Draw(messageRect, statusText.text, 17);
+            else GUI.Label(messageRect, statusText, caption);
             GUI.EndScrollView();
             GUI.EndGroup();
             if (micCalibration.HasInput)

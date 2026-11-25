@@ -28,8 +28,6 @@ namespace Marco.Network.Voice
         // 부록 A "클리핑 프레임 = 한 프레임(20ms)에서 |샘플| ≥ 0.99인 샘플이 3개 이상" — [GAP] 구현 시작값.
         public const float ClipSampleLevel = .99f;
         public const int ClipSamplesPerFrame = 3;
-        // 부록 A "실패: 최대 3회 재시도, 계속 실패하면 오프셋 0" — [GAP] 구현 시작값.
-        public const int MaxAttempts = 3;
 
         public enum FailReason { None, Clipped, TooFewActive }
 
@@ -79,6 +77,10 @@ namespace Marco.Network.Voice
                 if (Math.Abs(samples[i]) >= ClipSampleLevel && ++clipped >= ClipSamplesPerFrame) return true;
             return false;
         }
+
+        // Reject the measured room noise, keeping a 3 dB margin below the quiet voice baseline.
+        public static float VoiceFloorFor(Result result, float defaultFloor) =>
+            Math.Max(result.NoiseFloor + ActiveMarginDb, Math.Min(defaultFloor, result.Baseline - 3f));
 
         public static float ClampOffset(float offset) => Math.Max(-OffsetLimitDb, Math.Min(OffsetLimitDb, offset));
 

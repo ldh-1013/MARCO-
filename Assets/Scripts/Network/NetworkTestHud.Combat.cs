@@ -32,11 +32,9 @@ namespace Marco.Network
             DrawShoutArc(center, 1, new Color(0, 0, 0, .8f), 7);
             DrawShoutArc(center, 1, new Color(1, 1, 1, .2f), 3);
             DrawShoutArc(center, fraction, accent, 3);
-            var label = new GUIStyle(TestHudSkin.Text(14, FontStyle.Bold, TextAnchor.MiddleCenter));
-            label.normal.textColor = accent;
-            GUI.Label(new Rect(center.x + 60, center.y - 21, 74, 22), "R · 외침", label);
-            GUI.Label(new Rect(center.x + 60, center.y + 1, 74, 22), locked ? "대기"
-                : preparing ? "준비 중" : cooling ? $"{Mathf.CeilToInt(movement.ShoutCooldownRemaining)}초" : "홀드", label);
+            Lobby.RoomLettering.Draw(new Rect(center.x + 60, center.y - 21, 95, 22), "R · 외침", 18, accent);
+            Lobby.RoomLettering.Draw(new Rect(center.x + 60, center.y + 1, 95, 22), locked ? "대기"
+                : preparing ? "준비 중" : cooling ? $"{Mathf.CeilToInt(movement.ShoutCooldownRemaining)}초" : "홀드", 16);
             GUI.depth = oldDepth;
         }
 

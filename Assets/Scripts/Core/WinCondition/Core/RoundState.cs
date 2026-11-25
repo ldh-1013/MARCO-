@@ -15,6 +15,7 @@ namespace Marco.Core.WinCondition
         private readonly LastSurvivorPhase _lastSurvivorPhase;
 
         private readonly int _totalRunnerCount;
+        private readonly bool _allowLastSurvivorPhase;
         private readonly float _timeLimitSeconds;
         private float _elapsedSeconds;
 
@@ -44,7 +45,7 @@ namespace Marco.Core.WinCondition
             Gate gate,
             ValveInteractionService interactionService,
             IRoundEventSink roundEventSink,
-            Func<int, int> drainHatchRandomNextIndex = null)
+            Func<int, int> drainHatchRandomNextIndex = null, bool allowSmallRoom = false)
         {
             _config = config;
             _playerRoster = playerRoster;
@@ -54,7 +55,9 @@ namespace Marco.Core.WinCondition
             _drainHatchRandomNextIndex = drainHatchRandomNextIndex ?? new Random().Next;
 
             _totalRunnerCount = playerRoster.TotalRunnerCount;
-            var settings = config.GetRoundSettings(_totalRunnerCount);
+            bool smallRoom = allowSmallRoom && _totalRunnerCount == 1;
+            _allowLastSurvivorPhase = !smallRoom;
+            var settings = smallRoom ? config.SmallRoomSettings : config.GetRoundSettings(_totalRunnerCount);
             _escapeRequiredCount = settings.EscapeRequiredCount;
             _timeLimitSeconds = settings.TimeLimitSeconds;
 
@@ -195,7 +198,7 @@ namespace Marco.Core.WinCondition
         // 살아있는(=아직 탈출/태그/이탈로 처리되지 않은) 도망자가 1명이 되는 순간 1회 진입.
         private void TryEnterLastSurvivorPhase()
         {
-            if (_lastSurvivorPhase.HasEntered) return;
+            if (!_allowLastSurvivorPhase || _lastSurvivorPhase.HasEntered) return;
 
             int undecided = _totalRunnerCount - _escapedCount - _taggedCount;
             if (undecided != 1) return; // 도망자가 0명이 되면(이미 전부 확정) 여기 도달하지 않음

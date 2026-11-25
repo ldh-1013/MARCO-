@@ -12,11 +12,10 @@ namespace Marco.Network.Lobby
     // microphone has no saved offset; "마이크 다시 측정" is here only (not in a round, not in the settings window — 12.6).
     public sealed class LobbyMicCalibration : MonoBehaviour
     {
-        private static readonly Color Cyan = new(.498f, .906f, .878f);    // #7FE7E0 (16.2)
         private static readonly Color Amber = new(1f, .722f, .302f);      // #FFB84D (16.2)
         private static readonly Color Pale = new(.91f, .91f, .91f);       // #E8E8E8 (16.2 환경)
 
-        // Skipped or fell back this session: no automatic prompt again for that device until the game restarts.
+        // Skipped this session: no automatic prompt again for that device until the game restarts.
         private static readonly HashSet<string> settledThisSession = new();
 
         private readonly MicCalibrationPrompt prompt = new();
@@ -60,6 +59,7 @@ namespace Marco.Network.Lobby
                 float? saved = store.Load(device);
                 hasSaved = saved.HasValue;
                 mic.SetCalibrationOffset(saved ?? 0f);
+                mic.SetVoiceFloor(store.LoadVoiceFloor(device));
                 prompt.Restart();
                 lobbyWasShown = false;
             }
@@ -88,15 +88,13 @@ namespace Marco.Network.Lobby
             var state = prompt.Report(result, muted);
             if (state == MicCalibrationPrompt.State.Success)
             {
-                store.Save(device, prompt.Offset);
+                float floor = mic.VoiceFloorFor(result);
+                store.Save(device, prompt.Offset, floor);
+                mic.SetVoiceFloor(floor);
                 hasSaved = true;
                 mic.SetCalibrationOffset(prompt.Offset);
             }
-            else if (state == MicCalibrationPrompt.State.Fallback)
-            {
-                mic.SetCalibrationOffset(0f);   // not saved: asked again next session
-                if (device != null) settledThisSession.Add(device);
-            }
+
         }
 
         private void OnCancelled() => prompt.Cancel();
@@ -112,7 +110,7 @@ namespace Marco.Network.Lobby
         {
             CancelMeasuring();
             prompt.Skip();
-            if (mic != null) mic.SetCalibrationOffset(0f);   // this session only — nothing is saved
+            if (mic != null) { mic.SetVoiceFloor(null); mic.SetCalibrationOffset(0f); }   // this session only — nothing is saved
             if (device != null) settledThisSession.Add(device);
         }
 
@@ -127,34 +125,38 @@ namespace Marco.Network.Lobby
         public void Draw(Rect rect)
         {
             if (!HasInput) return;
-            TestHudSkin.Fill(rect, new Color(0, 0, 0, .72f));
-            var text = new Rect(rect.x + 22, rect.y + 12, rect.width - 44, 54);
+            RoomArt.Draw(rect, "panel/마이크_보정");
+            const float headerTop = 16, headerHeight = 32, contentLeft = 184;
+            RoomArt.Draw(new Rect(rect.x + 22, rect.y + headerTop, 128, headerHeight), "label/마이크 보정", 24);
+            TestHudSkin.Fill(new Rect(rect.x + 166, rect.y + 18, 1, rect.height - 36),
+                new Color(.72f, .66f, .54f, .5f));
+            var text = new Rect(rect.x + contentLeft, rect.y + 12, rect.width - contentLeft - 22, 56);
+            var stateLabel = new Rect(text.x, rect.y + headerTop, text.width, headerHeight);
             var buttonA = new Rect(rect.xMax - 16 - 190, rect.yMax - 16 - 40, 190, 40);
             var buttonB = new Rect(buttonA.x - 12 - 150, buttonA.y, 150, 40);
             switch (prompt.Current)
             {
                 case MicCalibrationPrompt.State.Measuring:
-                    Line(text, "가장 작은 목소리로 말해보세요", Pale);
-                    TestHudSkin.Bar(new Rect(rect.x + 16, rect.y + 75, rect.width - 32, 10), mic.CalibrationProgress, Cyan);
-                    if (RuinedUi.Button(buttonA, "건너뛰기", 22, light: true)) Skip();
+                    Line(text, "가장 작은 목소리로 말해보세요. 주변 잡음을 걸러낼 기준을 맞춥니다", Pale);
+                    var gauge = new Rect(text.x, rect.y + 75, text.width, 10);
+                    RoomArt.Draw(gauge, "list/측정 게이지 바탕");
+                    GUI.BeginGroup(new Rect(gauge.x, gauge.y, gauge.width * Mathf.Clamp01(mic.CalibrationProgress), gauge.height));
+                    RoomArt.Draw(new Rect(0, 0, gauge.width, gauge.height), "list/측정 게이지 채움");
+                    GUI.EndGroup();
+                    if (LobbyMenu.RoomButton(buttonA, "건너뛰기", 20, useLettering: true)) Skip();
                     break;
                 case MicCalibrationPrompt.State.Retry:
                     Line(text, FailureText(prompt.LastFailure), Amber);
-                    Line(new Rect(text.x, text.yMax + 4, text.width, 26), "시도 " + prompt.Attempts + " / " + MicCalibration.MaxAttempts, Pale, 18);
-                    if (RuinedUi.Button(buttonA, "다시 시도", 22, light: true)) Begin();
-                    if (RuinedUi.Button(buttonB, "건너뛰기", 22, light: true)) Skip();
-                    break;
-                case MicCalibrationPrompt.State.Fallback:
-                    Line(text, "마이크 보정 없이 기본 감도로 진행합니다", Amber);
-                    if (RuinedUi.Button(buttonA, "마이크 다시 측정", 22, light: true)) Remeasure();
+                    if (LobbyMenu.RoomButton(buttonA, "다시 시도", 20, useLettering: true)) Begin();
+                    if (LobbyMenu.RoomButton(buttonB, "건너뛰기", 20, useLettering: true)) Skip();
                     break;
                 case MicCalibrationPrompt.State.Skipped:
-                    Line(text, "기본 감도로 진행합니다", Pale);
-                    if (RuinedUi.Button(buttonA, "마이크 다시 측정", 22, light: true)) Remeasure();
+                    Line(stateLabel, "기본 감도로 진행합니다", Pale);
+                    if (LobbyMenu.RoomButton(buttonA, "마이크 다시 측정", 20, useLettering: true)) Remeasure();
                     break;
                 default:   // Success, or a saved offset loaded quietly; Idle / Cancelled waiting for the next showing
-                    Line(text, hasSaved || prompt.Current == MicCalibrationPrompt.State.Success ? "보정 완료" : "마이크 보정 전", Cyan);
-                    if (RuinedUi.Button(buttonA, "마이크 다시 측정", 22, light: true)) Remeasure();
+                    RoomArt.Draw(stateLabel, hasSaved || prompt.Current == MicCalibrationPrompt.State.Success ? "label/보정 완료" : "label/마이크 보정 전", 26);
+                    if (LobbyMenu.RoomButton(buttonA, "마이크 다시 측정", 20, useLettering: true)) Remeasure();
                     break;
             }
         }
@@ -168,9 +170,15 @@ namespace Marco.Network.Lobby
 
         private static void Line(Rect rect, string message, Color color, int size = 22)
         {
-            var style = new GUIStyle(TestHudSkin.Text(size)) { wordWrap = true };
-            style.normal.textColor = color;
-            GUI.Label(rect, message, style);
+            // Retry advice contains two sentences. Keep the action on its own baseline.
+            int split = message.IndexOf(". ", System.StringComparison.Ordinal);
+            if (split < 0) RoomLettering.Draw(rect, message, size, color);
+            else
+            {
+                float half = rect.height * .5f;
+                RoomLettering.Draw(new Rect(rect.x, rect.y, rect.width, half), message.Substring(0, split + 1), size, color);
+                RoomLettering.Draw(new Rect(rect.x, rect.y + half, rect.width, half), message.Substring(split + 2), size, color);
+            }
         }
     }
 }

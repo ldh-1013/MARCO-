@@ -112,6 +112,12 @@ namespace Marco.Network.Round
             switch (rematchVote?.Outcome)
             {
                 case RematchVoteOutcome.Passed:
+                    if (!CanStartMatch(NetworkPlayer.All.Count))
+                    {
+                        Debug.Log("[MARCO][Rematch] 정식 라운드 인원 부족 → 로비 복귀");
+                        ReturnToLobby();
+                        break;
+                    }
                     Debug.Log($"[MARCO][Rematch] 가결 ({rematchVote.YesCount}/{rematchVote.VoterCount}) → 즉시 재시작");
                     RestartRound();
                     break;

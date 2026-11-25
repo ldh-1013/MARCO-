@@ -88,13 +88,7 @@ namespace Marco.Network.Round
             if (!TryGetHostRound(out var round)) return;
 
             TestHudSkin.Begin();
-            if (!open)
-            {
-                var hint = new Rect((TestHudSkin.Width - 300) / 2, TestHudSkin.Height - 56 - TestHudSkin.Margin, 300, 56);
-                TestHudSkin.Fill(hint, TestHudSkin.PanelColor);
-                GUI.Label(hint, "Tab: 치트 패널", TestHudSkin.Text(24, FontStyle.Bold, TextAnchor.MiddleCenter));
-                return;
-            }
+            if (!open) return;
 
             float height = TestHudSkin.Padding * 2 + 48 + (Cheats.Length + 1) * (ButtonHeight + Gap) + 16;
             var rect = new Rect((TestHudSkin.Width - PanelWidth) / 2, TestHudSkin.Height - height - TestHudSkin.Margin, PanelWidth, height);

@@ -357,7 +357,6 @@ namespace Marco.Network.Editor
             type.GetField("microphoneClip", Flags).SetValue(vision, null);
             foreach (var name in new[] { "targetWorldRadius", "worldRadius" }) type.GetField(name, Flags).SetValue(vision, radius);
             foreach (var name in new[] { "targetWorldIntensity", "worldIntensity" }) type.GetField(name, Flags).SetValue(vision, intensity);
-            type.GetField("status", Flags).SetValue(vision, radius > 0 ? "대화 · 주변이 드러납니다 (검증용 고정)" : "침묵 (검증용 고정)");
             // Dots dropped by room noise before the pin would otherwise linger for 5 s.
             var dots = vision.GetComponent<MicrophoneFootDots>();
             if (dots != null)

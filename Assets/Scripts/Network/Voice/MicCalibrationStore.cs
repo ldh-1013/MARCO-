@@ -60,10 +60,21 @@ namespace Marco.Network.Voice
             return MicCalibration.ClampOffset(value);
         }
 
-        public void Save(string device, float offsetDb)
+        public float? LoadVoiceFloor(string device)
+        {
+            if (string.IsNullOrEmpty(device) || store == null ||
+                !store.TryGetString("marco.settings.micVoiceFloor." + DeviceKey(device), out string text)) return null;
+            return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value) &&
+                value >= -120f && value <= 0f ? value : (float?)null;
+        }
+
+        public void Save(string device, float offsetDb, float? voiceFloor = null)
         {
             if (string.IsNullOrEmpty(device) || store == null || float.IsNaN(offsetDb) || float.IsInfinity(offsetDb)) return;
             store.SetString(Key(device), MicCalibration.ClampOffset(offsetDb).ToString("R", CultureInfo.InvariantCulture));
+            if (voiceFloor.HasValue)
+                store.SetString("marco.settings.micVoiceFloor." + DeviceKey(device),
+                    voiceFloor.Value.ToString("R", CultureInfo.InvariantCulture));
             store.Save();
         }
 

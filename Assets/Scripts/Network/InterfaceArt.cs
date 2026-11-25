@@ -85,6 +85,10 @@ namespace Marco.Network
             ["프레임 표시(FPS)"] = new(232, 974, 220, 32),
             ["track"] = new(460, 974, 220, 25),
             ["fill"] = new(688, 974, 220, 25),
+            ["게임을 종료할까요?"] = new(930, 969, 323, 36),
+            ["취소"] = new(1261, 969, 70, 36),
+            ["종료"] = new(1339, 969, 72, 36),
+            ["나가기"] = new(1419, 969, 106, 36),
         };
 
         private static readonly Dictionary<string, Sprite> sprites = new();

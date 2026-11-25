@@ -20,7 +20,7 @@ namespace Marco.Core.WinCondition.Tests
             public float TimeLimit;
         }
 
-        private static RoundTestContext CreateRound(int runnerCount, bool openGate = true)
+        private static RoundTestContext CreateRound(int runnerCount, bool openGate = true, bool allowSmallRoom = false)
         {
             var config = new WinConditionConfig();
             var roster = new FakePlayerRoster { TotalRunnerCount = runnerCount };
@@ -41,8 +41,9 @@ namespace Marco.Core.WinCondition.Tests
 
             if (openGate) gate.Evaluate(1);
 
-            var round = new RoundState(config, roster, gate, service, events);
-            var settings = config.GetRoundSettings(runnerCount);
+            var round = new RoundState(config, roster, gate, service, events, allowSmallRoom: allowSmallRoom);
+            var settings = allowSmallRoom && runnerCount == 1
+                ? config.SmallRoomSettings : config.GetRoundSettings(runnerCount);
 
             return new RoundTestContext
             {
@@ -55,6 +56,27 @@ namespace Marco.Core.WinCondition.Tests
                 EscapeRequired = settings.EscapeRequiredCount,
                 TimeLimit = settings.TimeLimitSeconds,
             };
+        }
+
+        [Test]
+        public void SingleRunnerMatch_CountsDownAndCanEscape()
+        {
+            var round = CreateRound(1, allowSmallRoom: true).Round;
+            round.Tick(1f);
+            Assert.AreEqual(539f, round.RemainingSeconds);
+            Assert.IsFalse(round.LastSurvivorPhase.HasEntered);
+            Assert.IsTrue(round.NotifyRunnerEscaped(1));
+            round.Tick(.01f);
+            Assert.AreEqual(RoundResult.RunnersWin, round.Result);
+        }
+
+        [Test]
+        public void SingleRunnerMatch_EndsOnTimeout()
+        {
+            var round = CreateRound(1, openGate: false, allowSmallRoom: true).Round;
+            round.Tick(540f);
+            Assert.AreEqual(0f, round.RemainingSeconds);
+            Assert.AreEqual(RoundResult.SeekersWin, round.Result);
         }
 
         [TestCase(2)]

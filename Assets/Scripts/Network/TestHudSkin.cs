@@ -73,6 +73,23 @@ namespace Marco.Network
         public static void Panel(Rect rect)
         {
             Fill(rect, PanelColor);
+            RegisterPanel(rect);
+        }
+
+        public static void GamePanel(Rect rect, float opacity = 1f)
+        {
+            if (opacity > 0f)
+            {
+                var saved = GUI.color;
+                GUI.color = saved * new Color(1f, 1f, 1f, opacity);
+                Lobby.LobbyMenu.RoomPanel(rect);
+                GUI.color = saved;
+            }
+            RegisterPanel(rect);
+        }
+
+        private static void RegisterPanel(Rect rect)
+        {
             if (Event.current.type != EventType.Repaint) return;
             if (blockerFrame != Time.frameCount)
             {

@@ -1,22 +1,18 @@
 namespace Marco.Network.Voice
 {
     // 부록 A [마이크 캘리브레이션] 프롬프트 — pure state machine, no scene.
-    //   Idle → Measuring → Success | Retry(failure) | Fallback ; Skip → Skipped ; Cancel (while measuring) → Cancelled
-    // At most MaxAttempts measured attempts. A prompt cut short (controller disabled, scene change, round start) is
-    // Cancelled and does not use an attempt. Three failed attempts: Fallback — offset 0, not saved. Skipped: offset 0
-    // for this session, not saved. Success: the offset is saved.
+    // Failed measurements can be retried until the player succeeds or skips.
     public sealed class MicCalibrationPrompt
     {
-        public enum State { Idle, Measuring, Success, Retry, Fallback, Skipped, Cancelled }
+        public enum State { Idle, Measuring, Success, Retry, Skipped, Cancelled }
         public enum Failure { None, TooQuiet, Clipped, Muted }
 
         public State Current { get; private set; } = State.Idle;
-        public int Attempts { get; private set; }
         public Failure LastFailure { get; private set; }
         public float Offset { get; private set; }
 
         public bool CanStart => Current == State.Idle || Current == State.Retry || Current == State.Cancelled;
-        public bool IsFinished => Current == State.Success || Current == State.Fallback || Current == State.Skipped;
+        public bool IsFinished => Current == State.Success || Current == State.Skipped;
         public bool ShouldSave => Current == State.Success;
 
         public bool Start()
@@ -30,7 +26,6 @@ namespace Marco.Network.Voice
         public State Report(MicCalibration.Result result, bool muted)
         {
             if (Current != State.Measuring) return Current;
-            Attempts++;
             if (result.Valid)
             {
                 Offset = result.Offset;
@@ -39,7 +34,7 @@ namespace Marco.Network.Voice
             }
             Offset = 0f;
             LastFailure = muted ? Failure.Muted : result.Reason == MicCalibration.FailReason.Clipped ? Failure.Clipped : Failure.TooQuiet;
-            return Current = Attempts >= MicCalibration.MaxAttempts ? State.Fallback : State.Retry;
+            return Current = State.Retry;
         }
 
         // Cut short: the attempt is not counted.
@@ -55,11 +50,10 @@ namespace Marco.Network.Voice
             Current = State.Skipped;
         }
 
-        // 로비 "마이크 다시 측정": a fresh prompt with all attempts back.
+        // 로비 "마이크 다시 측정": start a fresh measurement.
         public void Restart()
         {
             Current = State.Idle;
-            Attempts = 0;
             LastFailure = Failure.None;
             Offset = 0f;
         }

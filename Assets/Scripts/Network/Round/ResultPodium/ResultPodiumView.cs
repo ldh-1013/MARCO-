@@ -25,7 +25,7 @@ namespace Marco.Network.Round.ResultPodium
         {
             var round = NetworkRound.Instance;
             bool want = round != null && round.IsResultScreenShown;
-            if (want && !shown) Open(round.Result);
+            if (want && !shown) Open(round);
             else if (!want && shown) Close();
             shown = want;
             if (stage == null) return;
@@ -40,14 +40,14 @@ namespace Marco.Network.Round.ResultPodium
         private static int FeedWidth => Mathf.Min(Screen.width, 1920);
         private static int FeedHeight => Mathf.RoundToInt(FeedWidth * Screen.height / (float)Mathf.Max(1, Screen.width));
 
-        private void Open(RoundResult result)
+        private void Open(NetworkRound round)
         {
             Close();
             if (assets == null) assets = ResultPodiumAssets.Load();
             if (assets == null) { Debug.LogWarning("[MARCO][Result] Resources/" + ResultPodiumAssets.ResourcePath + " missing; plain result screen."); return; }
-            var awards = NetworkRound.Instance != null && NetworkRound.Instance.RoundAwards != null
-                ? BuildAwards(NetworkRound.Instance.RoundAwards, NetworkPlayer.All) : null;
-            stage = new ResultPodiumStage(result, BuildEntries(result, NetworkPlayer.All, NetworkPlayer.Local), assets, FeedWidth, FeedHeight, awards);
+            var awards = round.RoundAwards != null ? BuildAwards(round.RoundAwards, NetworkPlayer.All) : null;
+            stage = new ResultPodiumStage(round.Result, BuildEntries(round.Result, NetworkPlayer.All, NetworkPlayer.Local),
+                assets, FeedWidth, FeedHeight, awards, RoundTitle(round));
             if (!stage.IsValid) Close();
         }
 
@@ -114,9 +114,8 @@ namespace Marco.Network.Round.ResultPodium
             {
                 // No podium (assets missing): dark screen with the banner text only.
                 TestHudSkin.Fill(full, new Color(.012f, .014f, .03f, .96f));
-                var banner = new GUIStyle(TestHudSkin.Text(96, FontStyle.Bold, TextAnchor.MiddleCenter));
-                banner.normal.textColor = TeamColor(round.Result);
-                GUI.Label(new Rect(0, full.height * .2f, full.width, 140), ResultPodiumStage.ResultTitle(round.Result), banner);
+                Lobby.RoomLettering.Draw(new Rect(0, full.height * .2f, full.width, 140),
+                    RoundTitle(round), 80, TeamColor(round.Result), true);
             }
             if (reveal > 0f) DrawVote(round, full, reveal);
         }
@@ -138,20 +137,24 @@ namespace Marco.Network.Round.ResultPodium
 
             float centerX = full.width / 2;
             float rowY = bar.y + 26;
-            GUI.Label(new Rect(centerX - 560, rowY, 300, 64), "리매치?", TestHudSkin.Text(40, FontStyle.Bold, TextAnchor.MiddleRight));
-            GUI.Label(new Rect(centerX - 240, rowY, 260, 64), $"찬성 {round.RematchYesCount} / {round.RematchVoterCount}",
-                TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
+            Lobby.RoomLettering.Draw(new Rect(centerX - 460, rowY, 200, 64), "다시 도전", 38, centered: true);
+            Lobby.RoomLettering.Draw(new Rect(centerX - 235, rowY, 235, 64),
+                $"찬성 {round.RematchYesCount} / {round.RematchVoterCount}", 30, centered: true);
             int seconds = Mathf.Max(0, Mathf.CeilToInt(remaining));
-            GUI.Label(new Rect(centerX + 30, rowY, 110, 64), $"{seconds}초", TestHudSkin.Text(36, FontStyle.Bold, TextAnchor.MiddleCenter));
+            Lobby.RoomLettering.Draw(new Rect(centerX + 25, rowY, 115, 64), $"{seconds}초", 30, accent, true);
 
             bool previousEnabled = GUI.enabled;
             GUI.enabled = round.CanRequestRematch && reveal >= 1f;
-            var button = new GUIStyle(TestHudSkin.Button(32)) { alignment = TextAnchor.MiddleCenter };
-            if (GUI.Button(new Rect(centerX + 170, rowY, 220, 64), round.HasRequestedRematch ? "찬성함" : "찬성", button))
+            if (Lobby.LobbyMenu.RoomButton(new Rect(centerX + 170, rowY, 220, 64),
+                round.HasRequestedRematch ? "찬성 완료" : "찬성", 28, primary: true, useLettering: true))
                 round.RequestRematch();
             GUI.enabled = previousEnabled;
             GUI.color = previousColor;
         }
+
+        private static string RoundTitle(NetworkRound round) =>
+            round.IsSoloRound && round.Result == RoundResult.SeekersWin
+                ? "시간 초과" : ResultPodiumStage.ResultTitle(round.Result);
 
         private static Color TeamColor(RoundResult result) => result switch
         {

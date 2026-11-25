@@ -133,6 +133,8 @@ namespace Marco.Core.WinCondition
             { 5, new RoundSettings(escapeRequiredCount: 3, timeLimitSeconds: 15f * 60f) },
         };
 
+        public RoundSettings SmallRoomSettings => new RoundSettings(escapeRequiredCount: 1, timeLimitSeconds: 9f * 60f);
+
         // 도망자 수에 맞는 라운드 설정을 돌려준다. 기획서에 정의된 2~5명만 지원.
         public RoundSettings GetRoundSettings(int runnerCount)
         {

@@ -2,18 +2,16 @@ using Marco.Core.WinCondition;
 using Marco.Network.Player;
 using Marco.Network.Round;
 using Marco.Network.Round.ResultPodium;
+using Marco.Network.Vision;
 using UnityEngine;
 
 namespace Marco.Network
 {
-    // Temporary IMGUI HUD for the test scenes once the round has started: round timer and gate
-    // (top center), valves (left), players (right), result (center). Before that, LobbyMenu covers
-    // the screen. The host gets restart here in ValvesOnly mode; a decided round goes to the result
-    // screen's rematch vote. RoundCheats (Tab, dev builds only) keeps its own restart with the cheats.
+    // Role-aware play HUD. The lobby owns the screen until the round begins.
     [RequireComponent(typeof(LanConnector))]
     public sealed partial class NetworkTestHud : MonoBehaviour
     {
-        private const float SideWidth = 420, RowHeight = 44;
+        private static readonly Color Gold = new(.96f, .78f, .46f);
 
         private static readonly Color SeekerColor = new(0.95f, 0.3f, 0.3f);
         private static readonly Color RunnerColor = new(0.35f, 0.6f, 1f);
@@ -23,6 +21,8 @@ namespace Marco.Network
 
         private LanConnector connector;
         private ResultPodiumView podium;
+        private NetworkPlayer hudVoiceOwner;
+        private MicrophoneVisionController hudVoice;
 
         private void Awake()
         {
@@ -39,33 +39,46 @@ namespace Marco.Network
             if (round == null || round.Mode == RoundMode.NotStarted) return;
 
             TestHudSkin.Begin();
+            if (round.IsResultScreenShown)
+            {
+                podium.Draw(round);
+                return;
+            }
             // The eliminated Echo's 3.0 s tag blackout covers the 3D view first; the HUD below stays on top of it.
             Marco.Network.Vision.TagBlackoutLocal.Draw(NetworkPlayer.Local, TestHudSkin.Width, TestHudSkin.Height);
             DrawEndEdgePulse(round);
             DrawSeekerReticle(round);
             var local = NetworkPlayer.Local;
-            if (local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive &&
+            if (hudVoiceOwner != local)
+            {
+                hudVoiceOwner = local;
+                hudVoice = local != null ? local.GetComponentInChildren<MicrophoneVisionController>(true) : null;
+            }
+            bool aliveRunner = local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive;
+            float paperOpacity = aliveRunner ? Mathf.SmoothStep(0f, 1f, hudVoice != null ? hudVoice.HudVisionLevel : 0f) : 1f;
+            if (aliveRunner &&
                 !local.HasHealingAction && round.Result == RoundResult.InProgress)
                 RuinedUi.Reticle(new Vector2(TestHudSkin.Width * .5f, TestHudSkin.Height * .5f), Color.white, 24);
-            DrawPlayers();
-            float statusBottom = DrawRoundStatus(round);
+            DrawIdentity(local, paperOpacity);
+            float statusBottom = DrawRoundStatus(round, paperOpacity);
+            DrawValves(round, paperOpacity);
+            DrawRunnerHealth(round, paperOpacity);
+            DrawRunnerInventory(paperOpacity);
+
             DrawEchoBodyBanner(round, statusBottom);
             DrawKnockHud(round, statusBottom);
             DrawEchoCompass(round);
             DrawLureNotice(round, statusBottom);
-            DrawValves(round);
-            DrawRunnerHealth(round);
-            DrawRunnerInventory();
+            DrawValveWork(round, paperOpacity);
             DrawShoutGauge(round);
             DrawHealingProgress();
             DrawBreath();
             DrawValveDiveHint();
-            DrawRoundStart(round);
-            DrawResult(round);
+            DrawRoundStart(round, paperOpacity);
         }
 
         // Center: own role only for the 5 s role reveal, then the Seeker's hold countdown (기획서 부록 A [라운드 시작]).
-        private static void DrawRoundStart(NetworkRound round)
+        private static void DrawRoundStart(NetworkRound round, float paperOpacity)
         {
             var player = NetworkPlayer.Local;
             if (player == null || round.Result != RoundResult.InProgress) return;
@@ -87,10 +100,8 @@ namespace Marco.Network
 
             const float width = 640, height = 190;
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Height * 0.4f - height / 2, width, height);
-            TestHudSkin.Panel(rect);
-            var titleStyle = new GUIStyle(TestHudSkin.Text(72, FontStyle.Bold, TextAnchor.MiddleCenter));
-            titleStyle.normal.textColor = seeker ? SeekerColor : RunnerColor;
-            GUI.Label(new Rect(rect.x, rect.y + 16, rect.width, 96), title, titleStyle);
+            TestHudSkin.GamePanel(rect, paperOpacity);
+            Lobby.RoomLettering.Draw(new Rect(rect.x, rect.y + 14, rect.width, 96), title, 62, seeker ? SeekerColor : RunnerColor, true);
             if (seconds <= 3)
             {
                 string action = round.StartPhase == RoundStartPhase.RoleReveal ? "초 뒤 시작" : "초 뒤 출발";
@@ -113,8 +124,8 @@ namespace Marco.Network
             string title = EchoBodyBannerTitle(round, NetworkPlayer.Local);
             if (title == null) return;
             var rect = EchoBodyBannerRect(TestHudSkin.Width, top);
-            TestHudSkin.Panel(rect);
-            GUI.Label(EchoBodyBannerTitleRect(rect), title, TestHudSkin.Text(40, FontStyle.Bold, TextAnchor.MiddleCenter));
+            TestHudSkin.GamePanel(rect);
+            Lobby.RoomLettering.Draw(EchoBodyBannerTitleRect(rect), title, 36, centered: true);
             GUI.Label(EchoBodyBannerDetailRect(rect), EchoBodyBannerDetail, TestHudSkin.Text(20, FontStyle.Normal, TextAnchor.MiddleCenter));
         }
 
@@ -142,31 +153,32 @@ namespace Marco.Network
 
         // Top center: time, gate, last-survivor phase, and the host's start/restart button.
         // Returns the panel's bottom edge so the escapee banner can sit right under it.
-        private float DrawRoundStatus(NetworkRound round)
+        private float DrawRoundStatus(NetworkRound round, float paperOpacity)
         {
-            const float width = 640, buttonHeight = 52;
+            const float width = 476, buttonHeight = 52;
             bool lastSurvivor = round.InLastSurvivorPhase;
             // ValvesOnly never decides a result, so the host can restart it at any time. A decided Full
             // round restarts through the result screen's rematch vote instead (기획서 12.5).
             bool hostButton = connector.IsHost && round.Mode == RoundMode.ValvesOnly;
             float height = (lastSurvivor ? 220 : RoundPanelHeight) + (hostButton ? buttonHeight + 12 : 0);
             var rect = new Rect((TestHudSkin.Width - width) / 2, TestHudSkin.Margin, width, height);
-            TestHudSkin.Panel(rect);
+            TestHudSkin.GamePanel(rect, paperOpacity);
             var inner = Inset(rect);
-            var center = TestHudSkin.Text(40, FontStyle.Bold, TextAnchor.MiddleCenter);
 
             if (hostButton) DrawHostButton(round, new Rect(inner.x, inner.yMax - buttonHeight, inner.width, buttonHeight));
 
             if (round.Mode == RoundMode.Full)
             {
-                GUI.Label(new Rect(inner.center.x - 210, inner.y, 210, 52), "남은 시간", center);
+                Lobby.RoomLettering.Draw(new Rect(inner.center.x - 156, inner.y, 138, 52), "남은 시간", 30, centered: true);
                 InterfaceArt.Number(new Rect(inner.center.x, inner.y + 6, 160, 40), FormatTime(round.RemainingSeconds));
             }
-            else GUI.Label(new Rect(inner.x, inner.y, inner.width, 52), "밸브 전용 모드", center);
-            var gateStyle = new GUIStyle(TestHudSkin.Text(28, FontStyle.Bold, TextAnchor.MiddleCenter));
-            InterfaceArt.Draw(new Rect(inner.center.x - 122, inner.y + 60, 28, 28), round.GateOpen ? "gateOpen" : "gateClosed");
-            gateStyle.normal.textColor = round.GateOpen ? OpenColor : SeekerColor;
-            GUI.Label(new Rect(inner.x, inner.y + 56, inner.width, 36), round.GateOpen ? "게이트 열림" : "게이트 닫힘", gateStyle);
+            else Lobby.RoomLettering.Draw(new Rect(inner.x, inner.y, inner.width, 52), "밸브 연습", 32, centered: true);
+            bool hasEscapeScore = round.EscapeRequiredCount > 0;
+            float gateX = hasEscapeScore ? inner.x + 8 : inner.center.x - 96;
+            DrawInkIcon(new Rect(gateX, inner.y + 53, 42, 42), round.GateOpen ? "gateOpen" : "gateClosed");
+            Lobby.RoomLettering.Draw(new Rect(gateX + 49, inner.y + 55, 128, 39),
+                round.GateOpen ? "게이트 열림" : "게이트 닫힘", 23, round.GateOpen ? OpenColor : Gold);
+            if (hasEscapeScore) DrawEscapeScore(round, new Rect(inner.center.x - 12, inner.y + 53, inner.width * .5f + 12, 42));
 
             if (!lastSurvivor) return rect.yMax;
             float y = inner.y + 100;
@@ -202,40 +214,78 @@ namespace Marco.Network
             return rect.yMax;
         }
 
-        private static void DrawHostButton(NetworkRound round, Rect rect)
+        private static void DrawEscapeScore(NetworkRound round, Rect row)
         {
-            var style = new GUIStyle(TestHudSkin.Button(24)) { alignment = TextAnchor.MiddleCenter };
-            if (GUI.Button(rect, "↻  다시 시작", style)) round.RestartRound();
+            const float slotSize = 30, slotGap = 5;
+            int required = round.EscapeRequiredCount, escaped = round.EscapedCount;
+            float x = row.x + (row.width - 108 - required * (slotSize + slotGap)) * .5f;
+            var accent = escaped >= required ? new Color(.55f, .94f, .85f) : Color.white;
+            Lobby.RoomLettering.Draw(new Rect(x, row.y, 43, row.height), "탈출", 23, accent);
+            InterfaceArt.Number(new Rect(x + 47, row.y + 8, 52, 26), $"{escaped}/{required}");
+            for (int slot = 0; slot < required; slot++)
+                InterfaceArt.Draw(new Rect(x + 108 + slot * (slotSize + slotGap), row.y + 6, slotSize, slotSize),
+                    slot < escaped ? "ready" : "waiting");
         }
 
-        // Left: open valve count only (기획서 6.1-0 · 12.4 — which valves are active is never shown), then the controls reminder.
+        private static void DrawHostButton(NetworkRound round, Rect rect)
+        {
+            if (Lobby.LobbyMenu.RoomButton(rect, "다시 시작", 23, useLettering: true)) round.RestartRound();
+        }
+
+        // These two stamps use dark ink. A paper backing preserves contrast on the charcoal HUD.
+        private static void DrawInkIcon(Rect rect, string key)
+        {
+            var paper = InterfaceArt.Regions["paper"];
+            var texture = RuinedUi.Texture(InterfaceArt.Atlas);
+            if (texture != null)
+                RuinedUi.Region(rect, InterfaceArt.Atlas, paper, new Vector2(texture.width, texture.height));
+            InterfaceArt.Draw(new Rect(rect.x + 5, rect.y + 5, rect.width - 10, rect.height - 10), key);
+        }
+
+        // Show the shared count and the local interaction without revealing other active valves.
         private static readonly string[] ValveFrames = { "progress0", "progress1", "progress2", "progress3", "progress4" };
 
-        private static void DrawValves(NetworkRound round)
-        {
-            float extraRow = 0;
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            var calibratedMic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponentInChildren<Marco.Network.Vision.MicrophoneVisionController>(true) : null;
-            if (calibratedMic != null) extraRow = 26;
-#endif
-            var rect = new Rect(TestHudSkin.Margin, TestHudSkin.Margin, SideWidth, 60 + RowHeight + 220 + extraRow);
-            TestHudSkin.Panel(rect);
-            var inner = Inset(rect);
-            GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), "밸브", TestHudSkin.Text(30, FontStyle.Bold));
+        private const float ValveRowHeight = 48, ValveRowGap = 6;
+        private static Rect ValvePanelRect(int required) =>
+            new(TestHudSkin.Margin, TestHudSkin.Margin, 166, 58 + required * (ValveRowHeight + ValveRowGap));
 
-            float y = inner.y + 50;
-            int open = round.OpenValveCount, required = round.RequiredOpenValveCount;
-            var countStyle = new GUIStyle(TestHudSkin.Text(26, FontStyle.Bold));
-            countStyle.normal.textColor = open >= required ? OpenColor : Color.white;
-            InterfaceArt.Draw(new Rect(inner.x, y, 32, 32), open >= required ? "valveOpen" : "valve");
-            GUI.Label(new Rect(inner.x + 40, y, 90, 32), "열린 수", countStyle);
-            InterfaceArt.Number(new Rect(inner.x + 132, y + 3, 100, 26), $"{open}/{required}");
+        private static void DrawValves(NetworkRound round, float paperOpacity)
+        {
+            int required = round.RequiredOpenValveCount;
+            if (required <= 0) return;
+
+            var rect = ValvePanelRect(required);
+            TestHudSkin.GamePanel(rect, paperOpacity);
+            var inner = Inset(rect);
+            Lobby.RoomLettering.Draw(new Rect(inner.x, inner.y, inner.width, 23), "밸브", 21, Gold);
+
+            int open = round.OpenValveCount;
+            for (int slot = 0; slot < required; slot++)
+            {
+                bool isOpen = slot < open;
+                var row = new Rect(inner.x, inner.y + 30 + slot * (ValveRowHeight + ValveRowGap), inner.width, ValveRowHeight);
+                Color state = isOpen ? Gold : new Color(.65f, .63f, .59f);
+                TestHudSkin.Fill(row, isOpen ? new Color(.29f, .21f, .11f, .8f * paperOpacity) : new Color(0, 0, 0, .3f * paperOpacity));
+                TestHudSkin.Fill(new Rect(row.x, row.y, 2, row.height), state);
+                DrawInkIcon(new Rect(row.x + 8, row.y + 4, 40, 40), isOpen ? "valveOpen" : "valve");
+                Lobby.RoomLettering.Draw(new Rect(row.x + 55, row.y, row.width - 59, row.height),
+                    isOpen ? "열림" : "닫힘", 17, state, centered: true);
+            }
+        }
+
+        private static void DrawValveWork(NetworkRound round, float paperOpacity)
+        {
             var player = NetworkPlayer.Local;
             if (player != null && player.Status == PlayerStatus.Alive && player.Role == PlayerRole.Runner &&
                 player.TryGetComponent(out PlayerInteractor interactor) && interactor.WorkingValve is ValveId id &&
                 round.TryGetValveState(id, out var valve))
             {
-                var box = new Rect(inner.xMax - 40, y - 4, 40, 40);
+                var rect = ValvePanelRect(round.RequiredOpenValveCount);
+                var work = new Rect(rect.x, rect.yMax + 8, rect.width, 55);
+                TestHudSkin.GamePanel(work, paperOpacity);
+                var box = new Rect(work.x + 12, work.y + 7, 40, 40);
+                Lobby.RoomLettering.Draw(new Rect(box.xMax + 8, work.y, work.xMax - box.xMax - 20, work.height),
+                    "작업 중", 17, Gold, centered: true);
                 string border = valve.Status switch
                 {
                     ValveStatus.Reflowing => "reflowFrame",
@@ -250,24 +300,6 @@ namespace Marco.Network
                 };
                 InterfaceArt.Draw(new Rect(box.x + 5, box.y + 5, 30, 30), wheel);
             }
-            y += RowHeight;
-
-            var help = TestHudSkin.Text(18);
-            GUI.Label(new Rect(inner.x, y + 4, inner.width, 26), "E 홀드: 밸브·배수구 작업 (도망자)", help);
-            GUI.Label(new Rect(inner.x, y + 30, inner.width, 26), "E: 게이트 열린 뒤 탈출구에서 탈출", help);
-            GUI.Label(new Rect(inner.x, y + 56, inner.width, 26), $"좌클릭: 앞쪽 {round.TagRadius:0.0#}m 도망자 태그 (술래)", help);   // §3.1-2 판정 반경 — NetworkRound.TagRadius에서 읽는다
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴 / F6: 커서 토글(개발)", help);
-            if (calibratedMic != null)   // 부록 A [마이크 캘리브레이션]: the offset is shown on the test HUD only
-                GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), $"마이크 보정 {calibratedMic.CalibrationOffsetDb:+0.0;-0.0;0} dB (개발)", help);
-#else
-            GUI.Label(new Rect(inner.x, y + 82, inner.width, 26), "Esc: 메뉴", help);
-#endif
-            y += extraRow;
-            GUI.Label(new Rect(inner.x, y + 108, inner.width, 26), "Space: 점프 · Left Shift: 질주 (도망자)", help);
-            GUI.Label(new Rect(inner.x, y + 134, inner.width, 26), "부상자 근처 E 홀드: 치료 (9초)", help);
-            GUI.Label(new Rect(inner.x, y + 160, inner.width, 26), "E: 아이템 줍기 · 4 소리통: G 녹음/설치/재생", help);
-            GUI.Label(new Rect(inner.x, y + 186, inner.width, 26), "1/2/3/4: 선택 · 투척 G 홀드 조준/떼면 투척", help);
         }
 
         // Underwater valve (B · E) pressed without diving: shown for any B · E, active or not.
@@ -339,10 +371,10 @@ namespace Marco.Network
                 TestHudSkin.Text(22, FontStyle.Bold, TextAnchor.MiddleCenter));
         }
 
-        private const float HealthPanelHeight = 78;
-        internal const float RunnerHealthTopFromBottom = TestHudSkin.Margin + HealthPanelHeight + 30;
+        private const float HealthPanelHeight = 110;
+        internal const float RunnerHealthTopFromBottom = TestHudSkin.Margin + HealthPanelHeight;
 
-        private static void DrawRunnerHealth(NetworkRound round)
+        private static void DrawRunnerHealth(NetworkRound round, float paperOpacity)
         {
             var player = NetworkPlayer.Local;
             if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
@@ -350,20 +382,20 @@ namespace Marco.Network
             int totalHalves = Mathf.Max(1, round.FullHalves);
             int currentHalves = player.HealthHalves < 0 ? totalHalves : Mathf.Clamp(player.HealthHalves, 0, totalHalves);
             var panel = new Rect(TestHudSkin.Margin, TestHudSkin.Height - RunnerHealthTopFromBottom, 330, HealthPanelHeight);
-            TestHudSkin.Panel(panel);
+            TestHudSkin.GamePanel(panel, paperOpacity);
 
-            GUI.Label(new Rect(panel.xMax - 150, panel.y + 8, 134, 28),
-                $"{currentHalves / 2f:F1} / {totalHalves / 2f:F1}",
-                TestHudSkin.Text(20, FontStyle.Bold, TextAnchor.MiddleRight));
-
-            float barX = panel.x + 16, barY = panel.y + 44, barWidth = panel.width - 32;
-            RuinedUi.Health(new Rect(barX, barY, barWidth, 18), currentHalves, totalHalves);
+            float barX = panel.x + 22, barWidth = panel.width - 44;
+            Lobby.RoomLettering.Draw(new Rect(barX, panel.y + 12, 80, 27), "체력", 23);
+            Lobby.RoomLettering.Draw(new Rect(panel.xMax - 132, panel.y + 12, 112, 27),
+                $"{currentHalves / 2f:0.#} / {totalHalves / 2f:0.#}", 21, centered: true);
+            RuinedUi.Health(new Rect(barX, panel.y + 46, barWidth, 16), currentHalves, totalHalves);
+            Lobby.RoomLettering.Draw(new Rect(barX, panel.y + 72, 80, 23), "기력", 17, Gold);
             float staminaRatio = player.TryGetComponent(out PlayerMovement movement)
                 ? movement.SprintStaminaRatio : 1f;
-            RuinedUi.Stamina(new Rect(barX, panel.yMax + 10, barWidth, 12), staminaRatio);
+            RuinedUi.Stamina(new Rect(barX + 66, panel.y + 78, barWidth - 66, 11), staminaRatio);
         }
 
-        private static void DrawRunnerInventory()
+        private static void DrawRunnerInventory(float paperOpacity)
         {
             var player = NetworkPlayer.Local;
             if (player == null || player.Role != PlayerRole.Runner || player.Status != PlayerStatus.Alive) return;
@@ -371,38 +403,21 @@ namespace Marco.Network
             const float width = 404, height = 182;
             var panel = new Rect(TestHudSkin.Width - TestHudSkin.Margin - width,
                 TestHudSkin.Height - TestHudSkin.Margin - height, width, height);
-            TestHudSkin.Panel(panel);
-            GUI.Label(new Rect(panel.x + 8, panel.y + 3, panel.width - 16, 22),
-                "아이템 · 1/2/3/4 슬롯", TestHudSkin.Text(18, FontStyle.Bold));
-
-            int selectedSlot = player.TryGetComponent(out PlayerInteractor interactor)
-                ? interactor.SelectedItemSlot
-                : 1;
-            var bandageLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
-            bandageLabel.normal.textColor = selectedSlot == 1 ? new Color(1f, 0.83f, 0.35f) : Color.white;
-            var clickerLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
-            clickerLabel.normal.textColor = selectedSlot == 2 ? new Color(0.45f, 0.85f, 1f) : Color.white;
-
-            GUI.Label(new Rect(panel.x + 8, panel.y + 26, 88, 20), "1 · 붕대", bandageLabel);
-            GUI.Label(new Rect(panel.x + 108, panel.y + 26, 88, 20), "2 · 찰칵", clickerLabel);
-            DrawBandageSlot(new Rect(panel.x + 20, panel.y + 47, 64, 64), player.BandageCount, selectedSlot == 1);
-            DrawClickerSlot(new Rect(panel.x + 120, panel.y + 47, 64, 64), player.ClickerCount, selectedSlot == 2);
-            var decoyLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
-            decoyLabel.normal.textColor = selectedSlot == 3 ? new Color(1f, .72f, .3f) : Color.white;
-            GUI.Label(new Rect(panel.x + 208, panel.y + 26, 88, 20), "3 · 오리", decoyLabel);
-            var decoyRect = new Rect(panel.x + 220, panel.y + 47, 64, 64);
-            RuinedUi.Item(decoyRect, 3, player.DecoyCount > 0, selectedSlot == 3);
-            var canLabel = new GUIStyle(TestHudSkin.Text(17, FontStyle.Bold, TextAnchor.MiddleCenter));
-            canLabel.normal.textColor = selectedSlot == 4 ? new Color(1f, .72f, .3f) : Color.white;
-            GUI.Label(new Rect(panel.x + 308, panel.y + 26, 88, 20), "4 · 소리통", canLabel);
-            var canRect = new Rect(panel.x + 320, panel.y + 47, 64, 64);
-            RuinedUi.Item(canRect, 4, player.SoundCanStage != SoundCanStage.None, selectedSlot == 4);
-            string canStatus = player.SoundCanStage switch
+            TestHudSkin.GamePanel(panel, paperOpacity);
+            int selectedSlot = player.TryGetComponent(out PlayerInteractor interactor) ? interactor.SelectedItemSlot : 1;
+            string item = selectedSlot switch { 1 => "붕대", 2 => "찰칵이", 3 => "오리", _ => "소리통" };
+            Lobby.RoomLettering.Draw(new Rect(panel.x + 22, panel.y + 10, 180, 28), item, 23, Gold);
+            for (int slot = 1; slot <= 4; slot++)
             {
-                SoundCanStage.Empty => "녹음 전", SoundCanStage.Recording => $"{player.SoundCanRecordingProgress:P0}",
-                SoundCanStage.Recorded => "설치 전", SoundCanStage.Placing => "설치 중", SoundCanStage.Placed => "리모컨", SoundCanStage.Playing => "재생 중", _ => "없음"
-            };
-            GUI.Label(new Rect(canRect.x - 10, canRect.yMax, canRect.width + 20, 18), canStatus, TestHudSkin.Text(12, FontStyle.Bold, TextAnchor.MiddleCenter));
+                int count = slot switch { 1 => player.BandageCount, 2 => player.ClickerCount,
+                    3 => player.DecoyCount, _ => player.SoundCanStage != SoundCanStage.None ? 1 : 0 };
+                var cell = new Rect(panel.x + 26 + (slot - 1) * 93, panel.y + 45, 68, 68);
+                RuinedUi.Item(cell, slot, count > 0, selectedSlot == slot);
+                Lobby.RoomLettering.Draw(new Rect(cell.x - 10, cell.y, 20, 20), slot.ToString(), 15,
+                    selectedSlot == slot ? Gold : Color.white);
+                if (count > 1) Lobby.RoomLettering.Draw(new Rect(cell.xMax - 22, cell.yMax - 21, 25, 21),
+                    count.ToString(), 17, centered: true);
+            }
             string usage = selectedSlot switch
             {
                 1 => "G 홀드: 붕대 사용", 2 => "Q/우클릭: 찰칵이 사용", 3 => "G 홀드: 궤도 · 떼면 투척",
@@ -415,71 +430,24 @@ namespace Marco.Network
                     SoundCanStage.Playing => "녹음된 목소리 재생 중", _ => "E: 소리통 줍기"
                 }
             };
-            GUI.Label(new Rect(panel.x + 8, panel.y + 137, panel.width - 16, 20), usage,
-                TestHudSkin.Text(14, FontStyle.Normal, TextAnchor.MiddleCenter));
+            GUI.Label(new Rect(panel.x + 8, panel.y + 116, panel.width - 16, 28), usage,
+                TestHudSkin.Text(19, FontStyle.Normal, TextAnchor.MiddleCenter));
             if (selectedSlot == 4 && interactor != null && !string.IsNullOrEmpty(interactor.SoundCanHint))
-                GUI.Label(new Rect(panel.x + 8, panel.y + 158, panel.width - 16, 20), interactor.SoundCanHint,
-                    TestHudSkin.Text(12, FontStyle.Normal, TextAnchor.MiddleCenter));
+                GUI.Label(new Rect(panel.x + 8, panel.y + 144, panel.width - 16, 26), interactor.SoundCanHint,
+                    TestHudSkin.Text(17, FontStyle.Normal, TextAnchor.MiddleCenter));
         }
 
-        private static void DrawBandageSlot(Rect rect, int count, bool selected)
-            => RuinedUi.Item(rect, 1, count > 0, selected);
-
-        private static void DrawClickerSlot(Rect rect, int count, bool selected)
-            => RuinedUi.Item(rect, 2, count > 0, selected);
-
-        // Right: every player with role and status, then the disconnect button.
-        private void DrawPlayers()
+        private static void DrawIdentity(NetworkPlayer player, float paperOpacity)
         {
-            var players = NetworkPlayer.All;
-            var rect = new Rect(TestHudSkin.Width - SideWidth - TestHudSkin.Margin, TestHudSkin.Margin, SideWidth,
-                60 + players.Count * RowHeight + 76);
-            TestHudSkin.Panel(rect);
-            var inner = Inset(rect);
-            GUI.Label(new Rect(inner.x, inner.y, inner.width, 40), $"플레이어 {connector.PlayerCount}명 · {(connector.IsHost ? "Host" : "Client")}",
-                TestHudSkin.Text(28, FontStyle.Bold));
-
-            float y = inner.y + 50;
-            foreach (var player in players)
-            {
-                var roleColor = player.Role switch
-                {
-                    PlayerRole.Seeker => SeekerColor,
-                    PlayerRole.Runner => RunnerColor,
-                    _ => MutedColor,
-                };
-                TestHudSkin.Fill(new Rect(inner.x, y + 8, 18, 18), roleColor);
-                var style = new GUIStyle(TestHudSkin.Text(18, player.IsOwner ? FontStyle.Bold : FontStyle.Normal));
-                style.normal.textColor = player.Status switch
-                {
-                    PlayerStatus.Alive => Color.white,
-                    PlayerStatus.Escaped => OpenColor,
-                    _ => MutedColor,
-                };
-                GUI.Label(new Rect(inner.x + 30, y, inner.width - 30, 34),
-                    $"P{player.PlayerId}  {RoleLabel(player.Role)} · {StatusLabel(player.Status)}{(player.IsCrouching ? " · 웅크림" : "")}{(player.IsOwner ? "  (나)" + OwnerDetail(player) : "")}", style);
-                y += RowHeight;
-            }
-
-            if (GUI.Button(new Rect(inner.x, y + 6, inner.width, 48), "연결 끊기", TestHudSkin.Button(22))) connector.Leave();
-        }
-
-        // Debug text only the owner sees: the Seeker's swing cooldown.
-        private static string OwnerDetail(NetworkPlayer player)
-        {
-            if (player.Role == PlayerRole.Seeker && player.TryGetComponent(out PlayerInteractor interactor) &&
-                interactor.SwingCooldownRemaining > 0)
-                return $" · 쿨다운 {interactor.SwingCooldownRemaining:F1}s";
-            return "";
-        }
-
-        // Center: result screen (기획서 12.5) — podium (banner, everyone posing in a row, name/result/award
-        // slot) with the rematch vote at the bottom; see ResultPodiumView. The sound map time-lapse and
-        // clip saving are post-MVP and not drawn.
-        private void DrawResult(NetworkRound round)
-        {
-            if (!round.IsResultScreenShown) return;
-            podium.Draw(round);
+            if (player == null) return;
+            const float width = 248;
+            var rect = new Rect(TestHudSkin.Width - TestHudSkin.Margin - width, TestHudSkin.Margin, width, 96);
+            TestHudSkin.GamePanel(rect, paperOpacity);
+            var accent = player.Role == PlayerRole.Seeker ? SeekerColor : player.Role == PlayerRole.Runner ? RunnerColor : Gold;
+            TestHudSkin.Fill(new Rect(rect.x + 20, rect.y + 20, 3, 56), accent);
+            Lobby.RoomLettering.Draw(new Rect(rect.x + 36, rect.y + 12, width - 56, 40), RoleLabel(player.Role), 33);
+            Lobby.RoomLettering.Draw(new Rect(rect.x + 36, rect.y + 55, width - 56, 26),
+                player.IsCrouching ? "웅크림" : StatusLabel(player.Status), 18, accent);
         }
 
         private static Rect Inset(Rect rect) => new(rect.x + TestHudSkin.Padding, rect.y + TestHudSkin.Padding,
@@ -502,7 +470,7 @@ namespace Marco.Network
         {
             PlayerStatus.Escaped => "탈출",
             PlayerStatus.Tagged => "메아리",
-            PlayerStatus.Spectating => "난입 (다음 판부터)",
+            PlayerStatus.Spectating => "관전 중",
             _ => "생존",
         };
 

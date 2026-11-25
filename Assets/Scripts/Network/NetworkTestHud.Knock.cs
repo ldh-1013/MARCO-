@@ -42,13 +42,13 @@ namespace Marco.Network
             if (Time.unscaledTime - round.LastLureNoticeTime < LureNoticeSeconds) return;
 
             var rect = EchoBodyBannerRect(TestHudSkin.Width, top);
-            TestHudSkin.Panel(rect);
+            TestHudSkin.GamePanel(rect);
             int remaining = Mathf.Clamp(EchoKnockLocal.Remaining, 0, EchoKnockRules.Limit);
             float locked = EchoKnockLocal.LockRemaining(now), cooling = EchoKnockLocal.CooldownRemaining(now);
             var ring = new Rect(rect.x + 24, rect.y + 14, rect.height - 28, rect.height - 28);
             var text = new Rect(ring.xMax + 20, rect.y + 8, rect.width - ring.width - 64, 50);
             var detail = new Rect(text.x, text.yMax, text.width, rect.height - 66);
-            GUI.Label(text, KnockCountText[remaining], TestHudSkin.Text(36, FontStyle.Bold));
+            Lobby.RoomLettering.Draw(text, KnockCountText[remaining], 32);
             string state;
             float fraction;
             if (locked > 0f) { state = KnockLockedText; fraction = 1f - locked / EchoKnockRules.LockSeconds; }
@@ -59,7 +59,7 @@ namespace Marco.Network
             else if (state == KnockSpentText) InterfaceArt.Draw(ring, "waiting");
             else RuinedUi.HealingRing(ring, Mathf.Clamp01(fraction));
             float left = locked > 0f ? locked : cooling;
-            GUI.Label(detail, state, TestHudSkin.Text(22));
+            Lobby.RoomLettering.Draw(detail, state, 20);
             if (left > 0f && remaining > 0)
                 GUI.Label(detail, SecondsText[Mathf.Clamp(Mathf.CeilToInt(left), 0, SecondsText.Length - 1)],
                     TestHudSkin.Text(22, FontStyle.Normal, TextAnchor.MiddleRight));

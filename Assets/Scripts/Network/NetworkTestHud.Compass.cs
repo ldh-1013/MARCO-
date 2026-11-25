@@ -41,8 +41,8 @@ namespace Marco.Network
                 InterfaceArt.Draw(arrow, "arrow");
             }
             GUI.matrix = matrix;
-            GUI.Label(new Rect(TestHudSkin.Width * .5f - 120f, TestHudSkin.Height - 64f, 240f, 48f), CompassText[octant],
-                TestHudSkin.Text(30, FontStyle.Bold, TextAnchor.MiddleCenter));
+            Lobby.RoomLettering.Draw(new Rect(TestHudSkin.Width * .5f - 120f, TestHudSkin.Height - 64f, 240f, 48f),
+                CompassText[octant], 25, centered: true);
             GUI.color = saved;
         }
     }

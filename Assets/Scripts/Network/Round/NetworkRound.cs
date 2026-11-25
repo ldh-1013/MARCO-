@@ -132,6 +132,8 @@ namespace Marco.Network.Round
         private readonly SyncVar<bool> gateOpen = new();
         private readonly SyncVar<RoundResult> result = new();
         private readonly SyncVar<float> remainingSeconds = new();
+        private readonly SyncVar<int> escapedCount = new();
+        private readonly SyncVar<int> escapeRequiredCount = new();
         private readonly SyncVar<bool> lastSurvivorPhase = new();
         private readonly SyncVar<float> lastSurvivorRemainingSeconds = new();
         private readonly SyncVar<bool> hasDrainHatch = new();
@@ -215,6 +217,8 @@ namespace Marco.Network.Round
         public bool GateOpen => gateOpen.Value;
         public RoundResult Result => result.Value;
         public float RemainingSeconds => remainingSeconds.Value;
+        public int EscapedCount => escapedCount.Value;
+        public int EscapeRequiredCount => escapeRequiredCount.Value;
         public bool InLastSurvivorPhase => lastSurvivorPhase.Value;
         public float LastSurvivorRemainingSeconds => lastSurvivorRemainingSeconds.Value;
         public float DrainHatchProgress => drainHatchProgress.Value;
@@ -349,6 +353,7 @@ namespace Marco.Network.Round
             // Scene object survives Leave → Host again, so start every session from a clean state.
             ResetRound();
             ServerManager.OnRemoteConnectionState += OnRemoteConnectionState;
+            TimeManager.OnTick += TickLobby;
             Debug.Log("[MARCO][Round] OnStartServer");
         }
 
@@ -360,25 +365,93 @@ namespace Marco.Network.Round
             CancelAllHealingActions();
             base.OnStopServer();
             ServerManager.OnRemoteConnectionState -= OnRemoteConnectionState;
+            TimeManager.OnTick -= TickLobby;
             TimeManager.OnTick -= OnServerTick;
             TimeManager.OnTick -= OnRematchTick;
             rematchVote = null;
             ClearCore();
         }
 
+        private const int MinimumFullRulesPlayers = 3;
+        private const int LobbyCountdownDuration = 3;
+        private readonly SyncVar<int> lobbyCountdown = new();
+        private float lobbyCountdownRemaining;
+
+        private readonly SyncVar<bool> soloRound = new();
+
+        public int LobbyCountdown => lobbyCountdown.Value;
+        public bool IsSoloRound => soloRound.Value;
+        private const int MaximumMatchPlayers = 6;
+
+        public static bool CanStartMatch(int playerCount) =>
+            playerCount > 0 && playerCount <= MaximumMatchPlayers;
+
+        internal void CancelLobbyCountdown()
+        {
+            lobbyCountdownRemaining = 0;
+            lobbyCountdown.Value = 0;
+        }
+
+        private void TickLobby()
+        {
+            if (mode.Value != RoundMode.NotStarted) return;
+            var players = NetworkPlayer.All;
+            if (!CanStartMatch(players.Count) || players.Count != ServerManager.Clients.Count)
+            {
+                CancelLobbyCountdown();
+                return;
+            }
+            foreach (var player in players)
+            {
+                if (player.LobbyReady) continue;
+                CancelLobbyCountdown();
+                return;
+            }
+
+            if (lobbyCountdown.Value == 0)
+                lobbyCountdownRemaining = LobbyCountdownDuration;
+            else
+                lobbyCountdownRemaining -= (float)TimeManager.TickDelta;
+
+            if (lobbyCountdownRemaining > 0)
+            {
+                lobbyCountdown.Value = Mathf.CeilToInt(lobbyCountdownRemaining);
+                return;
+            }
+
+            BeginRound(allowSmallRoom: true);
+        }
+
         [Server]
         public void StartRound()
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            BeginRound(allowSmallRoom: false);
+#else
+            BeginRound(allowSmallRoom: true);
+#endif
+        }
+
+        private void BeginRound(bool allowSmallRoom)
+        {
             Debug.Log($"[MARCO][Round] StartRound (mode {mode.Value})");
             if (mode.Value != RoundMode.NotStarted) return;
+            int playerCount = NetworkPlayer.All.Count;
+            if (!CanStartMatch(playerCount)) return;
+            CancelLobbyCountdown();
             roster = NetworkManager.GetComponent<NetworkPlayerRoster>();
             // The Seeker is drawn once per round, before RoundState reads the Runner count.
-            if (NetworkManager.TryGetComponent(out RoleAssigner roles)) roles.AssignRoles();
+            soloRound.Value = allowSmallRoom && playerCount == 1;
+            if (soloRound.Value)
+                NetworkPlayer.All[0].SetRole(PlayerRole.Runner);
+            else if (NetworkManager.TryGetComponent(out RoleAssigner roles))
+                roles.AssignRoles();
             seekerSpeedBoosted.Value = false;
             seekerPopulationSpeedMultiplier.Value = DefaultConfig.GetSeekerPopulationSpeedMultiplier(NetworkPlayer.All.Count);
             // Everyone connected now takes part, including last round's spectators.
             foreach (var player in NetworkPlayer.All)
             {
+                player.ClearLobbyReady();
                 player.SetStatus(PlayerStatus.Alive);
                 player.SetCrouching(false);
                 player.SetTreatmentLocked(false);
@@ -407,24 +480,25 @@ namespace Marco.Network.Round
             var events = new RoundEventRelay(this);
             IValveSoundSink valveSound = SoundMap ? new ValveAudioSink(this) : new LogValveSoundSink();
             valves = new ValveInteractionService(board, gate, roster, valveSound, events);
-            try
-            {
-                round = new RoundState(config, roster, gate, valves, events);
-                round.SuddenDeath.SeekerSpeedBoosted += () => seekerSpeedBoosted.Value = true;
-                round.SuddenDeath.ExitPulseTriggered += EmitExitPulses;
-                drains = new DrainHatchInteractionService(round.LastSurvivorPhase, roster);
-                WatchDrainHatch(DrainHatchId.First);
-                WatchDrainHatch(DrainHatchId.Second);
-                mode.Value = RoundMode.Full;
-                // The clock does not run during role reveal, but the HUD shows the full limit meanwhile.
-                remainingSeconds.Value = round.RemainingSeconds;
-            }
-            catch (ArgumentOutOfRangeException)
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!allowSmallRoom && playerCount < MinimumFullRulesPlayers)
             {
                 round = null;
                 mode.Value = RoundMode.ValvesOnly;
-                Debug.Log($"[MARCO] Runner {roster.TotalRunnerCount}명: RoundState는 2~5명만 지원 → 밸브 전용 모드");
+                TimeManager.OnTick += OnServerTick;
+                return;
             }
+#endif
+            round = new RoundState(config, roster, gate, valves, events, allowSmallRoom: allowSmallRoom);
+            round.SuddenDeath.SeekerSpeedBoosted += () => seekerSpeedBoosted.Value = true;
+            round.SuddenDeath.ExitPulseTriggered += EmitExitPulses;
+            drains = new DrainHatchInteractionService(round.LastSurvivorPhase, roster);
+            WatchDrainHatch(DrainHatchId.First);
+            WatchDrainHatch(DrainHatchId.Second);
+            escapeRequiredCount.Value = round.EscapeRequiredCount;
+            mode.Value = RoundMode.Full;
+            // The clock does not run during role reveal, but the HUD shows the full limit meanwhile.
+            remainingSeconds.Value = round.RemainingSeconds;
 
             TimeManager.OnTick += OnServerTick;
         }
@@ -458,8 +532,10 @@ namespace Marco.Network.Round
         public void RestartRound()
         {
             Debug.Log("[MARCO][Round] RestartRound");
+            bool fullMatch = mode.Value == RoundMode.Full;
             ResetRound();
-            StartRound();
+            if (fullMatch) BeginRound(allowSmallRoom: true);
+            else StartRound();
         }
 
         private void ResetRound()
@@ -481,10 +557,14 @@ namespace Marco.Network.Round
             bandagePickupStates.Clear();
             valveStates.Clear();
             for (int i = 0; i < ValveCount; i++) valveStates.Add(default);
+            CancelLobbyCountdown();
+            soloRound.Value = false;
             mode.Value = RoundMode.NotStarted;
             gateOpen.Value = false;
             result.Value = RoundResult.InProgress;
             remainingSeconds.Value = 0;
+            escapedCount.Value = 0;
+            escapeRequiredCount.Value = 0;
             lastSurvivorPhase.Value = false;
             lastSurvivorRemainingSeconds.Value = 0;
             hasDrainHatch.Value = false;
@@ -593,6 +673,7 @@ namespace Marco.Network.Round
 
             if (round == null) return;
             remainingSeconds.Value = round.RemainingSeconds;
+            escapedCount.Value = round.EscapedCount;
             SyncLastSurvivorPhase(round.LastSurvivorPhase);
             if (round.Result == RoundResult.InProgress) return;
             // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
@@ -1252,6 +1333,7 @@ namespace Marco.Network.Round
         // Raised before FishNet despawns the leaver's objects, so the roster still knows their role.
         private void OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
         {
+            CancelLobbyCountdown();
             if (args.ConnectionState != RemoteConnectionState.Stopped) return;
             CancelHealingFor(conn.ClientId);
             RemoveSoundCan(conn.ClientId);

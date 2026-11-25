@@ -252,7 +252,10 @@ namespace Marco.Network.Player
             if (!IsOwner || !ShoutRoundActive || player.Status != PlayerStatus.Alive) return;
             string message = player.Role == PlayerRole.Runner && fearEnds > Time.time
                 ? "[Left Ctrl] 숨 참기 · 숨 4.5 소모" : "";
-            if (message.Length > 0) GUI.Box(new Rect(Screen.width / 2f - 160, Screen.height - 170, 320, 30), message);
+            if (message.Length == 0 || Settings.SettingsMenu.IsOpen) return;
+            TestHudSkin.Begin();
+            Lobby.RoomLettering.Draw(new Rect(TestHudSkin.Width / 2f - 240, TestHudSkin.Height - 235, 480, 34),
+                message, 21, centered: true);
         }
     }
 }

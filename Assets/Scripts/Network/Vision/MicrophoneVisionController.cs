@@ -57,7 +57,17 @@ namespace Marco.Network.Vision
         public float CalibrationProgress => calibration != null ? calibration.Progress(Time.unscaledTime) : 0f;
         public void SetCalibrationOffset(float offsetDb) => calibrationOffsetDb = float.IsNaN(offsetDb) ? 0f : MicCalibration.ClampOffset(offsetDb);
         // The level this controller gives a frame of this loudness (0 silence … 3 shout).
-        public int GradeLevel(float dbfs) => MicCalibration.Grade(dbfs, calibrationOffsetDb, silenceDb);
+        private float? calibratedVoiceFloor;
+        public void SetVoiceFloor(float? floor) => calibratedVoiceFloor = floor;
+
+        public float VoiceFloorFor(MicCalibration.Result result) =>
+            MicCalibration.VoiceFloorFor(result, silenceDb);
+
+        public int GradeLevel(float dbfs)
+        {
+            if (calibratedVoiceFloor.HasValue && dbfs < calibratedVoiceFloor.Value) return 0;
+            return MicCalibration.Grade(dbfs, calibrationOffsetDb, calibratedVoiceFloor ?? silenceDb);
+        }
 
         // One 3 s prompt: every processed frame is also recorded until 150 frames or 3 s, then onComplete gets the
         // result once, with whether Left Alt (mute) was held during it. The frame keeps its normal outputs (voice,
@@ -146,7 +156,6 @@ namespace Marco.Network.Vision
         private readonly Color32[] maskPixels = new Color32[256 * 256];
         private float drawnRadius = -1;
         private float drawnAspect;
-        private string status = "마이크 준비 중… 작은 목소리로 말해 보세요.";
         private bool developmentFullVision;
         private static MicrophoneVisionController worldLightingOwner;
         private Camera visionCamera;
@@ -212,6 +221,16 @@ namespace Marco.Network.Vision
 
         private bool IsFullVisionActive => developmentFullVision;
         public bool IsCenterVisible => IsFullVisionActive || clickerFlashActive || radius > 0.01f;
+        internal float HudVisionLevel
+        {
+            get
+            {
+                if (IsFullVisionActive || clickerFlashActive) return 1f;
+                return brightnessMode == BrightnessMode.MarcoPlus
+                    ? Mathf.Clamp01(radius / Mathf.Max(.001f, maximumRadius))
+                    : Mathf.Clamp01(worldIntensity / Mathf.Max(.001f, intensityMin * 4f));
+            }
+        }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public bool DevelopmentFullVision => developmentFullVision;
 #endif
@@ -241,12 +260,14 @@ namespace Marco.Network.Vision
             }
             // Development full vision is opt-in through F8. Starting with it
             // enabled bypasses the dark state and makes silence look like light.
-            if (Microphone.devices.Length == 0) { status = "마이크를 찾지 못했습니다 — F8 개발 시야로 화면을 확인할 수 있습니다."; return; }
+            if (Microphone.devices.Length == 0) return;
             microphoneDevice = Microphone.devices[0]; microphoneClip = Microphone.Start(microphoneDevice, true, 1, SampleRate);
             if (microphoneClip != null)
                 microphoneReadBuffer = new float[FrameSamples * Mathf.Max(1, microphoneClip.channels)];
             // 부록 A [마이크 캘리브레이션] 저장: this device's saved offset (none: 0 — the lobby asks for a prompt).
-            SetCalibrationOffset(MicCalibrationStore.ForPlayerPrefs().Load(microphoneDevice) ?? 0f);
+            var savedCalibration = MicCalibrationStore.ForPlayerPrefs();
+            SetCalibrationOffset(savedCalibration.Load(microphoneDevice) ?? 0f);
+            SetVoiceFloor(savedCalibration.LoadVoiceFloor(microphoneDevice));
         }
 
         private void Update()
@@ -285,7 +306,6 @@ namespace Marco.Network.Vision
                 consecutiveVoiceFrames = 0;
                 voiceHangoverFramesRemaining = 0;
                 ClearVoicePreRoll();
-                status = "마이크 강제 뮤트 (Left Alt)";
             }
             else
             {
@@ -387,7 +407,6 @@ namespace Marco.Network.Vision
             }
             if (consecutiveVoiceFrames < RequiredConsecutiveFrames) return;
             revealUntil = Time.unscaledTime + 0.06f;
-            status = (level == 3 ? "고함" : level == 2 ? "대화" : "속삭임") + "  " + dbfs.ToString("F0") + " dBFS · 주변이 드러납니다";
         }
 
         private void ProcessAvailableMicrophoneFrames()
@@ -668,14 +687,15 @@ namespace Marco.Network.Vision
             var round = Marco.Network.Round.NetworkRound.Instance;
             if (Settings.SettingsMenu.IsOpen || (round != null && round.IsResultScreenShown)) return;
             var local = NetworkPlayer.Local;
-            float top = Screen.height - 72;
-            if (round != null && round.Mode != Round.RoundMode.NotStarted && local != null &&
-                local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive)
-            {
-                float scale = Mathf.Min(Screen.width / 1920f, Screen.height / 1080f);
-                top = Screen.height - NetworkTestHud.RunnerHealthTopFromBottom * scale - 28;
-            }
-            GUI.Label(new Rect(35, top, 900, 25), status);
+            if (round == null || round.Mode == Round.RoundMode.NotStarted || local == null) return;
+            string notice = Input.GetKey(KeyCode.LeftAlt) ? "마이크 음소거" : microphoneClip == null ? "마이크 연결 확인" : null;
+            if (notice == null) return;
+            TestHudSkin.Begin();
+            float bottom = TestHudSkin.Margin + 4;
+            if (local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive)
+                bottom = NetworkTestHud.RunnerHealthTopFromBottom + 4;
+            Lobby.RoomLettering.Draw(new Rect(TestHudSkin.Margin + 12, TestHudSkin.Height - bottom - 34, 310, 34),
+                notice, 21);
         }
 
         private void DrawDarknessMask(float revealRadius)

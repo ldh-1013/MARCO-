@@ -29,6 +29,7 @@ namespace Marco.Network.Editor
     // Menu helpers for the LAN test: (re)create the player prefab and test scene, and build a
     // standalone exe containing only that scene, so one PC can run "exe Host + editor Join".
     // The scene is not added to EditorBuildSettings, leaving the team's scene list untouched.
+    [InitializeOnLoad]
     public static class NetworkTestTools
     {
         public const string ScenePath = "Assets/Scenes/Network/NetworkTest.unity";
@@ -41,6 +42,44 @@ namespace Marco.Network.Editor
         private const string PlaceholderShaderPath = "Assets/Materials/Network/NetworkPlaceholder.shader";
         private const string PlayerPath = "Builds/NetworkTest/MarcoNetworkTest.exe";
         private const ulong RoundSceneId = 0x4D4152434F000001; // "MARCO" + 1; any fixed non-zero value
+        private const string UseTestScene = "MARCO.Network.UseTestSceneOnce";
+        private const string RestorePlayScene = "MARCO.Network.RestorePlayScene";
+
+        static NetworkTestTools()
+        {
+            if (!Application.isBatchMode)
+                EditorApplication.playModeStateChanged += RoutePlayMode;
+        }
+
+        private static void RoutePlayMode(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode)
+            {
+                bool testRequested = SessionState.GetBool(UseTestScene, false);
+                SessionState.EraseBool(UseTestScene);
+                if (testRequested || EditorSceneManager.playModeStartScene != null ||
+                    EditorSceneManager.GetActiveScene().path != ScenePath) return;
+                var gameScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(NetworkMapSceneTools.ScenePath);
+                if (gameScene == null) return;
+                EditorSceneManager.playModeStartScene = gameScene;
+                SessionState.SetBool(RestorePlayScene, true);
+                Debug.Log("[MARCO] Play starts in NetworkPool_v1_2. Use MARCO > Network > Play Test Scene for NetworkTest.");
+            }
+            else if (state == PlayModeStateChange.EnteredEditMode && SessionState.GetBool(RestorePlayScene, false))
+            {
+                EditorSceneManager.playModeStartScene = null;
+                SessionState.EraseBool(RestorePlayScene);
+            }
+        }
+
+        [MenuItem("MARCO/Network/Play Test Scene", priority = 20)]
+        private static void PlayTestScene()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode || !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            EditorSceneManager.OpenScene(ScenePath);
+            SessionState.SetBool(UseTestScene, true);
+            EditorApplication.EnterPlaymode();
+        }
         // Game design: six players total, so each transport accepts up to five remote peers.
         private const int MaxPlayers = 6;
 

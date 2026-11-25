@@ -58,6 +58,21 @@ namespace Marco.Network.Tests
             Assert.AreEqual(1, mic.GradeLevel(-49.99f), "the −50 voice floor is not moved");
         }
 
+        [TestCase(-57f, -45f)]
+        [TestCase(-75f, -55f)]
+        [TestCase(-35f, -20f)]
+        public void CalibratedFloorRejectsRoomNoiseAndAcceptsQuietVoice(float noise, float voice)
+        {
+            var frames = new float[150];
+            for (int i = 0; i < frames.Length; i++) frames[i] = i < 75 ? noise : voice;
+            var result = Marco.Network.Voice.MicCalibration.Measure(frames, 0);
+            Assert.IsTrue(result.Valid);
+            mic.SetCalibrationOffset(result.Offset);
+            mic.SetVoiceFloor(mic.VoiceFloorFor(result));
+            Assert.AreEqual(0, mic.GradeLevel(noise));
+            Assert.Greater(mic.GradeLevel(voice), 0);
+        }
+
         [Test]
         public void BeginAndCancelCalibration()
         {

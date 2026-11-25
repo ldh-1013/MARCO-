@@ -44,6 +44,7 @@ namespace Marco.Network.Player
         // Lobby (ported from RoomSessionPrototype): nickname and whether this is the room's host.
         private readonly SyncVar<string> nickname = new();
         private readonly SyncVar<bool> roomHost = new();
+        private readonly SyncVar<bool> lobbyReady = new();
         private Renderer body;
         private CharacterBody character;
         private CharacterController controller;
@@ -70,6 +71,7 @@ namespace Marco.Network.Player
         // Owner only: the 1.0 s escape fade is still covering the screen (no movement, living body kept).
         public bool IsEscapeFading => escapeTransition != null && escapeTransition.FreezesMovement;
         public string Nickname => nickname.Value;
+        public bool LobbyReady => lobbyReady.Value;
         public bool IsRoomHost => roomHost.Value;
         // Owner only: lives in 0.5 steps (2.0 = 4) as last sent by the server; -1 = untouched (full).
         public int HealthHalves { get; private set; } = -1;
@@ -127,6 +129,17 @@ namespace Marco.Network.Player
         {
             foreach (var player in spawned) player.ApplyLook();
         }
+
+        [ServerRpc]
+        public void SetLobbyReadyServer(bool ready)
+        {
+            var round = NetworkRound.Instance;
+            if (round == null || round.Mode != RoundMode.NotStarted || string.IsNullOrEmpty(Nickname)) return;
+            lobbyReady.Value = ready;
+            if (!ready) round.CancelLobbyCountdown();
+        }
+
+        internal void ClearLobbyReady() => lobbyReady.Value = false;
 
         [ServerRpc]
         public void SetNicknameServer(string value) => nickname.Value = CleanNickname(value);

@@ -85,12 +85,11 @@ namespace Marco.Network.Tests
             Assert.AreEqual(MicCalibrationPrompt.State.Success, prompt.Report(Valid(2.5f), false));
             Assert.AreEqual(2.5f, prompt.Offset, 0.0001f);
             Assert.IsTrue(prompt.ShouldSave);
-            Assert.AreEqual(1, prompt.Attempts);
             Assert.IsFalse(prompt.Start(), "finished");
         }
 
         [Test]
-        public void Prompt_ThreeFailures_Fallback()
+        public void Prompt_RepeatedFailures_CanStillSucceed()
         {
             var prompt = new MicCalibrationPrompt();
             prompt.Start();
@@ -100,10 +99,17 @@ namespace Marco.Network.Tests
             Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Report(Invalid(MicCalibration.FailReason.Clipped), false));
             Assert.AreEqual(MicCalibrationPrompt.Failure.Clipped, prompt.LastFailure);
             prompt.Start();
-            Assert.AreEqual(MicCalibrationPrompt.State.Fallback, prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), true));
+            Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), true));
             Assert.AreEqual(MicCalibrationPrompt.Failure.Muted, prompt.LastFailure);
             Assert.AreEqual(0f, prompt.Offset);
-            Assert.IsFalse(prompt.ShouldSave, "fallback is not saved");
+            Assert.IsFalse(prompt.ShouldSave);
+            for (int i = 0; i < 20; i++)
+            {
+                Assert.IsTrue(prompt.Start());
+                Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Report(Invalid(MicCalibration.FailReason.Clipped), false));
+            }
+            Assert.IsTrue(prompt.Start());
+            Assert.AreEqual(MicCalibrationPrompt.State.Success, prompt.Report(Valid(2f), false));
         }
 
         [Test]
@@ -115,11 +121,10 @@ namespace Marco.Network.Tests
             Assert.AreEqual(MicCalibrationPrompt.State.Skipped, prompt.Current);
             Assert.AreEqual(0f, prompt.Offset);
             Assert.IsFalse(prompt.ShouldSave);
-            Assert.AreEqual(0, prompt.Attempts);
         }
 
         [Test]
-        public void Prompt_CancelDoesNotUseAnAttempt()
+        public void Prompt_CancelAllowsRetry()
         {
             var prompt = new MicCalibrationPrompt();
             for (int i = 0; i < 5; i++)
@@ -128,14 +133,12 @@ namespace Marco.Network.Tests
                 prompt.Cancel();   // controller disabled · scene change · round start
                 Assert.AreEqual(MicCalibrationPrompt.State.Cancelled, prompt.Current);
             }
-            Assert.AreEqual(0, prompt.Attempts);
             prompt.Start();
             prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), false);
             prompt.Start();
             prompt.Cancel();   // the round starts during the second attempt
-            Assert.AreEqual(1, prompt.Attempts);
             prompt.Start();
-            Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), false), "2 of 3");
+            Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), false));
         }
 
         [Test]
@@ -143,17 +146,15 @@ namespace Marco.Network.Tests
         {
             var prompt = new MicCalibrationPrompt();
             Assert.AreEqual(MicCalibrationPrompt.State.Idle, prompt.Report(Valid(1f), false));
-            Assert.AreEqual(0, prompt.Attempts);
         }
 
         [Test]
-        public void Prompt_RestartGivesAttemptsBack()
+        public void Prompt_RestartReturnsToIdle()
         {
             var prompt = new MicCalibrationPrompt();
             for (int i = 0; i < 3; i++) { prompt.Start(); prompt.Report(Invalid(MicCalibration.FailReason.TooFewActive), false); }
-            Assert.AreEqual(MicCalibrationPrompt.State.Fallback, prompt.Current);
+            Assert.AreEqual(MicCalibrationPrompt.State.Retry, prompt.Current);
             prompt.Restart();
-            Assert.AreEqual(0, prompt.Attempts);
             Assert.IsTrue(prompt.Start());
         }
     }

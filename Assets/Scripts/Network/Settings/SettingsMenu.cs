@@ -42,7 +42,9 @@ namespace Marco.Network.Settings
         private RenderTexture blurTexture;
         private Coroutine capture;
         private Text confirmText, tooltipText, fpsText;
-        private Button confirmOk;
+        private Button confirmOk, confirmCancel;
+        private CanvasGroup escActions;
+        private GameObject quitHeading, leaveHeading, quitMessage, quitAction, leaveAction;
         private readonly GameObject[] tabs = new GameObject[4];
         private readonly Image[] tabButtons = new Image[4];
         private int tab;
@@ -374,6 +376,7 @@ namespace Marco.Network.Settings
             var panel = Centered(parent, "Esc Menu", 460, 440);
             SettingsUi.Skin(SettingsUi.Fill(panel, SettingsUi.BlackA(.82f), true), "paperTall", new Color(.24f, .24f, .24f));
             escPanel = panel.gameObject;
+            escActions = escPanel.AddComponent<CanvasGroup>();
             SettingsUi.Label(panel, "Notice", 0, 18, 460, 36, Notice, 22, SettingsUi.Amber, TextAnchor.MiddleCenter);
             SettingsUi.Button(panel, "Continue", 50, 76, 360, 68, "계속하기", 26, CloseAll);
             SettingsUi.Button(panel, "Settings", 50, 160, 360, 68, "설정", 26, () => { settingsFromMenu = true; ShowView(View.Settings); });
@@ -489,15 +492,48 @@ namespace Marco.Network.Settings
 
         private void BuildConfirm(Transform parent)
         {
-            var panel = Centered(parent, "Confirm", 620, 260);
-            SettingsUi.Fill(panel, SettingsUi.BlackA(.95f), true);
-            var outline = panel.gameObject.AddComponent<Outline>();
-            outline.effectColor = SettingsUi.AmberA(.6f); outline.effectDistance = new Vector2(2, -2);
-            confirmText = SettingsUi.Label(panel, "Message", 30, 24, 560, 120, "", 24, SettingsUi.Light, TextAnchor.MiddleCenter);
-            confirmOk = SettingsUi.Button(panel, "OK", 80, 170, 210, 60, "확인", 24, ConfirmAccepted);
-            SettingsUi.Button(panel, "Cancel", 330, 170, 210, 60, "취소", 24, () => ShowConfirm(Confirm.None));
-            confirmPanel = panel.gameObject;
+            var overlay = SettingsUi.Stretch(parent, "Confirmation Overlay");
+            SettingsUi.Fill(overlay, SettingsUi.BlackA(.74f), true);
+            const float width = 620, height = 286;
+            var panel = Centered(overlay, "Confirm", width, height);
+            SettingsUi.Skin(SettingsUi.Fill(panel, SettingsUi.BlackA(.96f), true), "paper", new Color(.22f, .21f, .19f));
+            quitHeading = SettingsUi.Label(panel, "Quit Heading", 36, 27, 548, 58, "게임 종료", 39,
+                SettingsUi.Light, TextAnchor.MiddleCenter, FontStyle.Bold).gameObject;
+            leaveHeading = SettingsUi.Label(panel, "Leave Heading", 36, 27, 548, 58, "방 나가기", 39,
+                SettingsUi.Light, TextAnchor.MiddleCenter, FontStyle.Bold).gameObject;
+            SettingsUi.Fill(SettingsUi.At(panel, "Heading Rule", 64, 95, 492, 1), SettingsUi.AmberA(.6f));
+            confirmText = SettingsUi.ValueInk(SettingsUi.Label(panel, "Message", 52, 104, 516, 76, "", 23,
+                SettingsUi.Light, TextAnchor.MiddleCenter));
+            quitMessage = SettingsUi.Label(panel, "Quit Message", 52, 104, 516, 76, "게임을 종료할까요?", 23,
+                SettingsUi.Light, TextAnchor.MiddleCenter, FontStyle.Bold).gameObject;
+
+            confirmCancel = ConfirmButton(panel, "Cancel", 64, "취소", false, () => ShowConfirm(Confirm.None));
+            confirmOk = ConfirmButton(panel, "Accept", 320, "나가기", true, ConfirmAccepted);
+            leaveAction = confirmOk.transform.Find("Text").gameObject;
+            var buttonRect = ((RectTransform)confirmOk.transform).rect;
+            quitAction = SettingsUi.Label(confirmOk.transform, "Quit Text", 0, 0, buttonRect.width, buttonRect.height,
+                "종료", 23, SettingsUi.Light, TextAnchor.MiddleCenter, FontStyle.Bold).gameObject;
+            confirmPanel = overlay.gameObject;
             confirmPanel.SetActive(false);
+        }
+
+        private static Button ConfirmButton(Transform parent, string name, float x, string label, bool primary, Action action)
+        {
+            const float width = 236, height = 54;
+            var button = SettingsUi.Button(parent, name, x, 191, width, height, label, 23, action);
+            var face = (Image)button.targetGraphic;
+            face.color = primary ? new Color(.41f, .28f, .13f) : new Color(.16f, .15f, .13f);
+            button.GetComponent<Outline>().effectColor = primary ? SettingsUi.AmberA(.55f) : SettingsUi.LightA(.22f);
+            var colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, .87f, .64f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.pressedColor = new Color(.76f, .7f, .6f);
+            button.colors = colors;
+            SettingsUi.ValueInk(button.transform.Find("Text").GetComponent<Text>());
+            SettingsUi.Fill(SettingsUi.At(button.transform, "Bottom Rule", 0, height - 2, width, 2),
+                primary ? SettingsUi.AmberA(.75f) : SettingsUi.LightA(.3f));
+            return button;
         }
 
         private void BuildTooltip(Transform parent)
@@ -532,14 +568,31 @@ namespace Marco.Network.Settings
         {
             confirm = next;
             if (confirmPanel == null) return;
-            confirmPanel.SetActive(next != Confirm.None);
-            if (next == Confirm.None) return;
+            bool showing = next != Confirm.None;
+            confirmPanel.SetActive(showing);
+            escActions.interactable = !showing;
+            if (!showing)
+            {
+                var events = EventSystem.current;
+                if (events != null && (events.currentSelectedGameObject == confirmCancel.gameObject ||
+                    events.currentSelectedGameObject == confirmOk.gameObject))
+                    events.SetSelectedGameObject(null);
+                return;
+            }
+            HideTooltip();
             confirmPanel.transform.SetAsLastSibling();
             confirmOk.interactable = true;
-            if (next == Confirm.Quit) confirmText.text = "게임을 종료할까요?";
-            else confirmText.text = connector != null && connector.IsHost
+            bool quitting = next == Confirm.Quit;
+            quitHeading.SetActive(quitting);
+            leaveHeading.SetActive(!quitting);
+            quitMessage.SetActive(quitting);
+            quitAction.SetActive(quitting);
+            confirmText.gameObject.SetActive(!quitting);
+            leaveAction.SetActive(!quitting);
+            if (!quitting) confirmText.text = connector != null && connector.IsHost
                 ? "방을 나갈까요?\n호스트가 나가면 모두 세션이 종료됩니다."
                 : "방을 나갈까요?";
+            confirmCancel.Select();
         }
 
         private void ConfirmAccepted()

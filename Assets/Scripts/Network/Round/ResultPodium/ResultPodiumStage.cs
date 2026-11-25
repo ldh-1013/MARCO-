@@ -56,7 +56,6 @@ namespace Marco.Network.Round.ResultPodium
         public bool IsValid => root != null;
 
         private readonly GameObject root;
-        private readonly RoundResult result;
         private readonly Color team;
         private readonly List<Actor> actors = new();
         private readonly List<Material> materials = new();
@@ -69,10 +68,14 @@ namespace Marco.Network.Round.ResultPodium
         private Shader glowShader;
         private static Font font;
 
+        private readonly RoundResult result;
+        private readonly string resultTitle;
+
         public ResultPodiumStage(RoundResult result, IReadOnlyList<PodiumEntry> entries, ResultPodiumAssets assets,
-            int width, int height, IReadOnlyList<PodiumAward> awards = null)
+            int width, int height, IReadOnlyList<PodiumAward> awards = null, string title = null)
         {
             this.result = result;
+            resultTitle = title ?? ResultTitle(result);
             team = result switch { RoundResult.RunnersWin => RunnersColor, RoundResult.SeekersWin => SeekersColor, _ => VoidColor };
             var surface = Resources.Load<Shader>("ResultPodium/ResultPodiumSurface");
             glowShader = Resources.Load<Shader>("ResultPodium/ResultPodiumGlow");
@@ -86,7 +89,7 @@ namespace Marco.Network.Round.ResultPodium
             root.transform.position = Origin;
             BuildSet();
             rays = BuildRays();
-            (banner, bannerRibbon) = BuildBanner(ResultTitle(result));
+            (banner, bannerRibbon) = BuildBanner(resultTitle);
 
             // Winners in the middle (on risers), losers out to the sides; the Demon gets a wider slot for
             // its arms. Reveal from the edges inward so the winners land last.
@@ -581,7 +584,7 @@ namespace Marco.Network.Round.ResultPodium
             // Frame banner top to the award cards, leaving the bottom ~18% for the rematch vote bar.
             float tan = Mathf.Tan(FieldOfView * .5f * Mathf.Deg2Rad);
             float contentTop = BannerY + BannerHeight, contentBottom = CardsBottom;
-            float bannerWidth = EstimateWidth(ResultTitle(result), BannerHeight) + 2.8f;
+            float bannerWidth = EstimateWidth(resultTitle, BannerHeight) + 2.8f;
             float widest = Mathf.Max(Mathf.Max(rowWidth, bannerWidth), CardsWidth);
             float visibleHeight = Mathf.Max((contentTop - contentBottom) / .76f, widest * 1.1f / Camera.aspect);
             cameraDistance = visibleHeight / (2 * tan);
