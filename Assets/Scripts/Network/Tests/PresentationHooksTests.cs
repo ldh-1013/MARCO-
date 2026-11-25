@@ -204,7 +204,7 @@ namespace Marco.Network.Tests
             string src = Src("Scripts/Network/Player/NetworkPlayer.cs");
             Assert.AreEqual(1, Regex.Matches(src, @"echoFade\?\.OnStatus\(previous, next, Local\)").Count);
             Assert.AreEqual(1, Regex.Matches(src, @"echoFade != null && echoFade\.Holds").Count);
-            Assert.AreEqual(10, Regex.Matches(src, @"private readonly SyncVar<").Count, "no SyncVar was added");
+            Assert.AreEqual(11, Regex.Matches(src, @"private readonly SyncVar<").Count, "only lobbyReady was added (V83, 승인)");
             string fade = Src("Scripts/Network/Vision/Feel/EchoTransitionFade.cs");
             Assert.IsFalse(Regex.IsMatch(fade, @"\[(Server|Target|Observers)Rpc"), "no RPC");
             Assert.IsFalse(fade.Contains("SyncVar"), "no SyncVar");
