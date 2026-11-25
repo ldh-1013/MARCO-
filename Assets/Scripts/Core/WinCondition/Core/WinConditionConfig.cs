@@ -133,6 +133,7 @@ namespace Marco.Core.WinCondition
             { 5, new RoundSettings(escapeRequiredCount: 3, timeLimitSeconds: 15f * 60f) },
         };
 
+        // [GAP 개발 전용] 기획서 값 아님 — 6.2표 2인 행은 v1.x(AI 술래 전제), 118행은 최소 3명. 개발 빌드의 1~2인 방에서만 쓴다(NetworkRound.CanStartMatch).
         public RoundSettings SmallRoomSettings => new RoundSettings(escapeRequiredCount: 1, timeLimitSeconds: 9f * 60f);
 
         // 도망자 수에 맞는 라운드 설정을 돌려준다. 기획서에 정의된 2~5명만 지원.
