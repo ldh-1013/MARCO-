@@ -149,6 +149,7 @@ namespace Marco.Network.Audio
         public void Play(string name, Vector3 point, float volume, float duration, int loopKey,
             bool muffled, int actionId, bool local = false, float startTime = 0)
         {
+            if (name == Marco.Network.Round.PulseSpec.NoAudio) return; // ring-only pulse (D9): explicitly silent
             var clip = Clip(name);
             if (clip == null) return;
             // The stair recording is hotter than the other footstep clips.

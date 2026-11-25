@@ -55,14 +55,15 @@ namespace Marco.Network.Editor
                     Debug.Log($"[AudioJumpChecks] role={player.Role}, moving={trial%2==1}, jumps={jumps.Count}, landings={lands.Count}, jumpRings={jumpRings.Count}, landRings={landRings.Count}, waterEntries={entries.Count}");
                                         if(trial<4)
                     {
-                        if(jumps.Count!=1||lands.Count!=1||jumpRings.Count!=1||landRings.Count!=1)
-                            throw new Exception("Expected one dry takeoff and landing sound/ring per jump");
+                        // Take-off has a sound but no ring; landing has both (ring D3: Sprint-grade floor ring).
+                        if(jumps.Count!=1||lands.Count!=1||jumpRings.Count!=0||landRings.Count!=1)
+                            throw new Exception("Expected one dry takeoff sound without ring and one landing sound/ring per jump");
                     }
                     else
                     {
                         // Real water entry replaces dry landing; its ripple is covered by WaterReactionChecks.
-                        if(jumps.Count!=1||jumpRings.Count!=1||entries.Count!=1||lands.Count!=0)
-                            throw new Exception("Expected one wet takeoff and one water entry without duplicate landing");
+                        if(jumps.Count!=1||jumpRings.Count!=0||entries.Count!=1||lands.Count!=0)
+                            throw new Exception("Expected one wet takeoff (no ring) and one water entry without duplicate landing");
                     }
                     trial++;
                     if(trial==2||trial==5)typeof(NetworkRound).GetMethod("CheatToggleHostRole",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(round,null);

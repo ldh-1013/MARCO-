@@ -37,6 +37,10 @@ namespace Marco.Network.Voice
         private AudioLowPassFilter voiceFilter;
         private float nextLocalPulse, nextServerPulse;
         private VoiceGrade lastLocalPulse, lastServerPulse;
+        // S9: one re-pulse rule for the own ring (client) and the rings others see (server).
+        private readonly VoicePulseGate localPulseGate = new(), serverPulseGate = new();
+        // D1: speech gate for sending and the own ring only (the voice light is not affected).
+        private readonly VoiceActivityGate activityGate = new();
 
         private static (float radius, float duration) PulseSpec(VoiceGrade grade) => grade switch
         {
@@ -45,7 +49,7 @@ namespace Marco.Network.Voice
             _ => (22f, 2.5f)
         };
 
-        private Vector3 VoiceOrigin()
+        internal Vector3 VoiceOrigin()
         {
             Vector3 origin = transform.position + Vector3.up * mouthHeight;
             if (TryGetComponent<PlayerMovement>(out var movement)) origin.y = movement.WaterEyeHeight;
@@ -79,12 +83,14 @@ namespace Marco.Network.Voice
 
         private void OnVoiceSamplesReady(float[] samples, VoiceGrade grade)
         {
+            if (RippleServerFeatures.VoiceActivityGate && !activityGate.Accept(samples, Time.time)) return;
             Lobby.LobbyVoiceActivity.Publish(samples);
             var packet = VoiceCodec.Encode(samples);
             if (packet == null) return;
             var round = NetworkRound.Instance;
-            if (grade != VoiceGrade.Whisper && round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game &&
-                (Time.time >= nextLocalPulse || grade > lastLocalPulse))
+            if (round is { UsesPoolAudio: true } && (VoiceRouting.ChannelOf(player) == VoiceChannel.Game || (player.HasEchoBody && round.Result == RoundResult.InProgress)) &&
+                (RippleServerFeatures.VoiceRepulseOnChange ? localPulseGate.ShouldPulse(grade, Time.time, PulseSpec(grade).duration)
+                    : (Time.time >= nextLocalPulse || grade > lastLocalPulse)))
             {
                 var (radius, duration) = PulseSpec(grade);
                 nextLocalPulse = Time.time + duration;
@@ -103,20 +109,24 @@ namespace Marco.Network.Voice
             bool inGameVoice = round is { UsesPoolAudio: true } && VoiceRouting.ChannelOf(player) == VoiceChannel.Game;
             var (baseRadius, duration) = PulseSpec(grade);
             Vector3 origin = VoiceOrigin();
-            bool pulse = inGameVoice && (Time.time >= nextServerPulse || grade > lastServerPulse);
+            bool pulse = inGameVoice && (RippleServerFeatures.VoiceRepulseOnChange ? serverPulseGate.ShouldPulse(grade, Time.time, duration)
+                : (Time.time >= nextServerPulse || grade > lastServerPulse));
             if (pulse) { nextServerPulse = Time.time + duration; lastServerPulse = grade; }
             if (pulse) round.RecordAwardNoise(player.PlayerId, AwardNoise.Voice, baseRadius, duration); // 기획서 8.2
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener == player) continue;
+                // A connection that is leaving gets nothing (no round: unchanged).
+                if (round != null && !round.CanTarget(listener)) continue;
                 if (inGameVoice)
                 {
                     if (VoiceRouting.ChannelOf(listener) != VoiceChannel.Game && !listener.HasEchoBody) continue;
                     if (!round.TryHearPoolVoice(origin, listener, baseRadius, out var point, out float gain,
                         out bool blocked, out float radius)) continue;
                     float life = listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1f);
-                    if (pulse && grade != VoiceGrade.Whisper && !blocked)
-                        VoicePulseTarget(listener.Owner, point, radius, life);
+                    if (pulse && !blocked)
+                        VoicePulseTarget(listener.Owner, point, radius, life,
+                            SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
                     if (!listener.HasEchoBody) PlayVoiceTarget(listener.Owner, packet, radius, point, gain, blocked, true, Channel.Reliable);
                 }
                 else if (routing.TryGetHearing(player, listener, grade, out float radius))
@@ -125,10 +135,12 @@ namespace Marco.Network.Voice
         }
 
         [TargetRpc]
-        private void VoicePulseTarget(NetworkConnection conn, Vector3 point, float radius, float duration)
+        private void VoicePulseTarget(NetworkConnection conn, Vector3 point, float radius, float duration, int snapshotA, int snapshotB)
         {
             NetworkRound.Instance?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: player.Role == PlayerRole.Seeker);
             NetworkRound.Instance?.NotifyOtherSound();
+            if (snapshotA >= 0 || snapshotB >= 0)   // §5.5-2
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
         }
 
         [TargetRpc]
@@ -164,6 +176,7 @@ namespace Marco.Network.Voice
                     audioBufferedSamples++;
                 }
             }
+            try { DirectionHints.OnVoice(player != null ? player.PlayerId : -1, point, blocked); } catch (Exception exception) { DirectionHints.ReportFault("PlayVoiceTarget", exception); }
         }
 
         private void EnsureVoiceSource()

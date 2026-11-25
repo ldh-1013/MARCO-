@@ -117,7 +117,9 @@ namespace Marco.Network.Editor
                         throw new Exception("Sound pulse did not use its supplied lifetime and expansion");
                     var policy=typeof(NetworkRound).GetMethod("CanReceiveSound",BindingFlags.Static|BindingFlags.NonPublic);
                     bool Allowed(string clip,int source,int listener)=>(bool)policy.Invoke(null,new object[]{clip,source,listener});
-                    if(!Allowed("Breath",7,7)||Allowed("Breath",7,8)||Allowed("Breath",-1,8)||Allowed("Breath_Runner",7,8)||!Allowed("Valve",7,8))throw new Exception("Breath self-only audience policy failed");
+                    // S1 (RippleServerFeatures.BreathAudible): breath is heard by others; off = self only as before.
+                    bool breathAudible=typeof(RippleServerFeatures).GetField("BreathAudible")?.GetValue(null) is bool audible&&audible;
+                    if(!Allowed("Breath",7,7)||Allowed("Breath",7,8)!=breathAudible||Allowed("Breath",-1,8)!=breathAudible||Allowed("Breath_Runner",7,8)!=breathAudible||!Allowed("Valve",7,8))throw new Exception("Breath audience policy failed");
                     trial++;
                     if(trial==2)typeof(NetworkRound).GetMethod("CheatToggleHostRole",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(round,null);
                     if(trial==4){Debug.Log("[MovementPulsePlayChecks] PASS: both roles walk/sprint; owner-only static walk; remote fixed sprint; expanding sound rings; pooled reuse; self-only breath policy. Multi-PC listening and GPU appearance remain manual.");Finish(0);return;}

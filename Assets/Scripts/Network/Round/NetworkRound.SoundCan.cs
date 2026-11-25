@@ -278,6 +278,7 @@ namespace Marco.Network.Round
 
         private void ResetSoundCansServer(bool available)
         {
+            if (!IsServerStarted) return;   // OnStopServer after the server stopped: nothing to sync; OnStartServer resets again
             foreach (var can in soundCans.Values)
             {
                 if (can.Stage == SoundCanStage.Placing) FinishSoundCanPlacement(can, false);
@@ -296,6 +297,7 @@ namespace Marco.Network.Round
             if (NetworkPlayer.Local == null || NetworkPlayer.Local.Status != PlayerStatus.Alive) return;
             if (recordedPlayback == null) recordedPlayback = gameObject.AddComponent<RecordedSoundPlayback>();
             recordedPlayback.Receive(id, frame, packet, point, gain, blocked);
+            try { DirectionHints.OnSoundCan(id, point, blocked); } catch (Exception exception) { DirectionHints.ReportFault("SoundCanFrameTarget", exception); }
         }
 
         [TargetRpc]

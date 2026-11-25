@@ -18,6 +18,7 @@ namespace Marco.Network.Round
             public bool Wounded;
             public Vector3 BreathPosition;
             public float StillSeconds, BreathMoved, BreathResetMoved, NextBreath;
+            public int BreathCount; // breaths since the player last moved (S1 radius steps)
         }
 
         private readonly Dictionary<int, SoundMotion> soundMotion = new();
@@ -101,18 +102,23 @@ namespace Marco.Network.Round
                 if (wounded && Time.time >= motion.NextMoan)
                 {
                     motion.NextMoan = Time.time + 6f;
-                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId);
+                    EmitSound("Moan_" + Random.Range(0, 2), position, 9f, 0.65f, 1.2f, sourceId: player.PlayerId, snapshotA: player.PlayerId);
                 }
                 motion.Wounded = wounded;
             }
 
             foreach (var id in rotatingSounds)
                 if (ValveView.TryGet(id, out var valve))
-                    EmitSound(id == ValveId.B || id == ValveId.E ? "ValveUnderwater" : "Valve",
+                {
+                    bool underwaterValve = id == ValveId.B || id == ValveId.E;
+                    int workerA = SourceSnapshotRules.None, workerB = SourceSnapshotRules.None;
+                    if (!underwaterValve) ValveWorkers(id, out workerA, out workerB);   // §5.5-2: the turning Runners
+                    EmitSound(underwaterValve ? "ValveUnderwater" : "Valve",
                         valve.transform.position,
-                        12f,
+                        ValveSoundRadius(id),
                         0.5f, DefaultConfig.GetValveRotationSeconds(id, board.GetValve(id).HasReachedOpen),
-                        100000 + (int)id, id == ValveId.B || id == ValveId.E);
+                        100000 + (int)id, underwaterValve, snapshotA: workerA, snapshotB: workerB);
+                }
 
             foreach (var pair in healingChannels)
             {
@@ -121,9 +127,11 @@ namespace Marco.Network.Round
                 if (healingSoundTimes.TryGetValue(pair.Key, out double next) && Time.realtimeSinceStartupAsDouble < next) continue;
                 healingSoundTimes[pair.Key] = Time.realtimeSinceStartupAsDouble + (channel.IsBandage ? 2.0 : 2.25);
                 EmitSound(channel.IsBandage ? "Bandage" : "Treat", actor.transform.position,
-                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId);
+                    channel.IsBandage ? 6f : 9f, 0.65f, 1.2f, -1, false, channel.ActorId, channel.ActorId,
+                    snapshotA: channel.ActorId, snapshotB: channel.IsBandage ? SourceSnapshotRules.None : channel.PatientId);
                 RecordAwardNoise(channel.ActorId, channel.IsBandage ? AwardNoise.Bandage : AwardNoise.Treat, channel.IsBandage ? 6f : 9f, 1.2f); // 기획서 8.2 — 치료자만
             }
+            TickDrainWorkPulse();
         }
 
         private void TickMovementRings()
@@ -227,20 +235,25 @@ namespace Marco.Network.Round
             RecordAwardNoise(player.PlayerId, AwardNoise.Drowning, 22f, 1.5f); // 기획서 8.2
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
-                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out _))
-                    DrowningPulseTarget(listener.Owner, point, player.PlayerId);
+                if (listener.Status == PlayerStatus.Alive && soundWorld.Hear(origin, listener, 22f, out var point, out _, out bool blocked) &&
+                    !(RippleServerFeatures.DrowningOcclusion && blocked) && CanTarget(listener))
+                    DrowningPulseTarget(listener.Owner, point, player.PlayerId,
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);   // §5.5-2
         }
 
         [TargetRpc]
-        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source)
+        private void DrowningPulseTarget(NetworkConnection connection, Vector3 point, int source, int snapshotA, int snapshotB)
         {
             var local = NetworkPlayer.Local;
             if (local == null) return;
             if (source != local.PlayerId) NotifyOtherSound();
             local.GetComponentInChildren<Marco.Network.Vision.WalkingFootRings>()?.EmitWaterPulse(point, 22f);
+            // §5.5-2: the drowning ring lasts ShoutSeconds (WalkingFootRings.EmitWaterPulse).
+            if (snapshotA >= 0 || snapshotB >= 0)
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, Marco.Network.Vision.RippleVisualSettings.ShoutSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
         }
 
-        private static bool IsSelfOnlySound(string clip) => clip == "Breath" || clip.StartsWith("Breath_");
+        private static bool IsSelfOnlySound(string clip) => !RippleServerFeatures.BreathAudible && (clip == "Breath" || clip.StartsWith("Breath_"));
         private static bool CanReceiveSound(string clip, int sourceId, int listenerId) =>
             !IsSelfOnlySound(clip) || sourceId == listenerId;
 
@@ -251,32 +264,48 @@ namespace Marco.Network.Round
             if (IsStartLocked(player.Role) || soundWorld.WaterState(player, out _) == 2 ||
                 (player.Role == PlayerRole.Runner && valves != null && valves.IsWorking(player.PlayerId)))
                 return;
+            // S11: a player the server holds in place (treatment lock) is not camping — the timer stops.
+            if (RippleServerFeatures.BreathPauseWhenLocked && player.IsTreatmentLocked) return;
             motion.BreathMoved += distance;
             motion.BreathResetMoved += distance;
             if ((motion.BreathMoved >= 3f && motion.NextBreath == 0f) || motion.BreathResetMoved >= 5f)
             {
                 motion.StillSeconds = motion.BreathMoved = motion.BreathResetMoved = motion.NextBreath = 0;
+                motion.BreathCount = 0;
                 return;
             }
             motion.StillSeconds += dt;
             if (motion.StillSeconds < Mathf.Max(20f, motion.NextBreath)) return;
             motion.NextBreath = motion.StillSeconds + 15f;
             string clip = player.Role == PlayerRole.Seeker ? "Breath_Seeker" : "Breath_Runner";
-            EmitSound(clip, position, 0f, .65f, .6f, sourceId: player.PlayerId);
-            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, AwardRules.BreathRadiusAt(motion.StillSeconds), .6f); // 기획서 8.2 — 3m→9m
+            float breathRadius = RippleServerFeatures.BreathAudible ? PulseSpec.BreathRadius(motion.BreathCount++) : 0f;
+            EmitSound(clip, position, breathRadius, .65f, .6f, sourceId: player.PlayerId);
+            RecordAwardNoise(player.PlayerId, AwardNoise.Breath, breathRadius, .6f); // 기획서 8.2 · §3.6 — the radius actually emitted (3m→9m), 0.6s
+        }
+
+        // A TargetRpc only reaches a live connection that still observes this object. A player whose client is
+        // leaving stays in NetworkPlayer.All until its despawn; sending to it then makes FishNet warn and drop it.
+        internal bool CanTarget(NetworkPlayer listener)
+        {
+            var connection = listener != null ? listener.Owner : null;
+            return connection != null && connection.IsActive && Observers.Contains(connection);
         }
 
         private void EmitSound(string clip, Vector3 origin, float radius, float volume, float duration,
-            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1)
+            int loopKey = -1, bool underwater = false, int actionId = -1, int sourceId = -1, bool playAudio = true, bool forcePulse = false,
+            int snapshotA = SourceSnapshotRules.None, int snapshotB = SourceSnapshotRules.None)
         {
             soundWorld ??= new SoundWorld();
             foreach (var listener in NetworkPlayer.All)
             {
                 if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
+                if (clip == EchoKnockRules.Clip && listener.PlayerId == sourceId) continue;   // §3.2: the knocker's own screen shows no knock
                 if (!CanReceiveSound(clip, sourceId, listener.PlayerId)) continue;
+                if (!CanTarget(listener)) continue;   // a connection that is leaving (not an observer any more)
                 if (IsSelfOnlySound(clip))
                 {
-                    SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f);
+                    SoundTarget(listener.Owner, clip, Vector3.zero, volume, duration, loopKey, underwater, actionId, true, false, 0f, 0f,
+                        SourceSnapshotRules.None, SourceSnapshotRules.None);
                     continue;
                 }
                 bool own = sourceId == listener.PlayerId;
@@ -285,7 +314,7 @@ namespace Marco.Network.Round
                 if (own) { point = origin; gain = 1f; blocked = false; perceivedRadius = radius; }
                 float durationScale = !own && listener.Role == PlayerRole.Seeker && !listener.HasEchoBody ? 1.5f : 1f;
                 float pulseSeconds = clip == "ValveUnderwater" ? 2.5f : duration;
-                bool showPulse = !blocked && (clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
+                bool showPulse = !blocked && (forcePulse || clip == "Valve" || clip == "ValveUnderwater" || clip == "Reflow" || clip == "Bandage" ||
                     clip == "Treat" || clip.StartsWith("Moan_"));
                 if (showPulse && loopKey >= 0)
                 {
@@ -295,18 +324,35 @@ namespace Marco.Network.Round
                 }
                 if (listener.HasEchoBody) { if (showPulse) pulseSeconds = 3f; }
                 else pulseSeconds *= durationScale;
-                SoundTarget(listener.Owner, clip, point, volume * gain, duration * durationScale, loopKey,
-                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds);
+                // §5.5-2: the snapshot goes with the ring only (fail-closed: None on any doubt).
+                int seenA = SourceSnapshotRules.None, seenB = SourceSnapshotRules.None;
+                if (showPulse && SourceSnapshotRules.IsCharacterSound(clip))
+                {
+                    seenA = SourceSnapshotRules.ForListener(snapshotA, listener, blocked);
+                    seenB = SourceSnapshotRules.ForListener(snapshotB, listener, blocked);
+                }
+                else if (showPulse && snapshotA == SourceSnapshotRules.FakeRunner)
+                    seenA = SourceSnapshotRules.ForFakeRunner(listener, blocked);   // §5.5-2 메아리 노크
+                SoundTarget(listener.Owner, playAudio ? clip : PulseSpec.NoAudio, point, volume * gain, duration * durationScale, loopKey,
+                    underwater || blocked, actionId, false, !own, showPulse ? perceivedRadius : 0f, pulseSeconds, seenA, seenB);
             }
         }
 
         [TargetRpc]
         private void SoundTarget(NetworkConnection connection, string clip, Vector3 point, float volume,
-            float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds)
+            float duration, int loopKey, bool muffled, int actionId, bool local, bool fromOther, float pulseRadius, float pulseSeconds,
+            int snapshotA, int snapshotB)
         {
             if (fromOther) NotifyOtherSound();
-            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds);
+            // §5.1 · 5.5-2: a knock (FakeRunner) is drawn as a Runner's Talk ring, never by where it came from.
+            if (pulseRadius > 0) ShowSoundPulse(point, pulseRadius, pulseSeconds, snapshotA == SourceSnapshotRules.FakeRunner ? false : (bool?)null);
+            if (pulseRadius > 0 && snapshotA == SourceSnapshotRules.FakeRunner)
+                try { Marco.Network.Vision.SourceSnapshots.ShowFakeRunner(point, Random.Range(0f, 360f), pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots.Fake", exception); }
+            // §5.5-2: the source snapshot goes with the ring (the server sent -1 for none).
+            if (pulseRadius > 0 && (snapshotA >= 0 || snapshotB >= 0))
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (soundPlayback != null) soundPlayback.Play(clip, point, volume, duration, loopKey, muffled, actionId, local);
+            try { Marco.Network.Vision.DirectionHints.OnSound(clip, point, muffled, loopKey, actionId, fromOther, pulseRadius, pulseSeconds); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SoundTarget", exception); }
         }
 
         internal bool UsesPoolAudio => SoundMap;

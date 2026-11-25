@@ -488,6 +488,7 @@ namespace Marco.Network.Round
             seekerSpeedBoosted.Value = false;
             seekerPopulationSpeedMultiplier.Value = 1f;
             startSchedule.Reset();
+            ClearKnocks();
             ResetAwards();
             SyncStartPhase();
         }
@@ -499,7 +500,8 @@ namespace Marco.Network.Round
         {
             foreach (var exit in ExitView.All)
                 Debug.Log($"[MARCO] 종반 출구 파문 {exit.Id} @ {exit.transform.position} (고함급 22m, 전달 경로 미구현)");
-            ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
+            if (RippleServerFeatures.ExitPulseJudged) EmitExitPulsesJudged();
+            else ExitPulseRingsObservers(); // TEMPORARY — 파문 시스템 생기면 교체 (전달 경로로 보내고 이 RPC는 삭제)
         }
 
         // TEMPORARY — 파문 시스템 생기면 교체. Every client draws a ring at both exits, with no distance
@@ -573,6 +575,7 @@ namespace Marco.Network.Round
 
             board.Tick(dt);
             round?.Tick(dt);
+            TickKnocksServer();
 
             foreach (var pair in board.Valves)
             {
@@ -591,6 +594,7 @@ namespace Marco.Network.Round
             if (round.Result == RoundResult.InProgress) return;
             // RoundEnd (기획서 15.4): stop the round clock and open the result screen's rematch vote.
             TimeManager.OnTick -= OnServerTick;
+            CancelPendingKnocks();
             FinishAwards();
             BeginRematchVote();
         }
@@ -1064,6 +1068,7 @@ namespace Marco.Network.Round
         {
             if (!healingChannels.TryGetValue(actorId, out var channel)) return;
             healingChannels.Remove(actorId);
+            if (!IsServerStarted) return;   // OnStopServer after the server stopped: the players' SyncVars can no longer be written
             StopHealingAudio(actorId);
             if (NetworkPlayer.TryGet(channel.ActorId, out var actor))
             {
@@ -1149,6 +1154,7 @@ namespace Marco.Network.Round
             if (!ApplyTag(target)) return SwingResult.Missed;
             // Keep the terminal value so ResetLives can restore the owner's private HUD next round.
             SetLives(target, 0);
+            EmitTagPulse(target);
             return SwingResult.Echoed;
         }
 
@@ -1179,6 +1185,7 @@ namespace Marco.Network.Round
             RemoveFromWork(target.PlayerId);
             AwardTagged(target.PlayerId);
             target.SetStatus(PlayerStatus.Tagged);
+            RecordKnockTagged(target.PlayerId);   // §3.2 노크: 20 s lock from here
             return true;
         }
 
@@ -1223,8 +1230,8 @@ namespace Marco.Network.Round
         private bool TryGetAliveRunner(int playerId, out NetworkPlayer player) =>
             NetworkPlayer.TryGet(playerId, out player) && player.Role == PlayerRole.Runner && player.Status == PlayerStatus.Alive;
 
-        // TODO(소리·파문 파트 — 노크 구현 시, 기획서 3.2 · 3.3-3 · 14.2 P2): EchoKnock 서버 검증은 여기 둔다.
-        // 요청자가 탈출자(Escaped)거나 진행 중 난입자(Spectating)면 버린다 — 조용히 무시, 응답 없음.
+        // 노크(기획서 3.2 · 3.3-3 · 14.2 P2): 서버 검증 · 지연 발생은 NetworkRound.Knock.cs(ServerEchoKnock · TickKnocksServer),
+        // 요청은 PlayerInteractor.EchoKnock(ServerRpc). 탈출자(Escaped) · 진행 중 난입자(Spectating)는 조용히 버린다.
         // 노크 권한은 EchoBodyRules.CanKnock(status) == NetworkPlayer.IsEcho(Tagged)만. HasEchoBody로 판정하지 않는다.
 
         // RoundState already drops tagged/escaped players from valves, but not from the drain hatch,
@@ -1242,6 +1249,7 @@ namespace Marco.Network.Round
             CancelHealingFor(conn.ClientId);
             RemoveSoundCan(conn.ClientId);
             decoyHolders.Remove(conn.ClientId);
+            ForgetKnocks(conn.ClientId);
             if (valves == null) return;
             nextTagTimes.Remove(conn.ClientId);
             runnerHalves.Remove(conn.ClientId);

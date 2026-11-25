@@ -38,6 +38,8 @@ namespace Marco.Network
             if (round == null || round.Mode == RoundMode.NotStarted) return;
 
             TestHudSkin.Begin();
+            // The eliminated Echo's 3.0 s tag blackout covers the 3D view first; the HUD below stays on top of it.
+            Marco.Network.Vision.TagBlackoutLocal.Draw(NetworkPlayer.Local, TestHudSkin.Width, TestHudSkin.Height);
             DrawRunnerInjury(round);
             DrawSeekerReticle(round);
             var local = NetworkPlayer.Local;
@@ -47,6 +49,8 @@ namespace Marco.Network
             DrawPlayers();
             float statusBottom = DrawRoundStatus(round);
             DrawEchoBodyBanner(round, statusBottom);
+            DrawKnockHud(round, statusBottom);
+            DrawEchoCompass(round);
             DrawLureNotice(round, statusBottom);
             DrawValves(round);
             DrawRunnerHealth(round);
@@ -92,7 +96,7 @@ namespace Marco.Network
         // Top center, under the round panel (기획서 12.4 탈출자 화면 · 연출.md 5): "탈출 성공" in the HUD's own
         // white — no knock count, cooldown ring or 20 s lock, since an escapee never knocks (3.3-3).
         // A mid-round joiner wears the same body (13.3) and is told when they take part instead.
-        // The eliminated Echo's own HUD (knock) belongs to the sound part and is not drawn here.
+        // The eliminated Echo's own HUD (knock) is NetworkTestHud.Knock.
         private static void DrawEchoBodyBanner(NetworkRound round, float top)
         {
             string title = EchoBodyBannerTitle(round, NetworkPlayer.Local);

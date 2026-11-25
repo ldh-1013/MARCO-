@@ -25,6 +25,8 @@ namespace Marco.Network.Round
         {
             Debug.Log("[MARCO] Gate opened");
             owner.MarkGateOpened();
+            // S5: never let a pulse failure escape into the Core round event.
+            try { owner.EmitGatePulses(); } catch (System.Exception exception) { Debug.LogException(exception); }
         }
 
         public void OnRoundEnded(RoundResult result)
@@ -43,6 +45,8 @@ namespace Marco.Network.Round
         {
             Debug.Log($"[MARCO] Drain hatch activated: {drainHatchId}");
             owner.MarkDrainHatchActivated(drainHatchId);
+            // S6: never let a pulse failure escape into the Core round event.
+            try { owner.EmitSurvivorPulse(drainHatchId); } catch (System.Exception exception) { Debug.LogException(exception); }
         }
     }
 }

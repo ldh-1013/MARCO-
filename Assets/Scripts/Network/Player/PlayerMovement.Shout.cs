@@ -136,13 +136,15 @@ namespace Marco.Network.Player
             float radius = scream ? 9f : 22f, duration = scream ? 1f : 2.5f;
             foreach (var listener in NetworkPlayer.All)
             {
-                if (listener.Status != PlayerStatus.Alive) continue;
+                if (listener.Status != PlayerStatus.Alive && !listener.HasEchoBody) continue;
+                if (listener.HasEchoBody && !round.CanTarget(listener)) continue;   // 3.2-1: Echo bodies watch the map's pulses
                 if (listener == player)
-                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true);
+                    AbilitySoundTarget(listener.Owner, origin, radius, duration, 1, false, scream, true, SourceSnapshotRules.None, SourceSnapshotRules.None);
                 else if (round.TryHearPoolVoice(origin, listener, radius, out var point, out float gain,
                     out bool blocked, out float perceivedRadius))
                     AbilitySoundTarget(listener.Owner, point, perceivedRadius,
-                        duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1), gain, blocked, scream, false);
+                        listener.HasEchoBody ? 3f : duration * (listener.Role == PlayerRole.Seeker ? 1.5f : 1), gain, blocked, scream, false,
+                        SourceSnapshotRules.ForListener(player.PlayerId, listener, blocked), SourceSnapshotRules.None);
             }
         }
 
@@ -160,10 +162,12 @@ namespace Marco.Network.Player
 
         [TargetRpc]
         private void AbilitySoundTarget(NetworkConnection connection, Vector3 point, float radius,
-            float duration, float gain, bool blocked, bool scream, bool self)
+            float duration, float gain, bool blocked, bool scream, bool self, int snapshotA, int snapshotB)
         {
             var round = NetworkRound.Instance;
             if (!blocked) round?.ShowSoundPulse(point, radius, duration, voiceFromSeeker: !scream);
+            if (!blocked && !self && (snapshotA >= 0 || snapshotB >= 0))   // §5.5-2
+                try { Marco.Network.Vision.SourceSnapshots.ShowBoth(snapshotA, snapshotB, duration); } catch (System.Exception exception) { Marco.Network.Vision.DirectionHints.ReportFault("SourceSnapshots", exception); }
             if (!self) round?.NotifyOtherSound();
             if (self && scream) screamFlash = Time.time + .2f;
             // Keep survivor screams and seeker vocals separate, including missing assets.
