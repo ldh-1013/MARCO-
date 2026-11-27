@@ -54,9 +54,10 @@ namespace Marco.Network
                 hudVoiceOwner = local;
                 hudVoice = local != null ? local.GetComponentInChildren<MicrophoneVisionController>(true) : null;
             }
-            bool aliveRunner = local != null && local.Role == PlayerRole.Runner && local.Status == PlayerStatus.Alive;
-            float paperOpacity = aliveRunner ? Mathf.SmoothStep(0f, 1f, hudVoice != null ? hudVoice.HudVisionLevel : 0f) : 1f;
-            if (aliveRunner &&
+            bool usesVoiceVision = local != null && local.Status == PlayerStatus.Alive &&
+                (local.Role == PlayerRole.Runner || local.Role == PlayerRole.Seeker);
+            float paperOpacity = usesVoiceVision ? Mathf.SmoothStep(0f, 1f, hudVoice != null ? hudVoice.HudVisionLevel : 0f) : 1f;
+            if (usesVoiceVision && local.Role == PlayerRole.Runner &&
                 !local.HasHealingAction && round.Result == RoundResult.InProgress)
                 RuinedUi.Reticle(new Vector2(TestHudSkin.Width * .5f, TestHudSkin.Height * .5f), Color.white, 24);
             DrawIdentity(local, paperOpacity);
@@ -218,12 +219,14 @@ namespace Marco.Network
         {
             const float slotSize = 30, slotGap = 5;
             int required = round.EscapeRequiredCount, escaped = round.EscapedCount;
-            float x = row.x + (row.width - 108 - required * (slotSize + slotGap)) * .5f;
+            const float labelWidth = 54, numberWidth = 52, gap = 6;
+            float textWidth = labelWidth + numberWidth + 2 * gap;
+            float x = row.x + (row.width - textWidth - required * (slotSize + slotGap)) * .5f;
             var accent = escaped >= required ? new Color(.55f, .94f, .85f) : Color.white;
-            Lobby.RoomLettering.Draw(new Rect(x, row.y, 43, row.height), "탈출", 23, accent);
-            InterfaceArt.Number(new Rect(x + 47, row.y + 8, 52, 26), $"{escaped}/{required}");
+            Lobby.RoomLettering.Draw(new Rect(x, row.y, labelWidth, row.height), "탈출", 28, accent);
+            InterfaceArt.Number(new Rect(x + labelWidth + gap, row.y + 8, numberWidth, 26), $"{escaped}/{required}");
             for (int slot = 0; slot < required; slot++)
-                InterfaceArt.Draw(new Rect(x + 108 + slot * (slotSize + slotGap), row.y + 6, slotSize, slotSize),
+                InterfaceArt.Draw(new Rect(x + textWidth + slot * (slotSize + slotGap), row.y + 6, slotSize, slotSize),
                     slot < escaped ? "ready" : "waiting");
         }
 
@@ -264,12 +267,12 @@ namespace Marco.Network
             {
                 bool isOpen = slot < open;
                 var row = new Rect(inner.x, inner.y + 30 + slot * (ValveRowHeight + ValveRowGap), inner.width, ValveRowHeight);
-                Color state = isOpen ? Gold : new Color(.65f, .63f, .59f);
+                Color state = isOpen ? Gold : new Color(.88f, .86f, .81f);
                 TestHudSkin.Fill(row, isOpen ? new Color(.29f, .21f, .11f, .8f * paperOpacity) : new Color(0, 0, 0, .3f * paperOpacity));
                 TestHudSkin.Fill(new Rect(row.x, row.y, 2, row.height), state);
                 DrawInkIcon(new Rect(row.x + 8, row.y + 4, 40, 40), isOpen ? "valveOpen" : "valve");
                 Lobby.RoomLettering.Draw(new Rect(row.x + 55, row.y, row.width - 59, row.height),
-                    isOpen ? "열림" : "닫힘", 17, state, centered: true);
+                    isOpen ? "열림" : "닫힘", 25, state, centered: true);
             }
         }
 

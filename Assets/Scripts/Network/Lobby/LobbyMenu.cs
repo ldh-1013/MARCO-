@@ -251,7 +251,7 @@ namespace Marco.Network.Lobby
             var readyButton = new Rect(pad, actionsY, inner * .62f - 5, 42);
             GUI.enabled = local != null && local.IsClientInitialized && !string.IsNullOrEmpty(local.Nickname);
             bool localReady = local != null && local.LobbyReady;
-            if (RoomButton(readyButton, localReady ? "준비 취소" : "준비", 24, primary: !localReady, useLettering: true))
+            if (RoomButton(readyButton, localReady ? "다시 대기" : "준비", 24, primary: !localReady, useLettering: true))
                 local.SetLobbyReadyServer(!localReady);
             if (countdown > 0)
                 InterfaceArt.Draw(new Rect(readyButton.xMax - 57, readyButton.y + 5, 36, 32), "count" + countdown);
